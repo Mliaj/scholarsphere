@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+
+{% block title %}Browse Scholarships - Scholarsphere | University of Cebu{% endblock %}
+
+{% block extra_css %}
+<style>
+    .page-container { display: flex; min-height: 100vh; }
+    .sidebar { width: 280px; background: linear-gradient(135deg, #003366 0%, #0072ce 100%); color: white; padding: 2rem 0; position: fixed; height: 100vh; overflow-y: auto; }
+    .main-content { flex: 1; margin-left: 280px; padding: 2rem; }
+    .nav-item { padding: 1rem 2rem; cursor: pointer; transition: background 0.3s; border-left: 3px solid transparent; }
+    .nav-item:hover, .nav-item.active { background: rgba(255,255,255,0.1); border-left-color: #ffc72c; }
+    .scholarships-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.25rem; }
+    .scholarship-card { background: #fff; border: 1px solid #e9ecef; border-radius: 12px; padding: 1.25rem; box-shadow: 0 2px 10px rgba(0,0,0,0.05); display: flex; flex-direction: column; }
+    .scholarship-card h3 { color: #003366; margin-bottom: 0.5rem; font-size: 1.1rem; }
+    .scholarship-meta { color: #666; font-size: 0.9rem; margin-bottom: 0.75rem; }
+    .scholarship-desc { color: #444; font-size: 0.95rem; line-height: 1.45; margin-bottom: 0.75rem; }
+    .scholarship-req { color: #555; font-size: 0.9rem; margin-bottom: 1rem; }
+    .actions { margin-top: auto; display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
+    .btn-apply { background: #0072ce; color: #fff; border: none; padding: 0.5rem 0.9rem; border-radius: 8px; cursor: pointer; }
+    .btn-apply:disabled { background: #9db9d6; cursor: not-allowed; }
+    .badge { display: inline-block; padding: 0.25rem 0.5rem; border-radius: 999px; background: #e9f4ff; color: #0056a3; font-size: 0.8rem; }
+    .empty-state { display: flex; align-items: center; justify-content: center; height: calc(100vh - 4rem); text-align: center; }
+    .empty-box { max-width: 520px; padding: 2rem; border: 1px dashed #cfd8e3; border-radius: 12px; background: #f8fbff; margin: 0 auto; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-container">
+    <div class="sidebar">
+        <nav class="sidebar-nav">
+            <div class="nav-item active" onclick="window.location.href='{{ url_for('students.scholarships') }}'">
+                <i class="fas fa-search"></i> Browse Scholarships
+            </div>
+            <div class="nav-item" onclick="window.location.href='{{ url_for('students.dashboard') }}'">
+                <i class="fas fa-home"></i> Dashboard
+            </div>
+            <div class="nav-item" onclick="window.location.href='{{ url_for('students.profile') }}'">
+                <i class="fas fa-user"></i> Profile Settings
+            </div>
+            <div class="nav-item" onclick="window.location.href='{{ url_for('students.credentials') }}'">
+                <i class="fas fa-file-alt"></i> My Credentials
+            </div>
+            <div class="nav-item" onclick="window.location.href='{{ url_for('students.awards') }}'">
+                <i class="fas fa-trophy"></i> My Awards
+            </div>
+            <div class="nav-item" onclick="window.location.href='{{ url_for('students.applications') }}'">
+                <i class="fas fa-clipboard-list"></i> My Applications
+            </div>
+            <div class="nav-item" onclick="window.location.href='{{ url_for('logout') }}'">
+                <i class="fas fa-sign-out-alt"></i> Logout
+            </div>
+        </nav>
+    </div>
+
+    <div class="main-content">
+        <h2 style="color:#003366; margin-bottom:1rem;">Browse Scholarships</h2>
+        {% if not scholarships or scholarships|length == 0 %}
+            <div class="empty-state">
+                <div class="empty-box">
+                    <h3 style="color:#003366; margin-bottom:0.5rem;">No offers yet for now</h3>
+                    <p style="color:#555;">Please come back later.</p>
+                </div>
+            </div>
+        {% else %}
+            <div class="scholarships-grid">
+                {% for s in scholarships %}
+                <div class="scholarship-card" data-id="{{ s.scholarship_id }}">
+                    <div class="scholarship-meta">
+                        <span class="badge">{{ s.provider }}</span>
+                    </div>
+                    <h3>{{ s.title }}</h3>
+                    <div class="scholarship-desc">{{ s.description }}</div>
+                    <div class="scholarship-req"><strong>Requirements:</strong> {{ s.requirements }}</div>
+                    <div class="scholarship-meta">Amount: {{ s.amount }} • Deadline: {{ s.deadline }}</div>
+                    <div class="actions">
+                        {% if s.has_applied and not s.can_apply_again %}
+                            <button class="btn-apply" disabled>Applied ({{ s.application_status|title }})</button>
+                        {% else %}
+                            <button class="btn-apply" onclick="applyScholarship({{ s.scholarship_id }})">Apply</button>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+async function applyScholarship(id) {
+    try {
+        const resp = await fetch(`{{ url_for('students.apply_scholarship', scholarship_id=0) }}`.replace('0', id), {
+            method: 'POST',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        });
+        const data = await resp.json();
+        alert(data.message || (data.success ? 'Applied successfully' : 'Failed to apply'));
+        if (data.success) {
+            location.reload();
+        }
+    } catch (e) {
+        alert('Failed to apply');
+    }
+}
+</script>
+{% endblock %}
+
+

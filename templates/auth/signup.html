@@ -1,0 +1,242 @@
+{% extends "base.html" %}
+
+{% block title %}Sign Up - Scholarsphere | University of Cebu{% endblock %}
+
+{% block extra_css %}
+<style>
+    .uc-auth-container {
+        display: flex;
+        min-height: 100vh;
+    }
+    .uc-auth-left {
+        flex: 1;
+        background: linear-gradient(135deg, #0056a3 0%, #0072ce 100%);
+        color: #fff;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 2rem 1rem;
+    }
+    .uc-auth-logo {
+        width: 140px;
+        height: 140px;
+        background: #fff;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 2rem;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+        overflow: hidden;
+    }
+    .uc-auth-logo img {
+        width: 120px;
+        height: 120px;
+        object-fit: cover;
+        border-radius: 50%;
+    }
+    .uc-auth-left h1 {
+        font-size: 2.5rem;
+        font-weight: 700;
+        margin-bottom: 1rem;
+    }
+    .uc-auth-left .uc-auth-desc {
+        font-size: 1.15rem;
+        color: #e0e6ed;
+        margin-bottom: 2rem;
+        max-width: 500px;
+    }
+    .uc-auth-right {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #f8f9fa;
+    }
+    .uc-auth-card {
+        background: #fff;
+        border-radius: 22px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+        padding: 2.5rem 2.5rem 2rem 2.5rem;
+        width: 100%;
+        max-width: 420px;
+        display: flex;
+        flex-direction: column;
+        gap: 1.2rem;
+    }
+    .uc-auth-card .back-link {
+        color: #003366;
+        font-size: 1rem;
+        margin-bottom: 0.5rem;
+        text-decoration: none;
+        display: inline-block;
+        font-weight: 500;
+    }
+    .uc-auth-card h2 {
+        font-size: 2.2rem;
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+        color: #003366;
+    }
+    .uc-auth-card p {
+        color: #666;
+        margin-bottom: 1.5rem;
+        font-size: 1.08rem;
+    }
+    .uc-auth-card label {
+        font-weight: 600;
+        margin-bottom: 0.25rem;
+        color: #222;
+    }
+    .uc-auth-card input[type="text"],
+    .uc-auth-card input[type="email"],
+    .uc-auth-card input[type="password"],
+    .uc-auth-card input[type="date"] {
+        width: 100%;
+        padding: 0.75rem 1rem;
+        border: 2px solid #e1e5e9;
+        border-radius: 8px;
+        font-size: 1.08rem;
+        background: #f8f9fa;
+        transition: border-color 0.3s;
+        box-sizing: border-box;
+    }
+    .uc-auth-card .form-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+    }
+    .uc-auth-card input[type="date"] { 
+        max-width: 260px; 
+    }
+    .uc-auth-card input:focus {
+        border-color: #0072ce;
+        outline: none;
+    }
+    .uc-auth-card .form-group {
+        display: flex;
+        flex-direction: column;
+    }
+    .uc-auth-card .btn {
+        width: 100%;
+        padding: 1rem 0;
+        font-size: 1.15rem;
+        border-radius: 8px;
+        background: linear-gradient(90deg, #0056a3 0%, #0072ce 100%);
+        color: white;
+        font-weight: 700;
+        border: none;
+        cursor: pointer;
+        margin-top: 0.5rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+        transition: background 0.3s;
+    }
+    .uc-auth-card .btn:hover {
+        background: linear-gradient(90deg, #0072ce 0%, #0056a3 100%);
+    }
+    .uc-auth-card .login-link {
+        text-align: center;
+        margin-top: 1.5rem;
+        font-size: 1.08rem;
+    }
+    .uc-auth-card .login-link a {
+        color: #0072ce;
+        text-decoration: none;
+        font-weight: 600;
+    }
+    .uc-auth-card .login-link a:hover {
+        text-decoration: underline;
+    }
+    @media (max-width: 900px) {
+        .uc-auth-container {
+            flex-direction: column;
+        }
+        .uc-auth-left, .uc-auth-right {
+            flex: unset;
+            width: 100%;
+            min-height: 300px;
+        }
+    }
+    @media (max-width: 600px) {
+        .uc-auth-card {
+            padding: 1.2rem 0.5rem;
+        }
+        .uc-auth-card .form-row { 
+            grid-template-columns: 1fr; 
+        }
+        .uc-auth-logo {
+            width: 90px;
+            height: 90px;
+        }
+        .uc-auth-logo img {
+            width: 70px;
+            height: 70px;
+        }
+        .uc-auth-left h1 {
+            font-size: 1.5rem;
+        }
+        .uc-auth-card input[type="date"] { 
+            max-width: 100%; 
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="uc-auth-container">
+    <div class="uc-auth-left">
+        <div class="uc-auth-logo">
+            <img src="{{ url_for('static', filename='images/uc-logo.png') }}" alt="University of Cebu Logo">
+        </div>
+        <h1>University of Cebu</h1>
+        <div class="uc-auth-desc">
+            Welcome to Scholarsphere, the official scholarship portal for UC students and providers.
+        </div>
+    </div>
+    <div class="uc-auth-right">
+        <div class="uc-auth-card">
+            <a href="{{ url_for('index') }}" class="back-link"><i class="fas fa-arrow-left"></i> Back to Home</a>
+            <h2>Create Your Student Account</h2>
+            <p>Sign up as a Student</p>
+            <form method="POST">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="firstName">First Name</label>
+                        <input type="text" id="firstName" name="firstName" required autocomplete="given-name">
+                    </div>
+                    <div class="form-group">
+                        <label for="lastName">Last Name</label>
+                        <input type="text" id="lastName" name="lastName" required autocomplete="family-name">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" name="email" required autocomplete="email">
+                </div>
+                <div class="form-group">
+                    <label for="studentId">Student ID (8 digits)</label>
+                    <input type="text" id="studentId" name="studentId" required inputmode="numeric" pattern="\d{8}" maxlength="8" placeholder="XXXXXXXX">
+                </div>
+                <div class="form-group">
+                    <label for="birthday">Birthdate</label>
+                    <input type="date" id="birthday" name="birthday" required>
+                </div>
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" required autocomplete="new-password">
+                </div>
+                <div class="form-group">
+                    <label for="repeatPassword">Repeat Password</label>
+                    <input type="password" id="repeatPassword" name="repeatPassword" required autocomplete="new-password">
+                </div>
+                <button type="submit" class="btn">Create Account</button>
+            </form>
+            <div class="login-link">
+                Already have an account? <a href="{{ url_for('auth.login') }}">Sign in →</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
