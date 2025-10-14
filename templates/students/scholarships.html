@@ -4,11 +4,24 @@
 
 {% block extra_css %}
 <style>
-    .page-container { display: flex; min-height: 100vh; }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Poppins', sans-serif; background:#f8f9fa; color:#333; }
+    .dashboard-container { display: flex; min-height: 100vh; }
     .sidebar { width: 280px; background: linear-gradient(135deg, #003366 0%, #0072ce 100%); color: white; padding: 2rem 0; position: fixed; height: 100vh; overflow-y: auto; }
+    .sidebar-header { text-align:center; padding:0 2rem 2rem 2rem; border-bottom:1px solid rgba(255,255,255,0.1); }
+    .sidebar-nav { padding:2rem 0; }
+    .sidebar-logo { width:60px; height:60px; background:#fff; border-radius:50%; margin:0 auto 1rem; display:flex; align-items:center; justify-content:center; overflow:hidden; border:3px solid rgba(255,255,255,0.25); box-shadow:0 2px 8px rgba(0,0,0,0.15); }
+    .sidebar-logo img { width:100%; height:100%; object-fit:cover; border-radius:50%; }
+    .sidebar-brand { font-size:1.2rem; font-weight:700; margin-bottom:.25rem; }
+    .sidebar-subtitle { font-size:.9rem; opacity:.85; }
     .main-content { flex: 1; margin-left: 280px; padding: 2rem; }
-    .nav-item { padding: 1rem 2rem; cursor: pointer; transition: background 0.3s; border-left: 3px solid transparent; }
-    .nav-item:hover, .nav-item.active { background: rgba(255,255,255,0.1); border-left-color: #ffc72c; }
+    .top-bar { display:flex; justify-content:space-between; align-items:center; margin-bottom:2rem; padding:1rem 0; }
+    .welcome-text h1 { font-size:2rem; color:#003366; margin-bottom:.5rem; }
+    .welcome-text p { color:#666; }
+    .nav-item { padding: 1rem 2rem; cursor: pointer; transition: background 0.3s; border-left: 3px solid transparent; display:flex; align-items:center; gap:.75rem; }
+    .nav-item:hover { background: rgba(255,255,255,0.1); border-left-color: #ffc72c; }
+    .nav-item.active { background: rgba(255,255,255,0.15); border-left-color: #ffc72c; }
+    .nav-item i { width:20px; margin-right:1rem; }
     .scholarships-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.25rem; }
     .scholarship-card { background: #fff; border: 1px solid #e9ecef; border-radius: 12px; padding: 1.25rem; box-shadow: 0 2px 10px rgba(0,0,0,0.05); display: flex; flex-direction: column; }
     .scholarship-card h3 { color: #003366; margin-bottom: 0.5rem; font-size: 1.1rem; }
@@ -21,12 +34,40 @@
     .badge { display: inline-block; padding: 0.25rem 0.5rem; border-radius: 999px; background: #e9f4ff; color: #0056a3; font-size: 0.8rem; }
     .empty-state { display: flex; align-items: center; justify-content: center; height: calc(100vh - 4rem); text-align: center; }
     .empty-box { max-width: 520px; padding: 2rem; border: 1px dashed #cfd8e3; border-radius: 12px; background: #f8fbff; margin: 0 auto; }
+
+    /* Application Modal */
+    .modal { display:none; position:fixed; z-index:1000; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.5); }
+    .modal-content { background:#fff; margin:2% auto; padding:0; border-radius:15px; width:95%; max-width:900px; max-height:92vh; overflow:auto; }
+    .modal-header { padding:1rem 1.25rem; border-bottom:1px solid #e9ecef; display:flex; justify-content:space-between; align-items:center; background:#f8f9fa; border-radius:15px 15px 0 0; }
+    .modal-title { margin:0; font-size:1.25rem; color:#003366; font-weight:700; }
+    .close { background:none; border:none; font-size:1.5rem; cursor:pointer; color:#666; }
+    .modal-body { padding:1.25rem; }
+    .form-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: .75rem 1rem; }
+    .form-group { display:flex; flex-direction:column; gap:.35rem; }
+    .form-label { font-weight:600; color:#333; }
+    .form-control { width:100%; padding:.6rem .7rem; border:1px solid #ddd; border-radius:8px; }
+    .section-title { margin:.5rem 0 .25rem; font-weight:700; color:#003366; }
+    .modal-footer { padding:1rem 1.25rem; border-top:1px solid #e9ecef; background:#f8f9fa; border-radius:0 0 15px 15px; display:flex; justify-content:flex-end; gap:.5rem; }
+    .btn { padding:.6rem 1rem; border:none; border-radius:8px; cursor:pointer; font-weight:600; }
+    .btn.secondary { background:#e9ecef; }
+    .btn.primary { background:#0072ce; color:#fff; }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="page-container">
+<div class="dashboard-container">
     <div class="sidebar">
+        <div class="sidebar-header">
+          <div class="sidebar-logo">
+            {% if user and user.profile_picture %}
+              <img src="{{ url_for('static', filename='uploads/profile_pictures/' + user.profile_picture) }}" alt="Profile Picture">
+            {% else %}
+              <img src="{{ url_for('static', filename='images/uc-logo.png') }}" alt="UC Logo">
+            {% endif %}
+          </div>
+          <div class="sidebar-brand">Scholarsphere</div>
+          <div class="sidebar-subtitle">Student Portal</div>
+        </div>
         <nav class="sidebar-nav">
             <div class="nav-item active" onclick="window.location.href='{{ url_for('students.scholarships') }}'">
                 <i class="fas fa-search"></i> Browse Scholarships
@@ -53,7 +94,12 @@
     </div>
 
     <div class="main-content">
-        <h2 style="color:#003366; margin-bottom:1rem;">Browse Scholarships</h2>
+        <div class="top-bar">
+          <div class="welcome-text">
+            <h1>Browse Scholarships</h1>
+            <p>Find opportunities that match your goals</p>
+          </div>
+        </div>
         {% if not scholarships or scholarships|length == 0 %}
             <div class="empty-state">
                 <div class="empty-box">
@@ -76,7 +122,7 @@
                         {% if s.has_applied and not s.can_apply_again %}
                             <button class="btn-apply" disabled>Applied ({{ s.application_status|title }})</button>
                         {% else %}
-                            <button class="btn-apply" onclick="applyScholarship({{ s.scholarship_id }})">Apply</button>
+                            <button class="btn-apply" onclick="openApplication({{ s.scholarship_id }}, '{{ s.title|escape }}', '{{ s.requirements|escape }}')">Apply</button>
                         {% endif %}
                     </div>
                 </div>
@@ -87,22 +133,99 @@
 </div>
 
 <script>
-async function applyScholarship(id) {
-    try {
-        const resp = await fetch(`{{ url_for('students.apply_scholarship', scholarship_id=0) }}`.replace('0', id), {
-            method: 'POST',
-            headers: { 'X-Requested-With': 'XMLHttpRequest' }
-        });
-        const data = await resp.json();
-        alert(data.message || (data.success ? 'Applied successfully' : 'Failed to apply'));
-        if (data.success) {
-            location.reload();
-        }
-    } catch (e) {
-        alert('Failed to apply');
-    }
+function openApplication(id, title, requirementsCsv){
+    const modal = document.getElementById('applyModal');
+    document.getElementById('applyTitle').textContent = title;
+    document.getElementById('applyScholarshipId').value = id;
+    // Render required uploads from provider requirements
+    const container = document.getElementById('requiredUploads');
+    container.innerHTML = '';
+    const reqs = (requirementsCsv || '').split(',').map(s=>s.trim()).filter(Boolean);
+    reqs.forEach(r => {
+        const row = document.createElement('div');
+        row.className = 'form-group';
+        row.innerHTML = `<label class="form-label">${r}</label><input type="file" class="form-control" name="uploads_${r.replace(/[^a-z0-9_]+/ig,'_').toLowerCase()}">`;
+        container.appendChild(row);
+    });
+    modal.style.display = 'block';
 }
+
+function closeApplication(){ document.getElementById('applyModal').style.display='none'; }
+
+window.addEventListener('click', (e)=>{ const m=document.getElementById('applyModal'); if(e.target===m){ closeApplication(); }});
+
+document.addEventListener('DOMContentLoaded', ()=>{
+  const form = document.getElementById('applyForm');
+  form.addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const id = document.getElementById('applyScholarshipId').value;
+    // For now, submit minimal application; file uploads can be wired to a separate endpoint later
+    try {
+      const resp = await fetch(`{{ url_for('students.apply_scholarship', scholarship_id=0) }}`.replace('0', id), { method:'POST', headers:{ 'X-Requested-With':'XMLHttpRequest' } });
+      const data = await resp.json();
+      alert(data.message || (data.success ? 'Applied successfully' : 'Failed to apply'));
+      if(data.success){ location.reload(); }
+    } catch(err){
+      alert('Failed to apply');
+    }
+  });
+});
 </script>
+
+<!-- Apply Modal -->
+<div id="applyModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <div class="modal-title">Apply to: <span id="applyTitle"></span></div>
+      <button class="close" onclick="closeApplication()">&times;</button>
+    </div>
+    <form id="applyForm">
+      <input type="hidden" id="applyScholarshipId" name="scholarship_id">
+      <div class="modal-body">
+        <div class="section-title">Personal Information</div>
+        <div class="form-grid">
+          <div class="form-group"><label class="form-label">Full Name</label><input class="form-control" name="full_name" required></div>
+          <div class="form-group"><label class="form-label">Student ID Number</label><input class="form-control" name="student_id" required></div>
+          <div class="form-group"><label class="form-label">Course</label><input class="form-control" name="course" required></div>
+          <div class="form-group"><label class="form-label">Year Level</label><input class="form-control" name="year_level" required></div>
+          <div class="form-group"><label class="form-label">Department</label><input class="form-control" name="department"></div>
+          <div class="form-group"><label class="form-label">School / University</label><input class="form-control" name="school" required></div>
+          <div class="form-group"><label class="form-label">Date of Birth</label><input type="date" class="form-control" name="dob" required></div>
+          <div class="form-group"><label class="form-label">Gender</label>
+            <select class="form-control" name="gender"><option>Male</option><option>Female</option><option>Prefer not to say</option></select>
+          </div>
+          <div class="form-group" style="grid-column:1 / -1"><label class="form-label">Address</label><input class="form-control" name="address" required></div>
+          <div class="form-group"><label class="form-label">Contact Number</label><input class="form-control" name="contact" required></div>
+          <div class="form-group"><label class="form-label">Email</label><input type="email" class="form-control" name="email" required></div>
+        </div>
+
+        <div class="section-title">Family Background</div>
+        <div class="form-grid">
+          <div class="form-group"><label class="form-label">Parent/Guardian Name</label><input class="form-control" name="guardian" required></div>
+          <div class="form-group"><label class="form-label">Occupation</label><input class="form-control" name="occupation"></div>
+          <div class="form-group"><label class="form-label">Household Income</label><input class="form-control" name="income" placeholder="Monthly or Annual"></div>
+          <div class="form-group"><label class="form-label">Dependents</label><input type="number" min="0" class="form-control" name="dependents"></div>
+        </div>
+
+        <div class="section-title">Academic Information</div>
+        <div class="form-grid">
+          <div class="form-group"><label class="form-label">Latest General Average / GPA</label><input class="form-control" name="gpa"></div>
+          <div class="form-group" style="grid-column:1 / -1"><label class="form-label">Academic Achievements / Awards</label><input class="form-control" name="achievements"></div>
+          <div class="form-group"><label class="form-label">Current Semester</label><input class="form-control" name="semester"></div>
+          <div class="form-group"><label class="form-label">School Year</label><input class="form-control" name="school_year"></div>
+        </div>
+
+        <div class="section-title">Uploads (match provider requirements)</div>
+        <div id="requiredUploads" class="form-grid"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn secondary" onclick="closeApplication()">Cancel</button>
+        <button type="submit" class="btn primary">Submit Application</button>
+      </div>
+    </form>
+  </div>
+  
+</div>
 {% endblock %}
 
 

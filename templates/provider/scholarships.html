@@ -545,8 +545,6 @@ document.getElementById('createScholarshipForm').addEventListener('submit', asyn
   const elig = [];
   const gpaSel = document.getElementById('eligGpaText').value.trim();
   if(gpaSel) elig.push(`Min GPA: ${gpaSel}`);
-  if(document.getElementById('eligEnrolled').checked) elig.push('Must be currently enrolled');
-  if(document.getElementById('eligFulltime').checked) elig.push('Full-time student');
   let progVal = document.getElementById('eligProgramSelect').value;
   if(progVal === '__OTHER__') progVal = document.getElementById('eligProgramOther').value.trim();
   if(progVal) elig.push(`Programs: ${progVal}`);
@@ -599,8 +597,6 @@ document.getElementById('editScholarshipForm').addEventListener('submit', async 
   const eligE = [];
   const egpaSel = document.getElementById('editEligGpaText').value.trim();
   if(egpaSel) eligE.push(`Min GPA: ${egpaSel}`);
-  if(document.getElementById('editEligEnrolled').checked) eligE.push('Must be currently enrolled');
-  if(document.getElementById('editEligFulltime').checked) eligE.push('Full-time student');
   let eprogVal = document.getElementById('editEligProgramSelect').value;
   if(eprogVal === '__OTHER__') eprogVal = document.getElementById('editEligProgramOther').value.trim();
   if(eprogVal) eligE.push(`Programs: ${eprogVal}`);

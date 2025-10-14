@@ -270,13 +270,15 @@ def scholarships():
     db = current_app.extensions['sqlalchemy']
     
     available_scholarships = db.session.execute(
-        db.text("""
+        db.text(
+            """
             SELECT s.id, s.code, s.title, s.description, s.amount, s.deadline, s.requirements, u.organization
             FROM scholarships s
             LEFT JOIN users u ON s.provider_id = u.id
-            WHERE s.status = 'active' AND s.is_active = 1
+            WHERE s.status IN ('active','approved') AND s.is_active = 1
             ORDER BY s.deadline ASC
-        """)
+            """
+        )
     ).fetchall()
     
     scholarships_data = []
@@ -297,7 +299,7 @@ def scholarships():
         deadline = None
         if scholarship[5]:
             try:
-                deadline = datetime.fromisoformat(scholarship[5].replace('Z', '+00:00'))
+                deadline = datetime.fromisoformat(scholarship[5].replace('Z','+00:00'))
             except:
                 deadline = None
         
@@ -315,7 +317,7 @@ def scholarships():
             'can_apply_again': (existing_application is not None and (existing_application[0] or '').lower() == 'rejected')
         })
     
-    return render_template('students/scholarships.html', scholarships=scholarships_data)
+    return render_template('students/scholarships.html', scholarships=scholarships_data, user=current_user)
 
 @students_bp.route('/apply-scholarship/<int:scholarship_id>', methods=['POST'])
 @login_required
@@ -331,7 +333,7 @@ def apply_scholarship(scholarship_id):
         
         # Check if scholarship exists and is active
         scholarship = db.session.execute(
-            db.text("SELECT id, applications_count, pending_count FROM scholarships WHERE id = :id AND status = 'active' AND is_active = 1"),
+            db.text("SELECT id, applications_count, pending_count FROM scholarships WHERE id = :id AND status IN ('active','approved') AND is_active = 1"),
             {"id": scholarship_id}
         ).fetchone()
         
