@@ -317,14 +317,26 @@ def create_scholarship():
             conn.close()
             return jsonify({'success': False, 'error': 'Scholarship code already exists'}), 400
         
-        # Insert new scholarship
+        # Insert new scholarship with extended fields if columns exist
+        # Insert with extended columns (migrated schema supports them)
         cursor.execute("""
-            INSERT INTO scholarships (code, title, deadline, requirements, provider_id, status, created_at, is_active)
-            VALUES (?, ?, ?, ?, ?, 'draft', ?, 1)
+            INSERT INTO scholarships (
+                code, title, description, type, level, eligibility,
+                deadline, slots, contact_name, contact_email, contact_phone,
+                requirements, provider_id, status, created_at, is_active
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, 1)
         """, (
             data['code'],
             data['title'],
+            data.get('description'),
+            data.get('type'),
+            data.get('level'),
+            data.get('eligibility'),
             data['deadline'],
+            int(data.get('slots') or 0) if str(data.get('slots') or '').strip().isdigit() else None,
+            data.get('contact_name'),
+            data.get('contact_email'),
+            data.get('contact_phone'),
             data['requirements'],
             current_user.id,
             datetime.utcnow().isoformat()
@@ -431,12 +443,20 @@ def update_scholarship(scholarship_id):
         # Update scholarship
         cursor.execute("""
             UPDATE scholarships 
-            SET code = ?, title = ?, deadline = ?, requirements = ?, updated_at = ?
+            SET code = ?, title = ?, description = ?, type = ?, level = ?, eligibility = ?, deadline = ?, slots = ?, contact_name = ?, contact_email = ?, contact_phone = ?, requirements = ?, updated_at = ?
             WHERE code = ? AND provider_id = ?
         """, (
             data['code'],
             data['title'],
+            data.get('description'),
+            data.get('type'),
+            data.get('level'),
+            data.get('eligibility'),
             data['deadline'],
+            int(data.get('slots') or 0) if str(data.get('slots') or '').strip().isdigit() else None,
+            data.get('contact_name'),
+            data.get('contact_email'),
+            data.get('contact_phone'),
             data['requirements'],
             datetime.utcnow().isoformat(),
             scholarship_id,
