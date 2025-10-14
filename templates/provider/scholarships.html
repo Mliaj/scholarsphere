@@ -532,7 +532,7 @@ function deleteScholarship(id){
 }
 
 // Form submission handlers
-document.getElementById('createScholarshipForm').addEventListener('submit', function(e) {
+document.getElementById('createScholarshipForm').addEventListener('submit', async function(e) {
   e.preventDefault();
   
   const formData = new FormData(this);
@@ -561,30 +561,32 @@ document.getElementById('createScholarshipForm').addEventListener('submit', func
   if (chips.length) reqs.push(...chips);
   data.requirements = reqs.join(',');
   
-  fetch('/provider/api/create-scholarship', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(data)
-  })
-  .then(response => response.json())
-  .then(data => {
-    if (data.success) {
+  const btns = document.querySelectorAll('#createScholarshipForm .btn-modal.primary');
+  btns.forEach(b=>{ b.disabled=true; b.textContent='Creating…'; });
+  try {
+    const resp = await fetch('/provider/api/create-scholarship', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    const ct = resp.headers.get('content-type') || '';
+    const payload = ct.includes('application/json') ? await resp.json() : { success:false, error: await resp.text() };
+    if (payload.success) {
       alert('Scholarship created successfully!');
       closeCreateModal();
       location.reload();
     } else {
-      alert('Error creating scholarship: ' + (data.error || 'Unknown error'));
+      alert('Error creating scholarship: ' + (payload.error || resp.statusText || 'Unknown error'));
     }
-  })
-  .catch(error => {
-    console.error('Error:', error);
-    alert('Error creating scholarship');
-  });
+  } catch (err) {
+    console.error('Create scholarship failed:', err);
+    alert('Error creating scholarship. Please try again.');
+  } finally {
+    btns.forEach(b=>{ b.disabled=false; b.textContent='Create Scholarship'; });
+  }
 });
 
-document.getElementById('editScholarshipForm').addEventListener('submit', function(e) {
+document.getElementById('editScholarshipForm').addEventListener('submit', async function(e) {
   e.preventDefault();
   
   const formData = new FormData(this);
@@ -612,27 +614,29 @@ document.getElementById('editScholarshipForm').addEventListener('submit', functi
   data.requirements = reqs.join(',');
   const id = data.id;
   
-  fetch(`/provider/api/scholarship/${id}`, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(data)
-  })
-  .then(response => response.json())
-  .then(data => {
-    if (data.success) {
+  const btns = document.querySelectorAll('#editScholarshipForm .btn-modal.primary');
+  btns.forEach(b=>{ b.disabled=true; b.textContent='Saving…'; });
+  try {
+    const resp = await fetch(`/provider/api/scholarship/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    const ct = resp.headers.get('content-type') || '';
+    const payload = ct.includes('application/json') ? await resp.json() : { success:false, error: await resp.text() };
+    if (payload.success) {
       alert('Scholarship updated successfully!');
       closeEditModal();
       location.reload();
     } else {
-      alert('Error updating scholarship: ' + (data.error || 'Unknown error'));
+      alert('Error updating scholarship: ' + (payload.error || resp.statusText || 'Unknown error'));
     }
-  })
-  .catch(error => {
-    console.error('Error:', error);
-    alert('Error updating scholarship');
-  });
+  } catch (err) {
+    console.error('Update scholarship failed:', err);
+    alert('Error updating scholarship. Please try again.');
+  } finally {
+    btns.forEach(b=>{ b.disabled=false; b.textContent='Update Scholarship'; });
+  }
 });
 
 function publishScholarshipPk(index){
