@@ -59,6 +59,7 @@
     .btn-modal.primary:hover { background:#0056b3; }
     .btn-modal.secondary { background:#6c757d; color:#fff; }
     .btn-modal.secondary:hover { background:#545b62; }
+  .chip { display:inline-flex; align-items:center; gap:.4rem; background:#eef2f7; border:1px solid #d8e0ea; border-radius:999px; padding:.25rem .6rem; font-size:.85rem; }
 
     @media (max-width:1024px){ .sidebar{width:250px;} .main-content{margin-left:250px;} }
     @media (max-width:768px){ .sidebar{transform:translateX(-100%); transition:transform .3s;} .sidebar.open{transform:translateX(0);} .main-content{margin-left:0;} .modal-content{width:95%; margin:5% auto;} }
@@ -158,20 +159,116 @@
     <form id="createScholarshipForm">
       <div class="modal-body">
         <div class="form-group">
-          <label for="scholarshipCode" class="form-label">Scholarship Code *</label>
-          <input type="text" id="scholarshipCode" name="code" class="form-control" placeholder="e.g., SCH-001" required pattern="[A-Za-z0-9-]+" title="Alphanumeric characters and hyphens only">
+          <label class="form-label">Scholarship Code (auto-generated)</label>
+          <div style="display:grid; grid-template-columns: 1fr auto; gap:.5rem; align-items:center;">
+            <div id="scholarshipCodeDisplay" class="form-control" style="background:#f8f9fa;">Generating…</div>
+            <button type="button" class="btn-modal secondary" onclick="regenCode()">Regenerate</button>
+          </div>
+          <input type="hidden" id="scholarshipCode" name="code">
         </div>
         <div class="form-group">
           <label for="scholarshipTitle" class="form-label">Title *</label>
           <input type="text" id="scholarshipTitle" name="title" class="form-control" placeholder="e.g., Academic Excellence Scholarship" required>
         </div>
         <div class="form-group">
+          <label for="scholarshipDescription" class="form-label">Description / Overview</label>
+          <textarea id="scholarshipDescription" name="description" class="form-control" placeholder="Brief overview of the program"></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Scholarship Type</label>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:.5rem;">
+            <select id="scholarshipType" class="form-control">
+              <option value="">Select type</option>
+              <option>Academic</option>
+              <option>Financial Aid</option>
+              <option>Working Scholar</option>
+              <option>Athletic</option>
+              <option>Research</option>
+              <option value="__OTHER__">Other…</option>
+            </select>
+            <input type="text" id="scholarshipTypeOther" class="form-control" placeholder="Enter custom type" style="display:none;">
+          </div>
+          <input type="hidden" name="type" id="scholarshipTypeFinal">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Level</label>
+          <select id="scholarshipLevel" name="level" class="form-control">
+            <option value="">Select level</option>
+            <option>Senior High</option>
+            <option>College</option>
+            <option>Post-Grad</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Eligibility Criteria</label>
+          <div class="form-group" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:.5rem;">
+            <div>
+              <label class="form-label" style="font-weight:500;">Minimum GPA</label>
+              <input type="text" id="eligGpaText" class="form-control" placeholder="e.g., 90% or 2.0">
+            </div>
+            <div>
+              <label class="form-label" style="font-weight:500;">Program/Course</label>
+              <select id="eligProgramSelect" class="form-control">
+                <option value="">Select program</option>
+                <option>All Programs</option>
+                <option>BSIT</option>
+                <option>BSCS</option>
+                <option>Engineering</option>
+                <option>Education</option>
+                <option>Nursing</option>
+                <option>Business Administration</option>
+                <option>Accountancy</option>
+                <option>Hospitality Management</option>
+                <option>Maritime</option>
+                <option>Architecture</option>
+                <option value="__OTHER__">Other…</option>
+              </select>
+              <input type="text" id="eligProgramOther" class="form-control" placeholder="Enter custom program" style="margin-top:.5rem; display:none;">
+            </div>
+          </div>
+          <div class="form-group" style="margin-top:.5rem;">
+            <label class="form-label" style="font-weight:500;">Additional criteria (optional)</label>
+            <input type="text" id="eligNotes" class="form-control" placeholder="Any other requirement...">
+          </div>
+          <input type="hidden" id="eligibility" name="eligibility">
+        </div>
+        <div class="form-group">
           <label for="scholarshipDeadline" class="form-label">Deadline *</label>
           <input type="date" id="scholarshipDeadline" name="deadline" class="form-control" required>
         </div>
         <div class="form-group">
-          <label for="scholarshipRequirements" class="form-label">Requirements *</label>
-          <textarea id="scholarshipRequirements" name="requirements" class="form-control" placeholder="List the requirements for this scholarship..." required></textarea>
+          <label for="slots" class="form-label">Slots Available</label>
+          <input type="number" id="slots" name="slots" class="form-control" min="1" placeholder="e.g., 50">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Contact Person</label>
+          <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:.75rem;">
+            <input type="text" id="contactName" name="contact_name" class="form-control" placeholder="Name">
+            <input type="email" id="contactEmail" name="contact_email" class="form-control" placeholder="Email">
+            <input type="text" id="contactPhone" name="contact_phone" class="form-control" placeholder="Phone">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Requirements *</label>
+          <div id="reqPreset" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: .75rem;">
+            <label><input type="checkbox" class="req" value="report_card"> Latest Report Card / Grades</label>
+            <label><input type="checkbox" class="req" value="enrollment_cert"> Certificate of Enrollment</label>
+            <label><input type="checkbox" class="req" value="good_moral"> Good Moral Certificate</label>
+            <label><input type="checkbox" class="req" value="itr_or_indigency"> Income Tax Return (ITR) or Barangay Indigency</label>
+            <label><input type="checkbox" class="req" value="id_picture"> ID Picture (2x2 or 1x1)</label>
+            <label><input type="checkbox" class="req" value="birth_cert"> Birth Certificate</label>
+            <label><input type="checkbox" class="req" value="recommendation_letter"> Recommendation Letter</label>
+            
+            <label><input type="checkbox" class="req" value="proof_residency"> Proof of Residency</label>
+            <label><input type="checkbox" class="req" value="community_involvement"> Community Involvement / Volunteer Proof</label>
+          </div>
+          <div style="margin-top:1rem; display:grid; gap:.5rem;">
+            <div style="display:grid; grid-template-columns: 1fr auto; gap:.5rem;">
+              <input type="text" id="reqOther" class="form-control" placeholder="Add other requirement (press + to add)">
+              <button type="button" class="btn-modal secondary" onclick="addCustomReq()">+</button>
+            </div>
+            <div id="reqCustomList" style="display:flex; flex-wrap:wrap; gap:.5rem;"></div>
+          </div>
         </div>
       </div>
       <div class="modal-footer">
@@ -209,8 +306,9 @@
       <div class="modal-body">
         <input type="hidden" id="editScholarshipId" name="id">
         <div class="form-group">
-          <label for="editScholarshipCode" class="form-label">Scholarship Code *</label>
-          <input type="text" id="editScholarshipCode" name="code" class="form-control" required pattern="[A-Za-z0-9-]+" title="Alphanumeric characters and hyphens only">
+          <label class="form-label">Scholarship Code</label>
+          <div class="form-control" id="editScholarshipCodeDisplay" style="background:#f8f9fa;"></div>
+          <input type="hidden" id="editScholarshipCode" name="code">
         </div>
         <div class="form-group">
           <label for="editScholarshipTitle" class="form-label">Title *</label>
@@ -221,8 +319,75 @@
           <input type="date" id="editScholarshipDeadline" name="deadline" class="form-control" required>
         </div>
         <div class="form-group">
-          <label for="editScholarshipRequirements" class="form-label">Requirements *</label>
-          <textarea id="editScholarshipRequirements" name="requirements" class="form-control" required></textarea>
+          <label class="form-label">Eligibility Criteria</label>
+          <div class="form-group" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:.5rem;">
+            <div>
+              <label class="form-label" style="font-weight:500;">Minimum GPA</label>
+              <input type="text" id="editEligGpaText" class="form-control" placeholder="e.g., 90% or 2.0">
+            </div>
+            <div>
+              <label class="form-label" style="font-weight:500;">Program/Course</label>
+              <select id="editEligProgramSelect" class="form-control">
+                <option value="">Select program</option>
+                <option>All Programs</option>
+                <option>BSIT</option>
+                <option>BSCS</option>
+                <option>Engineering</option>
+                <option>Education</option>
+                <option>Nursing</option>
+                <option>Business Administration</option>
+                <option>Accountancy</option>
+                <option>Hospitality Management</option>
+                <option>Maritime</option>
+                <option>Architecture</option>
+                <option value="__OTHER__">Other…</option>
+              </select>
+              <input type="text" id="editEligProgramOther" class="form-control" placeholder="Enter custom program" style="margin-top:.5rem; display:none;">
+            </div>
+          </div>
+          <div class="form-group" style="margin-top:.5rem;">
+            <label class="form-label" style="font-weight:500;">Additional criteria (optional)</label>
+            <input type="text" id="editEligNotes" class="form-control" placeholder="Any other requirement...">
+          </div>
+          <input type="hidden" id="editEligibilityHidden" name="eligibility">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Scholarship Type</label>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:.5rem;">
+            <select id="editScholarshipType" class="form-control">
+              <option value="">Select type</option>
+              <option>Academic</option>
+              <option>Financial Aid</option>
+              <option>Working Scholar</option>
+              <option>Athletic</option>
+              <option>Research</option>
+              <option value="__OTHER__">Other…</option>
+            </select>
+            <input type="text" id="editScholarshipTypeOther" class="form-control" placeholder="Enter custom type" style="display:none;">
+          </div>
+          <input type="hidden" name="type" id="editScholarshipTypeFinal">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Requirements *</label>
+          <div id="editReqGroup" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: .75rem;">
+            <label><input type="checkbox" class="req-edit" value="report_card"> Latest Report Card / Grades</label>
+            <label><input type="checkbox" class="req-edit" value="enrollment_cert"> Certificate of Enrollment</label>
+            <label><input type="checkbox" class="req-edit" value="good_moral"> Good Moral Certificate</label>
+            <label><input type="checkbox" class="req-edit" value="itr_or_indigency"> Income Tax Return (ITR) or Barangay Indigency</label>
+            <label><input type="checkbox" class="req-edit" value="id_picture"> ID Picture (2x2 or 1x1)</label>
+            <label><input type="checkbox" class="req-edit" value="birth_cert"> Birth Certificate</label>
+            <label><input type="checkbox" class="req-edit" value="recommendation_letter"> Recommendation Letter</label>
+            
+            <label><input type="checkbox" class="req-edit" value="proof_residency"> Proof of Residency</label>
+            <label><input type="checkbox" class="req-edit" value="community_involvement"> Community Involvement / Volunteer Proof</label>
+          </div>
+          <div style="margin-top:1rem; display:grid; gap:.5rem;">
+            <div style="display:grid; grid-template-columns: 1fr auto; gap:.5rem;">
+              <input type="text" id="editReqOther" class="form-control" placeholder="Add other requirement (press + to add)">
+              <button type="button" class="btn-modal secondary" onclick="addCustomReqEdit()">+</button>
+            </div>
+            <div id="editReqCustomList" style="display:flex; flex-wrap:wrap; gap:.5rem;"></div>
+          </div>
         </div>
       </div>
       <div class="modal-footer">
@@ -238,6 +403,8 @@
 function createScholarship(){ 
   document.getElementById('createScholarshipModal').style.display = 'block';
   document.getElementById('createScholarshipForm').reset();
+  // auto-generate code
+  regenCode();
 }
 
 function closeCreateModal(){
@@ -306,9 +473,28 @@ function editScholarship(id){
       if (data.success) {
         document.getElementById('editScholarshipId').value = data.scholarship.id;
         document.getElementById('editScholarshipCode').value = data.scholarship.code;
+        document.getElementById('editScholarshipCodeDisplay').textContent = data.scholarship.code;
         document.getElementById('editScholarshipTitle').value = data.scholarship.title;
         document.getElementById('editScholarshipDeadline').value = data.scholarship.deadline;
-        document.getElementById('editScholarshipRequirements').value = data.scholarship.requirements;
+        // Type select/other
+        const knownTypes = ['Academic','Financial Aid','Working Scholar','Athletic','Research'];
+        if(knownTypes.includes(data.scholarship.type||'')){
+          document.getElementById('editScholarshipType').value = data.scholarship.type;
+          document.getElementById('editScholarshipTypeOther').style.display='none';
+          document.getElementById('editScholarshipTypeOther').value='';
+        } else if (data.scholarship.type){
+          document.getElementById('editScholarshipType').value = '__OTHER__';
+          document.getElementById('editScholarshipTypeOther').style.display='';
+          document.getElementById('editScholarshipTypeOther').value = data.scholarship.type;
+        }
+        // Pre-check requirements checkboxes
+        const values = (data.scholarship.requirements || '').split(',').map(s=>s.trim()).filter(Boolean);
+        document.querySelectorAll('#editScholarshipModal .req-edit').forEach(cb => { cb.checked = values.includes(cb.value); });
+        const custom = values.filter(v => !Array.from(document.querySelectorAll('#editScholarshipModal .req-edit')).some(cb => cb.value === v));
+        document.getElementById('editReqOther').value = '';
+        const cont = document.getElementById('editReqCustomList');
+        cont.innerHTML='';
+        custom.forEach(c => addChip('editReqCustomList', c));
         document.getElementById('editScholarshipModal').style.display = 'block';
       } else {
         alert('Error loading scholarship: ' + (data.error || 'Unknown error'));
@@ -351,6 +537,29 @@ document.getElementById('createScholarshipForm').addEventListener('submit', func
   
   const formData = new FormData(this);
   const data = Object.fromEntries(formData);
+  // Resolve type (other vs preset)
+  const typeSel = document.getElementById('scholarshipType');
+  const typeOther = document.getElementById('scholarshipTypeOther').value.trim();
+  data.type = (typeSel.value === '__OTHER__') ? typeOther : typeSel.value;
+  // Build eligibility summary string (frontend only)
+  const elig = [];
+  const gpaSel = document.getElementById('eligGpaText').value.trim();
+  if(gpaSel) elig.push(`Min GPA: ${gpaSel}`);
+  if(document.getElementById('eligEnrolled').checked) elig.push('Must be currently enrolled');
+  if(document.getElementById('eligFulltime').checked) elig.push('Full-time student');
+  let progVal = document.getElementById('eligProgramSelect').value;
+  if(progVal === '__OTHER__') progVal = document.getElementById('eligProgramOther').value.trim();
+  if(progVal) elig.push(`Programs: ${progVal}`);
+  if(document.getElementById('eligNotes').value.trim()) elig.push(document.getElementById('eligNotes').value.trim());
+  document.getElementById('eligibility').value = elig.join('; ');
+  // Collect requirements from checkboxes + optional other text
+  const reqs = Array.from(document.querySelectorAll('#createScholarshipModal .req:checked')).map(el => el.value);
+  // gather custom chips
+  const chips = Array.from(document.querySelectorAll('#reqCustomList .chip span')).map(s => s.textContent.trim());
+  const other = (document.getElementById('reqOther').value || '').trim();
+  if (other) chips.push(...other.split(',').map(s=>s.trim()).filter(Boolean));
+  if (chips.length) reqs.push(...chips);
+  data.requirements = reqs.join(',');
   
   fetch('/provider/api/create-scholarship', {
     method: 'POST',
@@ -380,6 +589,27 @@ document.getElementById('editScholarshipForm').addEventListener('submit', functi
   
   const formData = new FormData(this);
   const data = Object.fromEntries(formData);
+  // Resolve type on edit
+  const etypeSel = document.getElementById('editScholarshipType');
+  const etypeOther = document.getElementById('editScholarshipTypeOther').value.trim();
+  data.type = (etypeSel.value === '__OTHER__') ? etypeOther : etypeSel.value;
+  // Build eligibility summary for edit
+  const eligE = [];
+  const egpaSel = document.getElementById('editEligGpaText').value.trim();
+  if(egpaSel) eligE.push(`Min GPA: ${egpaSel}`);
+  if(document.getElementById('editEligEnrolled').checked) eligE.push('Must be currently enrolled');
+  if(document.getElementById('editEligFulltime').checked) eligE.push('Full-time student');
+  let eprogVal = document.getElementById('editEligProgramSelect').value;
+  if(eprogVal === '__OTHER__') eprogVal = document.getElementById('editEligProgramOther').value.trim();
+  if(eprogVal) eligE.push(`Programs: ${eprogVal}`);
+  if(document.getElementById('editEligNotes').value.trim()) eligE.push(document.getElementById('editEligNotes').value.trim());
+  document.getElementById('editEligibilityHidden').value = eligE.join('; ');
+  const reqs = Array.from(document.querySelectorAll('#editScholarshipModal .req-edit:checked')).map(el => el.value);
+  const chips = Array.from(document.querySelectorAll('#editReqCustomList .chip span')).map(s => s.textContent.trim());
+  const other = (document.getElementById('editReqOther').value || '').trim();
+  if (other) chips.push(...other.split(',').map(s=>s.trim()).filter(Boolean));
+  if (chips.length) reqs.push(...chips);
+  data.requirements = reqs.join(',');
   const id = data.id;
   
   fetch(`/provider/api/scholarship/${id}`, {
@@ -414,6 +644,50 @@ function publishScholarshipPk(index){
 
 function viewApps(id){ alert('Viewing applications for ' + id); }
 function publishScholarship(id){ alert('Publish ' + id + ' coming soon'); }
+
+// UI helpers for custom requirement chips (frontend-only)
+function addChip(containerId, text){
+  const container = document.getElementById(containerId);
+  if(!text) return;
+  const exist = Array.from(container.querySelectorAll('.chip span')).some(s=>s.textContent.trim().toLowerCase()===text.trim().toLowerCase());
+  if(exist) return;
+  const chip = document.createElement('div');
+  chip.className = 'chip';
+  chip.style.cssText = 'display:inline-flex;align-items:center;gap:.4rem;background:#eef2f7;border:1px solid #d8e0ea;border-radius:999px;padding:.25rem .6rem;font-size:.85rem;';
+  chip.innerHTML = `<span>${text}</span><button type="button" style="border:0;background:transparent;color:#555;cursor:pointer;font-weight:700;">×</button>`;
+  chip.querySelector('button').onclick = ()=> chip.remove();
+  container.appendChild(chip);
+}
+function addCustomReq(){ const val = document.getElementById('reqOther').value.trim(); if(val){ addChip('reqCustomList', val); document.getElementById('reqOther').value=''; } }
+function addCustomReqEdit(){ const val = document.getElementById('editReqOther').value.trim(); if(val){ addChip('editReqCustomList', val); document.getElementById('editReqOther').value=''; } }
+
+// Auto code generation and type other toggle
+function generateCode(){
+  const rand = Math.random().toString(36).substring(2,7).toUpperCase();
+  const code = `SCH-${new Date().getFullYear().toString().slice(-2)}-${rand}`;
+  return code;
+}
+function regenCode(){ const code = generateCode(); document.getElementById('scholarshipCode').value = code; document.getElementById('scholarshipCodeDisplay').textContent = code; }
+
+document.getElementById('scholarshipType').addEventListener('change', function(){
+  const show = this.value === '__OTHER__';
+  document.getElementById('scholarshipTypeOther').style.display = show ? '' : 'none';
+});
+
+document.getElementById('eligProgramSelect').addEventListener('change', function(){
+  const show = this.value === '__OTHER__';
+  document.getElementById('eligProgramOther').style.display = show ? '' : 'none';
+});
+
+document.getElementById('editScholarshipType').addEventListener('change', function(){
+  const show = this.value === '__OTHER__';
+  document.getElementById('editScholarshipTypeOther').style.display = show ? '' : 'none';
+});
+
+document.getElementById('editEligProgramSelect').addEventListener('change', function(){
+  const show = this.value === '__OTHER__';
+  document.getElementById('editEligProgramOther').style.display = show ? '' : 'none';
+});
 </script>
 {% endblock %}
 
