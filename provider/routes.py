@@ -298,7 +298,7 @@ def create_scholarship():
         return jsonify({'success': False, 'error': 'No data provided'}), 400
     
     # Validate required fields
-    required_fields = ['code', 'title', 'deadline', 'requirements']
+    required_fields = ['code', 'title', 'deadline']
     for field in required_fields:
         if not data.get(field):
             return jsonify({'success': False, 'error': f'{field} is required'}), 400
@@ -318,29 +318,42 @@ def create_scholarship():
             return jsonify({'success': False, 'error': 'Scholarship code already exists'}), 400
         
         # Insert new scholarship with extended fields if columns exist
-        # Insert with extended columns (migrated schema supports them)
-        cursor.execute("""
-            INSERT INTO scholarships (
-                code, title, description, type, level, eligibility,
-                deadline, slots, contact_name, contact_email, contact_phone,
-                requirements, provider_id, status, created_at, is_active
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, 1)
-        """, (
-            data['code'],
-            data['title'],
-            data.get('description'),
-            data.get('type'),
-            data.get('level'),
-            data.get('eligibility'),
-            data['deadline'],
-            int(data.get('slots') or 0) if str(data.get('slots') or '').strip().isdigit() else None,
-            data.get('contact_name'),
-            data.get('contact_email'),
-            data.get('contact_phone'),
-            data['requirements'],
-            current_user.id,
-            datetime.utcnow().isoformat()
-        ))
+        # Insert with extended columns (fallback to basic schema if migration not yet run)
+        try:
+            cursor.execute("""
+                INSERT INTO scholarships (
+                    code, title, description, type, level, eligibility,
+                    deadline, slots, contact_name, contact_email, contact_phone,
+                    requirements, provider_id, status, created_at, is_active
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, 1)
+            """, (
+                data['code'],
+                data['title'],
+                data.get('description'),
+                data.get('type'),
+                data.get('level'),
+                data.get('eligibility'),
+                data['deadline'],
+                int(data.get('slots') or 0) if str(data.get('slots') or '').strip().isdigit() else None,
+                data.get('contact_name'),
+                data.get('contact_email'),
+                data.get('contact_phone'),
+                (data.get('requirements') or ''),
+                current_user.id,
+                datetime.utcnow().isoformat()
+            ))
+        except Exception:
+            cursor.execute("""
+                INSERT INTO scholarships (code, title, deadline, requirements, provider_id, status, created_at, is_active)
+                VALUES (?, ?, ?, ?, ?, 'draft', ?, 1)
+            """, (
+                data['code'],
+                data['title'],
+                data['deadline'],
+                (data.get('requirements') or ''),
+                current_user.id,
+                datetime.utcnow().isoformat()
+            ))
         
         conn.commit()
         conn.close()
@@ -441,27 +454,46 @@ def update_scholarship(scholarship_id):
                 return jsonify({'success': False, 'error': 'Scholarship code already exists'}), 400
         
         # Update scholarship
-        cursor.execute("""
-            UPDATE scholarships 
-            SET code = ?, title = ?, description = ?, type = ?, level = ?, eligibility = ?, deadline = ?, slots = ?, contact_name = ?, contact_email = ?, contact_phone = ?, requirements = ?, updated_at = ?
-            WHERE code = ? AND provider_id = ?
-        """, (
-            data['code'],
-            data['title'],
-            data.get('description'),
-            data.get('type'),
-            data.get('level'),
-            data.get('eligibility'),
-            data['deadline'],
-            int(data.get('slots') or 0) if str(data.get('slots') or '').strip().isdigit() else None,
-            data.get('contact_name'),
-            data.get('contact_email'),
-            data.get('contact_phone'),
-            data['requirements'],
-            datetime.utcnow().isoformat(),
-            scholarship_id,
-            current_user.id
-        ))
+        updated = False
+        try:
+            cursor.execute("""
+                UPDATE scholarships 
+                SET code = ?, title = ?, description = ?, type = ?, level = ?, eligibility = ?, deadline = ?, slots = ?, contact_name = ?, contact_email = ?, contact_phone = ?, requirements = ?, updated_at = ?
+                WHERE code = ? AND provider_id = ?
+            """, (
+                data['code'],
+                data['title'],
+                data.get('description'),
+                data.get('type'),
+                data.get('level'),
+                data.get('eligibility'),
+                data['deadline'],
+                int(data.get('slots') or 0) if str(data.get('slots') or '').strip().isdigit() else None,
+                data.get('contact_name'),
+                data.get('contact_email'),
+                data.get('contact_phone'),
+                (data.get('requirements') or ''),
+                datetime.utcnow().isoformat(),
+                scholarship_id,
+                current_user.id
+            ))
+            updated = cursor.rowcount > 0
+        except Exception:
+            updated = False
+        if not updated:
+            cursor.execute("""
+                UPDATE scholarships 
+                SET code = ?, title = ?, deadline = ?, requirements = ?, updated_at = ?
+                WHERE code = ? AND provider_id = ?
+            """, (
+                data['code'],
+                data['title'],
+                data['deadline'],
+                (data.get('requirements') or ''),
+                datetime.utcnow().isoformat(),
+                scholarship_id,
+                current_user.id
+            ))
         
         conn.commit()
         conn.close()
