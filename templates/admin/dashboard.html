@@ -183,6 +183,12 @@
         margin-top: 1rem;
     }
 
+    /* When a stats grid only has one item, center and widen it for a cleaner look */
+    .stats-grid.single {
+        grid-template-columns: 1fr;
+        justify-items: center;
+    }
+
     .stat-item {
         text-align: center;
         padding: 1rem;
@@ -348,22 +354,15 @@
             <div class="dashboard-card">
                 <div class="card-header">
                     <i class="fas fa-graduation-cap"></i>
-                    <h3>Scholarships</h3>
+                    <h3>Scholarships Created</h3>
                 </div>
                 <div class="card-content">
                     <p>Scholarship program overview</p>
-                    <div class="stats-grid">
+                    <div class="stats-grid single">
                         <div class="stat-item">
-                            <span class="stat-number" id="active-scholarships">{{ data.stats.active_scholarships }}</span>
-                            <div class="stat-label">Active</div>
+                            <span class="stat-number" id="created-scholarships">{{ data.stats.created_scholarships }}</span>
+                            <div class="stat-label">Created</div>
                         </div>
-                        <div class="stat-item">
-                            <span class="stat-number" id="pending-scholarships">{{ data.stats.pending_scholarships }}</span>
-                            <div class="stat-label">Pending Review</div>
-                        </div>
-                    </div>
-                    <div class="coming-soon-badge">
-                        <i class="fas fa-tools"></i> Coming Soon - Real-time updates
                     </div>
                 </div>
             </div>
@@ -377,16 +376,13 @@
                     <p>Application processing status</p>
                     <div class="stats-grid">
                         <div class="stat-item">
-                            <span class="stat-number" id="total-applications">{{ data.stats.total_applications }}</span>
-                            <div class="stat-label">Total</div>
+                            <span class="stat-number" id="accepted-applications">{{ data.stats.accepted_applications }}</span>
+                            <div class="stat-label">Accepted</div>
                         </div>
                         <div class="stat-item">
                             <span class="stat-number" id="pending-applications">{{ data.stats.pending_applications }}</span>
                             <div class="stat-label">Pending</div>
                         </div>
-                    </div>
-                    <div class="coming-soon-badge">
-                        <i class="fas fa-tools"></i> Coming Soon - Real-time updates
                     </div>
                 </div>
             </div>
@@ -410,8 +406,11 @@ function updateStats() {
                 // Add smooth animation for updated numbers
                 const updatedElements = [
                     document.getElementById('total-students'),
-                    document.getElementById('total-providers')
-                ];
+                    document.getElementById('total-providers'),
+                    document.getElementById('created-scholarships'),
+                    document.getElementById('accepted-applications'),
+                    document.getElementById('pending-applications')
+                ].filter(Boolean);
                 
                 updatedElements.forEach(element => {
                     element.style.transform = 'scale(1.1)';

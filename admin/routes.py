@@ -30,17 +30,37 @@ def dashboard():
     cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'provider'")
     total_providers = cursor.fetchone()[0]
     
+    # Additional counts from scholarships/applications aggregates
+    created_scholarships = 0
+    pending_scholarships = 0
+    accepted_applications = 0
+    pending_applications = 0
+    try:
+        cursor.execute("SELECT COUNT(*) FROM scholarships")
+        created_scholarships = cursor.fetchone()[0] or 0
+    except Exception:
+        created_scholarships = 0
+    # Pending scholarships metric removed from dashboard UI
+    try:
+        # Aggregate application status columns if present on scholarships
+        cursor.execute("SELECT IFNULL(SUM(approved_count),0), IFNULL(SUM(pending_count),0) FROM scholarships")
+        row = cursor.fetchone() or (0, 0)
+        accepted_applications = row[0] or 0
+        pending_applications = row[1] or 0
+    except Exception:
+        accepted_applications = 0
+        pending_applications = 0
+
     conn.close()
-    
+
     dashboard_data = {
         'user': current_user,
         'stats': {
             'total_students': total_students,
             'total_providers': total_providers,
-            'active_scholarships': 24,  # Coming soon
-            'pending_scholarships': 5,   # Coming soon
-            'total_applications': 342,   # Coming soon
-            'pending_applications': 89   # Coming soon
+            'created_scholarships': created_scholarships,
+            'accepted_applications': accepted_applications,
+            'pending_applications': pending_applications
         },
         'recent_users': [
             {
@@ -588,17 +608,36 @@ def get_stats():
         cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'provider'")
         total_providers = cursor.fetchone()[0]
         
+        # Aggregate dynamic counts
+        created_scholarships = 0
+        pending_scholarships = 0
+        accepted_applications = 0
+        pending_applications = 0
+        try:
+            cursor.execute("SELECT COUNT(*) FROM scholarships")
+            created_scholarships = cursor.fetchone()[0] or 0
+        except Exception:
+            created_scholarships = 0
+        # Pending scholarships metric removed from dashboard UI
+        try:
+            cursor.execute("SELECT IFNULL(SUM(approved_count),0), IFNULL(SUM(pending_count),0) FROM scholarships")
+            row = cursor.fetchone() or (0, 0)
+            accepted_applications = row[0] or 0
+            pending_applications = row[1] or 0
+        except Exception:
+            accepted_applications = 0
+            pending_applications = 0
+
         conn.close()
-        
+
         return jsonify({
             'success': True,
             'stats': {
                 'total_students': total_students,
                 'total_providers': total_providers,
-                'active_scholarships': 24,  # Coming soon
-                'pending_scholarships': 5,   # Coming soon
-                'total_applications': 342,   # Coming soon
-                'pending_applications': 89   # Coming soon
+                'created_scholarships': created_scholarships,
+                'accepted_applications': accepted_applications,
+                'pending_applications': pending_applications
             }
         })
     except Exception as e:
