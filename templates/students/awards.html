@@ -372,6 +372,37 @@
         line-height: 1.6;
     }
 
+    /* Notifications (match dashboard) */
+    .notification-dropdown {
+        position: absolute;
+        top: 50px;
+        right: 0;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+        width: 350px;
+        max-height: 400px;
+        overflow-y: auto;
+        z-index: 1000;
+        display: none;
+        border: 1px solid #e1e5e9;
+    }
+    .notification-dropdown.show { display: block; }
+    .notification-header { padding: 1rem; border-bottom: 1px solid #e1e5e9; display:flex; justify-content:space-between; align-items:center; }
+    .mark-all-read { background: none; border: none; color: #0072ce; font-size: 0.9rem; cursor: pointer; padding: 0.25rem 0.5rem; border-radius: 4px; }
+    .notification-item { padding: 1rem; border-bottom: 1px solid #f0f0f0; cursor: pointer; transition: background 0.3s; display:flex; align-items:flex-start; gap:.75rem; }
+    .notification-item:hover { background: #f8f9fa; }
+    .notification-item.unread { background: #e3f2fd; border-left: 3px solid #0072ce; }
+    .notification-icon { width: 40px; height: 40px; border-radius: 50%; display:flex; align-items:center; justify-content:center; font-size: 1rem; color: white; flex-shrink: 0; }
+    .notification-icon.approved { background: #28a745; }
+    .notification-icon.review { background: #ffc107; }
+    .notification-icon.update { background: #17a2b8; }
+    .notification-icon.deadline { background: #dc3545; }
+    .notification-content { flex: 1; }
+    .notification-title { font-weight: 600; color: #003366; margin-bottom: 0.25rem; font-size: 0.9rem; }
+    .notification-message { color: #666; font-size: 0.85rem; line-height: 1.4; margin-bottom: 0.5rem; }
+    .notification-time { color: #999; font-size: 0.75rem; }
+
     /* Responsive */
     @media (max-width: 768px) {
         .sidebar {
@@ -397,6 +428,10 @@
             grid-template-columns: 1fr;
         }
     }
+.notification-item{padding:1rem;border-bottom:1px solid #f0f0f0;cursor:pointer;display:flex;align-items:flex-start;gap:.75rem;}
+.notification-item.unread{background:#e3f2fd;border-left:3px solid #0072ce;}
+.notification-icon{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;}
+.notification-icon.approved{background:#28a745}.notification-icon.review{background:#ffc107}.notification-icon.update{background:#17a2b8}.notification-icon.deadline{background:#dc3545}
 </style>
 {% endblock %}
 
@@ -448,9 +483,21 @@
             </div>
             <div class="user-menu">
                 <!-- Notification Bell -->
-                <div class="notification-bell" onclick="alert('Notifications: 3 unread\n\n• Scholarship Approved! 🎉\n• Interview Scheduled 📅\n• Application Update Required 📝')">
+                <div class="notification-bell" onclick="toggleNotifications()">
                     <i class="fas fa-bell"></i>
-                    <div class="notification-badge">3</div>
+                    <div class="notification-badge" id="notificationBadge" style="display:none;">0</div>
+<div class="notification-dropdown" id="notificationDropdown">
+                        <div class="notification-header" style="padding:1rem;border-bottom:1px solid #e1e5e9;display:flex;justify-content:space-between;align-items:center;">
+                            <h3 style="margin:0;color:#003366;font-size:1.1rem;">Notifications</h3>
+                            <button class="mark-all-read" onclick="markAllAsRead()" style="background:none;border:none;color:#0072ce;font-size:0.9rem;cursor:pointer;padding:0.25rem 0.5rem;border-radius:4px;">Mark all read</button>
+                        </div>
+                        <div id="notificationList">
+                            <div class="notification-empty" id="notificationEmpty" style="padding:2rem;text-align:center;color:#666;">
+                                <i class="fas fa-bell-slash" style="font-size:2rem;color:#ccc;margin-bottom:0.5rem;"></i>
+                                <div>No notifications yet.</div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -546,6 +593,18 @@
 </div>
 
 <script>
+// Notifications
+function toggleNotifications(){ const dd=document.getElementById('notificationDropdown'); dd.classList.toggle('show'); }
+let notifTimer=null;
+async function loadNotifications(){
+  try{ const res=await fetch('/students/api/notifications'); const data=await res.json(); const list=document.getElementById('notificationList'); const empty=document.getElementById('notificationEmpty'); const badge=document.getElementById('notificationBadge'); list.innerHTML=''; if(data.success&&data.items&&data.items.length){ data.items.forEach(n=>{ const item=document.createElement('div'); item.className='notification-item'+(n.unread?' unread':''); const iconClass=(n.type==='approved'?'approved': n.type==='schedule'?'review': n.type==='deadline'?'deadline':'update'); item.innerHTML=`<div class=\"notification-icon ${iconClass}\"><i class=\"fas fa-bell\"></i></div><div class=\"notification-content\"><div class=\"notification-title\" style=\"font-weight:600;color:#003366;margin-bottom:.25rem;font-size:.9rem;\">${n.title}</div><div class=\"notification-message\" style=\"color:#666;font-size:.85rem;line-height:1.4;margin-bottom:.5rem;\">${n.message}</div><div class=\"notification-time\" style=\"color:#999;font-size:.75rem;\">${n.time||''}</div></div>`; list.appendChild(item); }); badge.style.display = data.unread_count>0?'flex':'none'; badge.textContent=data.unread_count; } else { list.appendChild(empty); badge.style.display='none'; } }catch(e){ console.error(e); }
+}
+function startNotif(){ loadNotifications(); if(notifTimer) clearInterval(notifTimer); notifTimer=setInterval(loadNotifications,10000); }
+async function markAllAsRead(){ try{ await fetch('/students/api/notifications/mark-read',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})}); await loadNotifications(); document.getElementById('notificationDropdown').classList.remove('show'); }catch(e){} }
+
+document.addEventListener('DOMContentLoaded', startNotif);
+document.addEventListener('click', function(e){ const bell=document.querySelector('.notification-bell'); const dd=document.getElementById('notificationDropdown'); if(bell&&dd&&!bell.contains(e.target)) dd.classList.remove('show'); });
+
 // Form submission
 document.getElementById('uploadAwardForm').addEventListener('submit', function(e) {
     e.preventDefault();
@@ -606,12 +665,6 @@ function deleteAward(awardId) {
             showNotification('Failed to delete award.', 'error');
         });
     }
-}
-
-// Notification function (you can implement this if not already available)
-function showNotification(message, type) {
-    // Simple notification implementation
-    alert(message);
 }
 
 // Hide applications nav item since it's not implemented yet

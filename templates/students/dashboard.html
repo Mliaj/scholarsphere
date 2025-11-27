@@ -509,9 +509,6 @@
             <div class="nav-item" onclick="window.location.href='{{ url_for('students.credentials') }}'">
                 <i class="fas fa-file-alt"></i> My Credentials
             </div>
-            <div class="nav-item" onclick="window.location.href='{{ url_for('students.awards') }}'">
-                <i class="fas fa-trophy"></i> My Awards
-            </div>
             <div class="nav-item" onclick="window.location.href='{{ url_for('students.applications') }}'">
                 <i class="fas fa-clipboard-list"></i> My Applications
             </div>
@@ -533,50 +530,16 @@
                 <!-- Notification Bell -->
                 <div class="notification-bell" onclick="toggleNotifications()">
                     <i class="fas fa-bell"></i>
-                    <div class="notification-badge">3</div>
+                    <div class="notification-badge" id="notificationBadge" style="display:none;">0</div>
                     <div class="notification-dropdown" id="notificationDropdown">
                         <div class="notification-header">
                             <h3>Notifications</h3>
                             <button class="mark-all-read" onclick="markAllAsRead()">Mark all read</button>
                         </div>
-                        <div class="notification-item unread">
-                            <div class="notification-icon approved">
-                                <i class="fas fa-check"></i>
-                            </div>
-                            <div class="notification-content">
-                                <div class="notification-title">Scholarship Approved! 🎉</div>
-                                <div class="notification-message">Congratulations! Your Academic Excellence Scholarship application has been approved.</div>
-                                <div class="notification-time">2 hours ago</div>
-                            </div>
-                        </div>
-                        <div class="notification-item unread">
-                            <div class="notification-icon review">
-                                <i class="fas fa-calendar"></i>
-                            </div>
-                            <div class="notification-content">
-                                <div class="notification-title">Interview Scheduled 📅</div>
-                                <div class="notification-message">Your interview for the Leadership Scholarship has been scheduled for March 20, 2024.</div>
-                                <div class="notification-time">1 day ago</div>
-                            </div>
-                        </div>
-                        <div class="notification-item">
-                            <div class="notification-icon update">
-                                <i class="fas fa-file-alt"></i>
-                            </div>
-                            <div class="notification-content">
-                                <div class="notification-title">Application Update Required 📝</div>
-                                <div class="notification-message">Your Computer Science Excellence application needs additional documents.</div>
-                                <div class="notification-time">3 days ago</div>
-                            </div>
-                        </div>
-                        <div class="notification-item">
-                            <div class="notification-icon deadline">
-                                <i class="fas fa-clock"></i>
-                            </div>
-                            <div class="notification-content">
-                                <div class="notification-title">Deadline Reminder ⏰</div>
-                                <div class="notification-message">The Business Excellence Scholarship deadline is approaching in 2 days.</div>
-                                <div class="notification-time">5 days ago</div>
+                        <div id="notificationList">
+                            <div class="notification-empty" id="notificationEmpty">
+                                <i class="fas fa-bell-slash"></i>
+                                <div>No notifications yet.</div>
                             </div>
                         </div>
                     </div>
@@ -614,31 +577,6 @@
                                 <i class="fas fa-plus"></i> Upload your first document
                             {% else %}
                                 <i class="fas fa-eye"></i> Manage credentials
-                            {% endif %}
-                        </a>
-                    </div>
-                </div>
-            </div>
-
-            <div class="dashboard-card">
-                <div class="card-header">
-                    <i class="fas fa-trophy"></i>
-                    <h3>Awards</h3>
-                </div>
-                <div class="card-content">
-                    <p>Your achievements and recognitions</p>
-                    <div class="stats-grid">
-                        <div class="stat-item">
-                            <span class="stat-number">{{ data.awards.total }}</span>
-                            <div class="stat-label">Awards Uploaded</div>
-                        </div>
-                    </div>
-                    <div class="card-footer">
-                        <a href="{{ url_for('students.awards') }}" class="card-action-link">
-                            {% if data.awards.total == 0 %}
-                                <i class="fas fa-plus"></i> Upload your first award
-                            {% else %}
-                                <i class="fas fa-eye"></i> Manage awards
                             {% endif %}
                         </a>
                     </div>
@@ -691,11 +629,6 @@
                             <div class="stat-label">Next Month</div>
                         </div>
                     </div>
-                    <div class="card-footer">
-                        <a href="#" class="card-action-link" onclick="alert('Coming soon!')">
-                            <i class="fas fa-clock"></i> Coming soon
-                        </a>
-                    </div>
                 </div>
             </div>
         </div>
@@ -709,21 +642,59 @@ function toggleNotifications() {
     dropdown.classList.toggle('show');
 }
 
-// Mark all notifications as read
-function markAllAsRead() {
-    const unreadItems = document.querySelectorAll('.notification-item.unread');
-    unreadItems.forEach(item => {
-        item.classList.remove('unread');
-    });
-    
-    // Update badge count
-    const badge = document.querySelector('.notification-badge');
-    badge.textContent = '0';
-    badge.style.display = 'none';
-    
-    // Close dropdown
-    document.getElementById('notificationDropdown').classList.remove('show');
+// Fetch and render notifications
+let notifTimer = null;
+async function loadNotifications() {
+    try {
+        const res = await fetch('/students/api/notifications');
+        const data = await res.json();
+        const list = document.getElementById('notificationList');
+        const empty = document.getElementById('notificationEmpty');
+        const badge = document.getElementById('notificationBadge');
+        list.innerHTML = '';
+        if (data.success && data.items && data.items.length) {
+            data.items.forEach(n => {
+                const item = document.createElement('div');
+                item.className = 'notification-item' + (n.unread ? ' unread' : '');
+                const iconClass = (n.type === 'approved' ? 'approved' : n.type === 'schedule' ? 'review' : n.type === 'deadline' ? 'deadline' : 'update');
+                item.innerHTML = `
+                    <div class="notification-icon ${iconClass}">
+                        <i class="fas fa-bell"></i>
+                    </div>
+                    <div class="notification-content">
+                        <div class="notification-title">${n.title}</div>
+                        <div class="notification-message">${n.message}</div>
+                        <div class="notification-time">${n.time || ''}</div>
+                    </div>`;
+                list.appendChild(item);
+            });
+            badge.style.display = data.unread_count > 0 ? 'flex' : 'none';
+            badge.textContent = data.unread_count;
+        } else {
+            list.appendChild(empty);
+            badge.style.display = 'none';
+        }
+    } catch (e) {
+        console.error('Failed to load notifications', e);
+    }
 }
+
+function startNotificationsPolling() {
+    loadNotifications();
+    if (notifTimer) clearInterval(notifTimer);
+    notifTimer = setInterval(loadNotifications, 10000); // 10s polling
+}
+
+// Mark all notifications as read
+async function markAllAsRead() {
+    try {
+        await fetch('/students/api/notifications/mark-read', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({}) });
+        await loadNotifications();
+        document.getElementById('notificationDropdown').classList.remove('show');
+    } catch (e) { console.error('Failed to mark read', e); }
+}
+
+document.addEventListener('DOMContentLoaded', startNotificationsPolling);
 
 // Close dropdown when clicking outside
 document.addEventListener('click', function(event) {
@@ -735,25 +706,13 @@ document.addEventListener('click', function(event) {
     }
 });
 
-// Handle notification item clicks
-document.querySelectorAll('.notification-item').forEach(item => {
-    item.addEventListener('click', function() {
-        // Remove unread styling
-        this.classList.remove('unread');
-        
-        // Update badge count
-        const unreadCount = document.querySelectorAll('.notification-item.unread').length;
-        const badge = document.querySelector('.notification-badge');
-        
-        if (unreadCount === 0) {
-            badge.style.display = 'none';
-        } else {
-            badge.textContent = unreadCount;
-        }
-        
-        // In a real app, this would navigate to the relevant page
-        console.log('Notification clicked:', this.querySelector('.notification-title').textContent);
-    });
+// Handle notification item clicks delegated
+document.getElementById('notificationList').addEventListener('click', async (e) => {
+    const item = e.target.closest('.notification-item');
+    if (!item) return;
+    item.classList.remove('unread');
+    await fetch('/students/api/notifications/mark-read', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({}) });
+    await loadNotifications();
 });
 </script>
 {% endblock %}

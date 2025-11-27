@@ -369,6 +369,42 @@
         text-decoration: none;
     }
 
+    /* Notifications (match dashboard) */
+    .notification-dropdown {
+        position: absolute;
+        top: 50px;
+        right: 0;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+        width: 350px;
+        max-height: 400px;
+        overflow-y: auto;
+        z-index: 1000;
+        display: none;
+        border: 1px solid #e1e5e9;
+    }
+    .notification-dropdown.show { display: block; }
+    .notification-header { padding: 1rem; border-bottom: 1px solid #e1e5e9; display:flex; justify-content:space-between; align-items:center; }
+    .mark-all-read { background: none; border: none; color: #0072ce; font-size: 0.9rem; cursor: pointer; padding: 0.25rem 0.5rem; border-radius: 4px; }
+    .notification-item { padding: 1rem; border-bottom: 1px solid #f0f0f0; cursor: pointer; transition: background 0.3s; display:flex; align-items:flex-start; gap:.75rem; }
+    .notification-item:hover { background: #f8f9fa; }
+    .notification-item.unread { background: #e3f2fd; border-left: 3px solid #0072ce; }
+    .notification-icon { width: 40px; height: 40px; border-radius: 50%; display:flex; align-items:center; justify-content:center; font-size: 1rem; color: white; flex-shrink: 0; }
+    .notification-icon.approved { background: #28a745; }
+    .notification-icon.review { background: #ffc107; }
+    .notification-icon.update { background: #17a2b8; }
+    .notification-icon.deadline { background: #dc3545; }
+    .notification-content { flex: 1; }
+    .notification-title { font-weight: 600; color: #003366; margin-bottom: 0.25rem; font-size: 0.9rem; }
+    .notification-message { color: #666; font-size: 0.85rem; line-height: 1.4; margin-bottom: 0.5rem; }
+    .notification-time { color: #999; font-size: 0.75rem; }
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(0,114,206,0.3);
+        color: white;
+        text-decoration: none;
+    }
+
     @media (max-width: 768px) {
         .sidebar {
             transform: translateX(-100%);
@@ -392,6 +428,60 @@
         }
     }
 </style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function toggleNotifications(){ const dd=document.getElementById('notificationDropdown'); dd.classList.toggle('show'); }
+let notifTimer=null;
+async function loadNotifications(){
+  try{ const res=await fetch('/students/api/notifications'); const data=await res.json(); const list=document.getElementById('notificationList'); const empty=document.getElementById('notificationEmpty'); const badge=document.getElementById('notificationBadge'); list.innerHTML=''; if(data.success&&data.items&&data.items.length){ data.items.forEach(n=>{ const item=document.createElement('div'); item.className='notification-item'+(n.unread?' unread':''); const iconClass=(n.type==='approved'?'approved': n.type==='schedule'?'review': n.type==='deadline'?'deadline':'update'); item.innerHTML=`<div class=\"notification-icon ${iconClass}\"><i class=\"fas fa-bell\"></i></div><div class=\"notification-content\"><div class=\"notification-title\" style=\"font-weight:600;color:#003366;margin-bottom:.25rem;font-size:.9rem;\">${n.title}</div><div class=\"notification-message\" style=\"color:#666;font-size:.85rem;line-height:1.4;margin-bottom:.5rem;\">${n.message}</div><div class=\"notification-time\" style=\"color:#999;font-size:.75rem;\">${n.time||''}</div></div>`; list.appendChild(item); }); badge.style.display = data.unread_count>0?'flex':'none'; badge.textContent=data.unread_count; } else { list.appendChild(empty); badge.style.display='none'; } }catch(e){ console.error(e); }
+}
+function startNotif(){ loadNotifications(); if(notifTimer) clearInterval(notifTimer); notifTimer=setInterval(loadNotifications,10000); }
+async function markAllAsRead(){ try{ await fetch('/students/api/notifications/mark-read',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})}); await loadNotifications(); document.getElementById('notificationDropdown').classList.remove('show'); }catch(e){} }
+
+document.addEventListener('DOMContentLoaded', startNotif);
+document.addEventListener('click', function(e){ const bell=document.querySelector('.notification-bell'); const dd=document.getElementById('notificationDropdown'); if(bell&&dd&&!bell.contains(e.target)) dd.classList.remove('show'); });
+function openAppDetails(appId){
+  fetch(`/students/api/application/${appId}`)
+    .then(r=>r.json())
+    .then(d=>{
+      if(!d.success){ showNotification(d.error||'Failed', 'error'); return; }
+      const a=d.application;
+      const docs = a.documents.length ? a.documents.map(x=>`<li><strong>${x.requirement_type}:</strong> ${x.file_name}</li>`).join('') : '<li>No documents linked.</li>';
+      const remarks = a.remarks.length ? a.remarks.map(r=>`<div style="padding:.5rem 0; border-bottom:1px solid #eee;"><div><strong>${r.provider}</strong> — <em>${r.status}</em></div><div>${r.text}</div><div style="color:#999;font-size:.85rem;">${r.date||''}</div></div>`).join('') : '<div>No remarks yet.</div>';
+      const schedules = a.schedules.length ? a.schedules.map(s=>`<li>${s.date} ${s.time} — ${s.location||'TBD'} ${s.notes?(' — '+s.notes):''}</li>`).join('') : '<li>No schedules yet.</li>';
+      const html = `
+        <div style="display:grid; gap:1rem;">
+          <section>
+            <h3 style="color:#003366; margin-bottom:.5rem;">Application Details</h3>
+            <div style="display:grid; gap:.4rem;">
+              <div><strong>Scholarship:</strong> ${a.scholarship_title} (${a.scholarship_code})</div>
+              <div><strong>Date Applied:</strong> ${a.date_applied}</div>
+              <div><strong>Deadline:</strong> ${a.deadline}</div>
+              <div><strong>Status:</strong> ${a.status}</div>
+            </div>
+          </section>
+          <section>
+            <h3 style="color:#003366; margin-bottom:.5rem;">Applied Documents</h3>
+            <ul style="padding-left:1rem;">${docs}</ul>
+          </section>
+          <section>
+            <h3 style="color:#003366; margin-bottom:.5rem;">Provider Remarks</h3>
+            ${remarks}
+          </section>
+          <section>
+            <h3 style="color:#003366; margin-bottom:.5rem;">Next Steps (Schedules)</h3>
+            <ul style="padding-left:1rem;">${schedules}</ul>
+          </section>
+        </div>`;
+      document.getElementById('appDetailsContent').innerHTML = html;
+      document.getElementById('appDetailsModal').style.display='block';
+    })
+    .catch(err=>{ console.error(err); showNotification('Failed to load details', 'error'); });
+}
+function closeAppModal(){ document.getElementById('appDetailsModal').style.display='none'; }
+</script>
 {% endblock %}
 
 {% block content %}
@@ -422,9 +512,6 @@
             <div class="nav-item" onclick="window.location.href='{{ url_for('students.credentials') }}'">
                 <i class="fas fa-file-alt"></i> My Credentials
             </div>
-            <div class="nav-item" onclick="window.location.href='{{ url_for('students.awards') }}'">
-                <i class="fas fa-trophy"></i> My Awards
-            </div>
             <div class="nav-item active">
                 <i class="fas fa-clipboard-list"></i> My Applications
             </div>
@@ -443,10 +530,21 @@
                 <p>Monitor your scholarship applications and track their status</p>
             </div>
             <div class="user-menu">
-                <!-- Notification Bell -->
-                <div class="notification-bell" onclick="alert('Notifications: 3 unread\n\n• Scholarship Approved! 🎉\n• Interview Scheduled 📅\n• Application Update Required 📝')">
+                <div class="notification-bell" onclick="toggleNotifications()">
                     <i class="fas fa-bell"></i>
-                    <div class="notification-badge">3</div>
+                    <div class="notification-badge" id="notificationBadge" style="display:none;">0</div>
+<div class="notification-dropdown" id="notificationDropdown">
+                        <div class="notification-header" style="padding:1rem;border-bottom:1px solid #e1e5e9;display:flex;justify-content:space-between;align-items:center;">
+                            <h3 style="margin:0;color:#003366;font-size:1.1rem;">Notifications</h3>
+                            <button class="mark-all-read" onclick="markAllAsRead()" style="background:none;border:none;color:#0072ce;font-size:0.9rem;cursor:pointer;padding:0.25rem 0.5rem;border-radius:4px;">Mark all read</button>
+                        </div>
+                        <div id="notificationList">
+                            <div class="notification-empty" id="notificationEmpty" style="padding:2rem;text-align:center;color:#666;">
+                                <i class="fas fa-bell-slash" style="font-size:2rem;color:#ccc;margin-bottom:0.5rem;"></i>
+                                <div>No notifications yet.</div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -474,7 +572,22 @@
         </div>
 
         <!-- Applications Grid -->
-        <div class="applications-grid">
+<div class="applications-grid">
+
+<!-- Application Details Modal -->
+<div id="appDetailsModal" class="modal" style="display:none; position:fixed; z-index:1000; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.5);">
+  <div class="modal-content" style="background:#fff; margin:2% auto; padding:0; border-radius:15px; width:90%; max-width:800px; max-height:90vh; overflow:auto; box-shadow:0 10px 30px rgba(0,0,0,0.3);">
+    <div class="modal-header" style="padding:1.5rem; border-bottom:1px solid #e9ecef; background:#f8f9fa; border-radius:15px 15px 0 0; display:flex; justify-content:space-between; align-items:center;">
+      <h2 class="modal-title" style="margin:0; font-size:1.5rem; color:#003366; font-weight:700;">Application Details</h2>
+      <button class="close" onclick="closeAppModal()" style="background:none; border:none; font-size:2rem; color:#666; cursor:pointer; padding:0; width:30px; height:30px; display:flex; align-items:center; justify-content:center;">&times;</button>
+    </div>
+    <div class="modal-body" id="appDetailsContent" style="padding:2rem;">
+    </div>
+    <div class="modal-footer" style="padding:1.5rem; border-top:1px solid #e9ecef; background:#f8f9fa; border-radius:0 0 15px 15px; display:flex; justify-content:flex-end; gap:1rem;">
+      <button type="button" class="btn-modal secondary" onclick="closeAppModal()" style="padding:0.75rem 1.5rem; border:none; border-radius:8px; font-weight:600; cursor:pointer; background:#6c757d; color:#fff;">Close</button>
+    </div>
+  </div>
+</div>
             {% if applications %}
                 {% for application in applications %}
                 <div class="application-card">
@@ -490,13 +603,18 @@
                         <div><strong>Deadline:</strong> {{ application.deadline }}</div>
                         <div><strong>Status:</strong> {{ application.status }}</div>
                         <div><strong>Type:</strong> Scholarship Application</div>
+                        {% if application.status in ['Rejected', 'Withdrawn'] %}
+                        <div style="grid-column:1 / -1; font-size:0.85rem; color:#856404;">
+                            If this scholarship is still accepting applications and you do not have another approved scholarship, you can apply again from the "Browse Scholarships" page.
+                        </div>
+                        {% endif %}
                     </div>
                     <div class="application-actions">
-                        <button class="action-btn btn-view" onclick="reviewApplication('{{ application.id }}')">
+<button class="action-btn btn-view" onclick="openAppDetails({{ application.application_id }})">
                             <i class="fas fa-eye"></i> Review Application
                         </button>
                         {% if application.status not in ['Approved', 'Rejected'] %}
-                        <button class="action-btn btn-withdraw" onclick="withdrawApplication('{{ application.id }}')">
+                        <button class="action-btn btn-withdraw" onclick="withdrawApplication({{ application.application_id }})">
                             <i class="fas fa-times"></i>
                         </button>
                         {% endif %}
@@ -521,43 +639,36 @@
 // Review application
 function reviewApplication(applicationId) {
     // Open application details modal or navigate to application details page
-    alert(`Reviewing application: ${applicationId}\n\nThis would show:\n- Application details\n- Applied documents\n- Current status\n- Review comments (if any)\n- Next steps`);
+    showNotification(`Reviewing application: ${applicationId}\n\nThis would show:\n- Application details\n- Applied documents\n- Current status\n- Review comments (if any)\n- Next steps`, 'info');
     
     // In a real implementation, this would open a modal or navigate to:
     // window.location.href = `/students/application/${applicationId}`;
 }
 
-// Withdraw application
+// Withdraw application (real implementation)
 function withdrawApplication(applicationId) {
-    if (confirm('Are you sure you want to withdraw this application? This action cannot be undone.')) {
-        // In a real implementation, this would make an API call:
-        alert(`Application ${applicationId} would be withdrawn.\n\nIn production, this would:\n1. Send withdrawal request\n2. Update application status\n3. Send notification to scholarship committee\n4. Allow restart if deadline allows`);
-        
-        // fetch(`/students/withdraw-application/${applicationId}`, {
-        //     method: 'POST'
-        // })
-        // .then(response => response.json())
-        // .then(data => {
-        //     if (data.success) {
-        //         showNotification('Application withdrawn successfully!', 'success');
-        //         setTimeout(() => {
-        //             window.location.reload();
-        //         }, 1000);
-        //     } else {
-        //         showNotification(data.message || 'Failed to withdraw application.', 'error');
-        //     }
-        // })
-        // .catch(error => {
-        //     console.error('Error:', error);
-        //     showNotification('Failed to withdraw application.', 'error');
-        // });
+    if (!confirm('Are you sure you want to withdraw this application? This action cannot be undone.')) {
+        return;
     }
-}
 
-// Notification function (already implemented in base template)
-function showNotification(message, type) {
-    // Implementation would be consistent with other pages
-    alert(message);
+    fetch(`/students/withdraw-application/${applicationId}`, {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showNotification('Application withdrawn successfully!', 'success');
+            setTimeout(() => { window.location.reload(); }, 800);
+        } else {
+            const msg = data.message || 'Failed to withdraw application.';
+            showNotification(msg, 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showNotification('Failed to withdraw application.', 'error');
+    });
 }
 </script>
 {% endblock %}

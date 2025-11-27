@@ -6,6 +6,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
+from sqlalchemy import text
 import re
 
 auth_bp = Blueprint('auth', __name__)
@@ -75,14 +76,14 @@ def login():
         
         if is_student_id:
             result = db.session.execute(
-                db.text("SELECT * FROM users WHERE student_id = :student_id"),
+                text("SELECT * FROM users WHERE student_id = :student_id"),
                 {"student_id": identifier}
             ).fetchone()
         else:
             # Case-insensitive email lookup
             email_lookup = identifier.lower()
             result = db.session.execute(
-                db.text("SELECT * FROM users WHERE LOWER(email) = :email"),
+                text("SELECT * FROM users WHERE LOWER(email) = :email"),
                 {"email": email_lookup}
             ).fetchone()
         
@@ -101,7 +102,8 @@ def login():
                 course=result[10],
                 organization=result[11],
                 created_at=result[12],
-                updated_at=result[13]
+                updated_at=result[13],
+                is_active=result[14]
             )
         else:
             user = None
@@ -165,7 +167,7 @@ def signup():
         db = current_app.extensions['sqlalchemy']
         
         existing_user = db.session.execute(
-            db.text("SELECT * FROM users WHERE LOWER(email) = :email OR student_id = :student_id"),
+            text("SELECT * FROM users WHERE LOWER(email) = :email OR student_id = :student_id"),
             {"email": email.lower(), "student_id": student_id}
         ).fetchone()
         
@@ -180,9 +182,9 @@ def signup():
             
             # Insert new user into database
             db.session.execute(
-                db.text("""
-                    INSERT INTO users (first_name, last_name, email, student_id, birthday, password_hash, role, created_at)
-                    VALUES (:first_name, :last_name, :email, :student_id, :birthday, :password_hash, :role, :created_at)
+                text("""
+                    INSERT INTO users (first_name, last_name, email, student_id, birthday, password_hash, role, created_at, is_active)
+                    VALUES (:first_name, :last_name, :email, :student_id, :birthday, :password_hash, :role, :created_at, :is_active)
                 """),
                 {
                     "first_name": first_name,
@@ -192,7 +194,8 @@ def signup():
                     "birthday": datetime.strptime(birthday, '%Y-%m-%d').date(),
                     "password_hash": password_hash,
                     "role": 'student',
-                    "created_at": datetime.utcnow()
+                    "created_at": datetime.utcnow(),
+                    "is_active": True
                 }
             )
             db.session.commit()

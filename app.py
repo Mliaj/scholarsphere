@@ -11,15 +11,39 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
 import os
 from dotenv import load_dotenv
+from whitenoise import WhiteNoise
 
 # Load environment variables
-load_dotenv()
+load_dotenv('config.env')
 
 # Initialize Flask app
 app = Flask(__name__)
+app.wsgi_app = WhiteNoise(app.wsgi_app, root='static/')
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-here')
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///scholarsphere.db')
+
+# Construct MySQL database URL from environment variables if DATABASE_URL is not set
+database_url = os.environ.get('DATABASE_URL')
+
+# Fix for Render's Postgres URL (SQLAlchemy requires 'postgresql://', Render provides 'postgres://')
+if database_url and database_url.startswith('postgres://'):
+    database_url = database_url.replace('postgres://', 'postgresql://', 1)
+
+if not database_url or database_url.startswith('sqlite'):
+    # Build MySQL connection string from individual environment variables
+    db_host = os.environ.get('DB_HOST', '127.0.0.1')
+    db_user = os.environ.get('DB_USER', 'root')
+    db_pass = os.environ.get('DB_PASS', '')
+    db_name = os.environ.get('DB_NAME', 'scholarsphere')
+    db_port = int(os.environ.get('DB_PORT', 3306))
+    database_url = f"mysql+pymysql://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
+
+app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'pool_pre_ping': True,
+    'pool_recycle': 300,
+    'connect_args': {'charset': 'utf8mb4'}
+}
 
 # Initialize extensions
 db = SQLAlchemy(app)
@@ -27,6 +51,17 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'auth.login'
 login_manager.login_message = 'Please log in to access this page.'
+
+# Initialize Flask-Mail
+from flask_mail import Mail
+app.config['MAIL_SERVER'] = os.environ.get('MAIL_SERVER', 'localhost')
+app.config['MAIL_PORT'] = int(os.environ.get('MAIL_PORT', 8025))
+app.config['MAIL_USE_TLS'] = os.environ.get('MAIL_USE_TLS', 'false').lower() in ['true', '1', 't']
+app.config['MAIL_USE_SSL'] = os.environ.get('MAIL_USE_SSL', 'false').lower() in ['true', '1', 't']
+app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME')
+app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD')
+app.config['MAIL_SUPPRESS_SEND'] = os.environ.get('MAIL_SUPPRESS_SEND', 'true').lower() in ['true', '1', 't']
+mail = Mail(app)
 
 # User model
 class User(UserMixin, db.Model):
@@ -125,7 +160,7 @@ class ScholarshipApplication(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     scholarship_id = db.Column(db.Integer, db.ForeignKey('scholarships.id'), nullable=False)
-    status = db.Column(db.String(20), nullable=False, default='pending')  # pending, approved, rejected, withdrawn
+    status = db.Column(db.String(20), nullable=False, default='pending')  # pending, approved, rejected, withdrawn, archived
     application_date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     reviewed_at = db.Column(db.DateTime, nullable=True)
     reviewed_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)  # admin who reviewed
@@ -136,12 +171,45 @@ class ScholarshipApplication(db.Model):
     user = db.relationship('User', foreign_keys=[user_id], backref='scholarship_applications')
     reviewer = db.relationship('User', foreign_keys=[reviewed_by], backref='reviewed_applications')
     
-    # Ensure one user can only apply once per scholarship
-    __table_args__ = (db.UniqueConstraint('user_id', 'scholarship_id', name='unique_user_scholarship'),)
+
+# Notification model for student interactions
+class Notification(db.Model):
+    __tablename__ = 'notifications'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    type = db.Column(db.String(50), nullable=False)  # e.g., 'approved', 'schedule', 'update', 'deadline', 'info'
+    title = db.Column(db.String(255), nullable=False)
+    message = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    read_at = db.Column(db.DateTime, nullable=True)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+
+    # Relationship
+    user = db.relationship('User', backref='notifications')
+
+# Schedule model (belongs to one provider and one student; can link to an application)
+class Schedule(db.Model):
+    __tablename__ = 'schedule'
+
+    id = db.Column(db.Integer, primary_key=True)
+    application_id = db.Column(db.Integer, db.ForeignKey('scholarship_applications.id'), nullable=False)
+    provider_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)  # student
+    schedule_date = db.Column(db.Date, nullable=True)
+    schedule_time = db.Column(db.String(10), nullable=True)  # HH:MM
+    location = db.Column(db.String(255))
+    notes = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    # Relationships
+    application = db.relationship('ScholarshipApplication', backref='schedules')
+    provider = db.relationship('User', foreign_keys=[provider_id], backref='provider_schedules')
+    student = db.relationship('User', foreign_keys=[user_id], backref='student_schedules')
 
 @login_manager.user_loader
 def load_user(user_id):
-    return User.query.get(int(user_id))
+    return db.session.get(User, int(user_id))
 
 # Routes
 @app.route('/')
