@@ -139,7 +139,7 @@
               <button class="btn" onclick="downloadScholarshipReport('{{ s.id }}')" style="background:#000000; color:#fff;" title="Download PDF Report"><i class="fas fa-file-pdf"></i> PDF</button>
               <button class="btn red" onclick="archiveScholarship('{{ s.id }}')">Archive</button>
               {% if s.status.lower() == 'draft' %}
-                <button class="btn yellow" onclick="publishScholarshipPk({{ loop.index0 }})">Publish</button>
+                <button class="btn yellow" onclick="publishScholarship('{{ s.id }}')">Publish</button>
               {% endif %}
             </div>
           </td>
@@ -759,15 +759,29 @@ document.getElementById('editScholarshipForm').addEventListener('submit', async 
   }
 });
 
-function publishScholarshipPk(index){
-  // We don't have the PK in the table, so request by code -> server maps code to pk
-  const code = document.querySelectorAll('tbody tr')[index].children[0].textContent.trim();
-  fetch('/provider/api/publish-by-code', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ code })})
-    .then(r=>r.json()).then(d=>{ if(d.success){ location.reload(); } else { showNotification(d.error||'Failed', 'error'); } });
-}
-
 function viewApps(id){ showNotification('Viewing applications for ' + id, 'info'); }
-function publishScholarship(id){ showNotification('Publish ' + id + ' coming soon', 'info'); }
+
+function publishScholarship(id){
+  if(confirm('Are you sure you want to publish this scholarship? It will become visible to students.')) {
+    fetch(`/provider/api/scholarship/${id}/publish`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'}
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showNotification('Scholarship published successfully!', 'success');
+            location.reload();
+        } else {
+            showNotification('Error publishing scholarship: ' + (data.error || 'Unknown error'), 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showNotification('Error publishing scholarship', 'error');
+    });
+  }
+}
 
 // Download scholarship report PDF
 function downloadScholarshipReport(scholarshipId){

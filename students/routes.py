@@ -452,6 +452,9 @@ def apply_scholarship(scholarship_id):
         import json
         db = current_app.extensions['sqlalchemy']
         
+        # Ensure current_time is always defined
+        current_time = datetime.utcnow().isoformat()
+        
         # Get form data - handle both JSON and FormData
         if request.is_json:
             form_data = request.get_json()
@@ -468,43 +471,77 @@ def apply_scholarship(scholarship_id):
         
         # Check if scholarship exists and is active
         scholarship = db.session.execute(
-            text("SELECT id, applications_count, pending_count, requirements FROM scholarships WHERE id = :id AND status IN ('active','approved') AND is_active = 1"),
+            text("SELECT id, status, applications_count, pending_count, requirements FROM scholarships WHERE id = :id AND is_active = 1"),
             {"id": scholarship_id}
         ).fetchone()
-        
+                    
         if not scholarship:
-            return jsonify({'success': False, 'message': 'Scholarship not found or not available'}), 404
+            return jsonify({'success': False, 'message': 'Scholarship not found'}), 404
+
+        # Block applying if scholarship is closed or archived (not active/approved)
+        scholarship_status = (scholarship[1] or '').lower()
+        if scholarship_status not in ['active', 'approved']:
+             return jsonify({'success': False, 'message': 'This scholarship is closed or archived and is no longer accepting applications.'}), 400
         
-        # Block if student already has an approved active scholarship application
-        has_approved = db.session.execute(
+        # GLOBAL CHECK: Does the student have an APPROVED application for ANY scholarship?
+        # If they are already a scholar (approved anywhere), they cannot apply for new ones.
+        global_approved = db.session.execute(
             text(
                 """
-                SELECT id FROM scholarship_applications
-                WHERE user_id = :user_id AND status = 'approved' AND is_active = 1
+                SELECT s.title 
+                FROM scholarship_applications sa
+                JOIN scholarships s ON sa.scholarship_id = s.id
+                WHERE sa.user_id = :user_id 
+                  AND LOWER(sa.status) = 'approved' 
+                  AND sa.is_active = 1
                 LIMIT 1
                 """
             ),
             {"user_id": current_user.id}
         ).fetchone()
-        if has_approved:
-            return jsonify({'success': False, 'message': 'You already have an approved scholarship. Please contact your provider to revoke (soft delete) it before applying again.'}), 400
-        
-        # Check existing application for this scholarship (any status)
-        existing_application = db.session.execute(
+
+        if global_approved:
+            return jsonify({
+                'success': False, 
+                'message': f"You already have an approved scholarship ({global_approved[0]}). You cannot apply for others."
+            }), 400
+
+        # STRICT CHECK: Has the student EVER been approved for THIS scholarship?
+        # Using lower() and trimming whitespace.
+        already_approved = db.session.execute(
             text(
-                """\
-                SELECT id, status FROM scholarship_applications 
-                WHERE user_id = :user_id AND scholarship_id = :scholarship_id AND status IN ('pending', 'approved')
-                ORDER BY id DESC LIMIT 1
+                """
+                SELECT id, status FROM scholarship_applications
+                WHERE user_id = :user_id 
+                  AND scholarship_id = :scholarship_id 
+                  AND LOWER(TRIM(status)) = 'approved' 
+                  AND is_active = 1
+                LIMIT 1
                 """
             ),
             {"user_id": current_user.id, "scholarship_id": scholarship_id}
         ).fetchone()
 
-        if existing_application:
-            return jsonify({'success': False, 'message': 'You have already applied to this scholarship'}), 400
+        if already_approved:
+            return jsonify({'success': False, 'message': 'You have already been approved for this scholarship.'}), 400
 
-        current_time = datetime.utcnow().isoformat()
+        # Check for any PENDING application for this scholarship
+        pending_application = db.session.execute(
+            text(
+                """
+                SELECT id FROM scholarship_applications 
+                WHERE user_id = :user_id 
+                  AND scholarship_id = :scholarship_id 
+                  AND LOWER(TRIM(status)) = 'pending' 
+                  AND is_active = 1
+                LIMIT 1
+                """
+            ),
+            {"user_id": current_user.id, "scholarship_id": scholarship_id}
+        ).fetchone()
+
+        if pending_application:
+            return jsonify({'success': False, 'message': 'You already have a pending application for this scholarship.'}), 400
         
         # No existing row for this user/scholarship: create a brand new application
         result = db.session.execute(
@@ -520,7 +557,6 @@ def apply_scholarship(scholarship_id):
                 "is_active": 1
             }
         )
-
         application_id = result.lastrowid
         
         # Link selected credentials to the application (if any requirements exist)
