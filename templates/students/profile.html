@@ -138,6 +138,144 @@
         border: 2px solid white;
     }
 
+    .notification-dropdown {
+        position: absolute;
+        top: 50px;
+        right: 0;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+        width: 350px;
+        max-height: 400px;
+        overflow-y: auto;
+        z-index: 1000;
+        display: none;
+        border: 1px solid #e1e5e9;
+    }
+
+    .notification-dropdown.show {
+        display: block;
+    }
+
+    .notification-header {
+        padding: 1rem;
+        border-bottom: 1px solid #e1e5e9;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .notification-header h3 {
+        margin: 0;
+        color: #003366;
+        font-size: 1.1rem;
+    }
+
+    .mark-all-read {
+        background: none;
+        border: none;
+        color: #0072ce;
+        font-size: 0.9rem;
+        cursor: pointer;
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+        transition: background 0.3s;
+    }
+
+    .mark-all-read:hover {
+        background: #e3f2fd;
+    }
+
+    .notification-item {
+        padding: 1rem;
+        border-bottom: 1px solid #f0f0f0;
+        cursor: pointer;
+        transition: background 0.3s;
+        display: flex;
+        align-items: flex-start;
+        gap: 0.75rem;
+    }
+
+    .notification-item:hover {
+        background: #f8f9fa;
+    }
+
+    .notification-item.unread {
+        background: #e3f2fd;
+        border-left: 3px solid #0072ce;
+    }
+
+    .notification-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1rem;
+        color: white;
+        flex-shrink: 0;
+    }
+
+    .notification-icon.approved {
+        background: #28a745;
+    }
+
+    .notification-icon.schedule {
+        background: #ffc107;
+    }
+
+    .notification-icon.update {
+        background: #17a2b8;
+    }
+
+    .notification-icon.deadline {
+        background: #dc3545;
+    }
+
+    .notification-icon.announcement {
+        background: #0072ce;
+    }
+
+    .notification-icon.profile {
+        background: #6c757d;
+    }
+
+    .notification-content {
+        flex: 1;
+    }
+
+    .notification-title {
+        font-weight: 600;
+        color: #003366;
+        margin-bottom: 0.25rem;
+        font-size: 0.9rem;
+    }
+
+    .notification-message {
+        color: #666;
+        font-size: 0.85rem;
+        line-height: 1.4;
+        margin-bottom: 0.5rem;
+    }
+
+    .notification-time {
+        color: #999;
+        font-size: 0.75rem;
+    }
+
+    .notification-empty {
+        padding: 2rem;
+        text-align: center;
+        color: #666;
+    }
+
+    .notification-empty i {
+        font-size: 2rem;
+        color: #ccc;
+        margin-bottom: 0.5rem;
+    }
+
     .welcome-text h1 {
         font-size: 2rem;
         color: #003366;
@@ -293,9 +431,6 @@
             <div class="nav-item" onclick="window.location.href='{{ url_for('students.credentials') }}'">
                 <i class="fas fa-file-alt"></i> My Credentials
             </div>
-            <div class="nav-item" onclick="window.location.href='{{ url_for('students.awards') }}'">
-                <i class="fas fa-trophy"></i> My Awards
-            </div>
             <div class="nav-item" onclick="window.location.href='{{ url_for('students.applications') }}'">
                 <i class="fas fa-clipboard-list"></i> My Applications
             </div>
@@ -315,9 +450,21 @@
             </div>
             <div class="user-menu">
                 <!-- Notification Bell -->
-                <div class="notification-bell" onclick="alert('Notifications: 3 unread\n\n• Scholarship Approved! 🎉\n• Interview Scheduled 📅\n• Application Update Required 📝')">
+                <div class="notification-bell" onclick="toggleNotifications()">
                     <i class="fas fa-bell"></i>
-                    <div class="notification-badge">3</div>
+                    <div class="notification-badge" id="notificationBadge" style="display:none;">0</div>
+                    <div class="notification-dropdown" id="notificationDropdown">
+                        <div class="notification-header">
+                            <h3>Notifications</h3>
+                            <button class="mark-all-read" onclick="markAllAsRead()">Mark all read</button>
+                        </div>
+                        <div id="notificationList">
+                            <div class="notification-empty" id="notificationEmpty">
+                                <i class="fas fa-bell-slash"></i>
+                                <div>No notifications yet.</div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -525,6 +672,111 @@ document.getElementById('profileForm').addEventListener('submit', function(e) {
         submitBtn.innerHTML = originalText;
         submitBtn.disabled = false;
     });
+});
+
+// Notification functionality
+function toggleNotifications() {
+    const dropdown = document.getElementById('notificationDropdown');
+    dropdown.classList.toggle('show');
+}
+
+// Fetch and render notifications
+let notifTimer = null;
+async function loadNotifications() {
+    try {
+        const res = await fetch('/students/api/notifications');
+        const data = await res.json();
+        const list = document.getElementById('notificationList');
+        const empty = document.getElementById('notificationEmpty');
+        const badge = document.getElementById('notificationBadge');
+        list.innerHTML = '';
+        if (data.success && data.items && data.items.length) {
+            data.items.forEach(n => {
+                const item = document.createElement('div');
+                item.className = 'notification-item' + (n.unread ? ' unread' : '');
+                
+                // Determine icon class based on notification type
+                let iconClass = 'update';
+                if (n.type === 'approved') iconClass = 'approved';
+                else if (n.type === 'schedule') iconClass = 'schedule';
+                else if (n.type === 'deadline') iconClass = 'deadline';
+                else if (n.type === 'announcement') iconClass = 'announcement';
+                else if (n.type === 'profile') iconClass = 'profile';
+                
+                // Determine icon based on type
+                let icon = 'fa-bell';
+                if (n.type === 'approved') icon = 'fa-check-circle';
+                else if (n.type === 'schedule') icon = 'fa-calendar';
+                else if (n.type === 'deadline') icon = 'fa-clock';
+                else if (n.type === 'announcement') icon = 'fa-bullhorn';
+                else if (n.type === 'profile') icon = 'fa-user';
+                
+                item.innerHTML = `
+                    <div class="notification-icon ${iconClass}">
+                        <i class="fas ${icon}"></i>
+                    </div>
+                    <div class="notification-content">
+                        <div class="notification-title">${n.title}</div>
+                        <div class="notification-message">${n.message}</div>
+                        <div class="notification-time">${n.time || ''}</div>
+                    </div>`;
+                list.appendChild(item);
+            });
+            badge.style.display = data.unread_count > 0 ? 'flex' : 'none';
+            badge.textContent = data.unread_count;
+        } else {
+            list.appendChild(empty);
+            badge.style.display = 'none';
+        }
+    } catch (e) {
+        console.error('Failed to load notifications', e);
+    }
+}
+
+function startNotificationsPolling() {
+    loadNotifications();
+    if (notifTimer) clearInterval(notifTimer);
+    notifTimer = setInterval(loadNotifications, 10000); // 10s polling
+}
+
+// Mark all notifications as read
+async function markAllAsRead() {
+    try {
+        await fetch('/students/api/notifications/mark-read', { 
+            method: 'POST', 
+            headers: {'Content-Type': 'application/json'}, 
+            body: JSON.stringify({}) 
+        });
+        await loadNotifications();
+        document.getElementById('notificationDropdown').classList.remove('show');
+    } catch (e) { 
+        console.error('Failed to mark read', e); 
+    }
+}
+
+document.addEventListener('DOMContentLoaded', startNotificationsPolling);
+
+// Close dropdown when clicking outside
+document.addEventListener('click', function(event) {
+    const bell = document.querySelector('.notification-bell');
+    const dropdown = document.getElementById('notificationDropdown');
+    
+    if (!bell.contains(event.target)) {
+        dropdown.classList.remove('show');
+    }
+});
+
+// Handle notification item clicks delegated
+document.getElementById('notificationList').addEventListener('click', async (e) => {
+    const item = e.target.closest('.notification-item');
+    if (!item) return;
+    item.classList.remove('unread');
+    await fetch('/students/api/notifications/mark-read', { 
+        method: 'POST', 
+        headers: {'Content-Type': 'application/json'}, 
+        body: JSON.stringify({}) 
+    });
+    await loadNotifications();
 });
 </script>
 {% endblock %}

@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+config.env
+*.db
+*.sqlite3
+
+# Flask
+instance/
+.webassets-cache
+
+# Deploy
+procfile
+Procfile
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

@@ -37,6 +37,7 @@
     .btn.gray { background:#e5e8ee; color:#233046; }
     .btn.yellow { background:#ffc72c; color:#233046; }
     .btn.red { background:#dc3545; color:#fff; }
+    .btn.green { background:#28a745; color:#fff; }
     .btn.blue { background:#007bff; color:#fff; }
 
     /* Modal Styles */
@@ -83,7 +84,6 @@
       <div class="nav-item" onclick="window.location.href='{{ url_for('provider.applications') }}'"><i class="fas fa-clipboard-list"></i> Applications</div>
       <div class="nav-item" onclick="window.location.href='{{ url_for('provider.schedules') }}'"><i class="fas fa-calendar-alt"></i> Schedules</div>
       <div class="nav-item" onclick="window.location.href='{{ url_for('provider.documents') }}'"><i class="fas fa-file-alt"></i> Documents</div>
-      <div class="nav-item" onclick="window.location.href='{{ url_for('provider.remarks') }}'"><i class="fas fa-comments"></i> Review Remarks</div>
       <div class="nav-item" onclick="window.location.href='{{ url_for('provider.profile') }}'"><i class="fas fa-building"></i> Organization Profile</div>
       <div class="nav-item" onclick="window.location.href='{{ url_for('logout') }}'"><i class="fas fa-sign-out-alt"></i> Logout</div>
     </nav>
@@ -99,9 +99,10 @@
       <div class="user-menu"><div class="user-avatar">UC</div></div>
     </div>
 
+    <!-- Active Scholarships Section -->
     <div class="table-container">
       <div class="table-header">
-        <h3>Scholarships</h3>
+        <h3>Scholarships (Active/Current Scholarships)</h3>
         <button class="btn-primary" onclick="createScholarship()"><i class="fas fa-plus"></i> Create New Scholarship</button>
       </div>
       <table>
@@ -122,8 +123,8 @@
           <td>{{ s.id }}</td>
           <td>{{ s.title }}</td>
           <td>{{ s.deadline }}</td>
-          <td>{{ s.created_date }}</td>
-          <td>{{ s.applications }}</td>
+          <td>{{ s.created_at | safe_strftime('%Y-%m-%d') }}</td>
+          <td>{{ s.applications.count() }}</td>
           <td>
             {% if s.status.lower() == 'approved' %}
               <span class="status active">Active</span>
@@ -135,7 +136,8 @@
             <div class="actions">
               <button class="btn blue" onclick="viewScholarship('{{ s.id }}')">View</button>
               <button class="btn gray" onclick="editScholarship('{{ s.id }}')">Update</button>
-              <button class="btn red" onclick="deleteScholarship('{{ s.id }}')">Delete</button>
+              <button class="btn" onclick="downloadScholarshipReport('{{ s.id }}')" style="background:#000000; color:#fff;" title="Download PDF Report"><i class="fas fa-file-pdf"></i> PDF</button>
+              <button class="btn red" onclick="archiveScholarship('{{ s.id }}')">Archive</button>
               {% if s.status.lower() == 'draft' %}
                 <button class="btn yellow" onclick="publishScholarshipPk({{ loop.index0 }})">Publish</button>
               {% endif %}
@@ -143,9 +145,63 @@
           </td>
         </tr>
         {% endfor %}
+        {% if not scholarships %}
+        <tr>
+          <td colspan="7" style="text-align: center; padding: 2rem; color: #666;">
+            No active scholarships found. Create your first scholarship to get started!
+          </td>
+        </tr>
+        {% endif %}
       </tbody>
     </table>
     </div>
+
+    <!-- Archived Scholarships Section -->
+    {% if archived_scholarships %}
+    <div class="table-container" style="margin-top: 2rem;">
+      <div class="table-header">
+        <h3>Archive Scholar (Archived/Soft-Deleted Scholarships)</h3>
+      </div>
+      <table>
+      <thead>
+        <tr>
+          <th>Scholarship ID</th>
+          <th>Title</th>
+          <th>Deadline</th>
+          <th>Create Date</th>
+          <th>Applications</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in archived_scholarships %}
+        <tr>
+          <td>{{ s.id }}</td>
+          <td>{{ s.title }}</td>
+          <td>{{ s.deadline }}</td>
+          <td>{{ s.created_at | safe_strftime('%Y-%m-%d') }}</td>
+          <td>{{ s.applications.count() }}</td>
+          <td>
+            {% if s.status.lower() == 'approved' %}
+              <span class="status active">Active</span>
+            {% else %}
+              <span class="status draft">Draft</span>
+            {% endif %}
+          </td>
+          <td>
+            <div class="actions">
+              <button class="btn blue" onclick="viewScholarship('{{ s.id }}')">View</button>
+              <button class="btn green" onclick="restoreScholarship('{{ s.id }}')">Restore</button>
+              <button class="btn red" onclick="permanentDeleteScholarship('{{ s.id }}')">Delete</button>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% endif %}
   </div>
 </div>
 
@@ -250,17 +306,20 @@
         </div>
         <div class="form-group">
           <label class="form-label">Requirements *</label>
-          <div id="reqPreset" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: .75rem;">
-            <label><input type="checkbox" class="req" value="report_card"> Latest Report Card / Grades</label>
+          <div id="reqPreset" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: .75rem;">
+            <label><input type="checkbox" class="req" value="photo_2x2"> Recent 2x2 or passport-size photo</label>
+            <label><input type="checkbox" class="req" value="valid_id"> Valid School ID or any government-issued ID</label>
             <label><input type="checkbox" class="req" value="enrollment_cert"> Certificate of Enrollment</label>
-            <label><input type="checkbox" class="req" value="good_moral"> Good Moral Certificate</label>
-            <label><input type="checkbox" class="req" value="itr_or_indigency"> Income Tax Return (ITR) or Barangay Indigency</label>
-            <label><input type="checkbox" class="req" value="id_picture"> ID Picture (2x2 or 1x1)</label>
-            <label><input type="checkbox" class="req" value="birth_cert"> Birth Certificate</label>
+            <label><input type="checkbox" class="req" value="report_card"> Report Card / Transcript of Records (TOR)</label>
+            <label><input type="checkbox" class="req" value="good_moral"> Certificate of Good Moral Character</label>
             <label><input type="checkbox" class="req" value="recommendation_letter"> Recommendation Letter</label>
-            
-            <label><input type="checkbox" class="req" value="proof_residency"> Proof of Residency</label>
-            <label><input type="checkbox" class="req" value="community_involvement"> Community Involvement / Volunteer Proof</label>
+            <label><input type="checkbox" class="req" value="honors_awards"> Honors or Awards Certificates</label>
+            <label><input type="checkbox" class="req" value="indigency_cert"> Certificate of Indigency</label>
+            <label><input type="checkbox" class="req" value="itr"> Parents' or Guardians' Income Tax Return (ITR)</label>
+            <label><input type="checkbox" class="req" value="proof_income"> Proof of Income</label>
+            <label><input type="checkbox" class="req" value="barangay_clearance"> Barangay Clearance or Residency Certificate</label>
+            <label><input type="checkbox" class="req" value="birth_cert"> Birth Certificate (PSA or NSO)</label>
+            <label><input type="checkbox" class="req" value="medical_cert"> Medical Certificate</label>
           </div>
           <div style="margin-top:1rem; display:grid; gap:.5rem;">
             <div style="display:grid; grid-template-columns: 1fr auto; gap:.5rem;">
@@ -313,6 +372,14 @@
         <div class="form-group">
           <label for="editScholarshipTitle" class="form-label">Title *</label>
           <input type="text" id="editScholarshipTitle" name="title" class="form-control" required>
+        </div>
+        <div class="form-group">
+          <label for="editScholarshipDescription" class="form-label">Description</label>
+          <textarea id="editScholarshipDescription" name="description" class="form-control"></textarea>
+        </div>
+        <div class="form-group">
+          <label for="editScholarshipAmount" class="form-label">Amount</label>
+          <input type="text" id="editScholarshipAmount" name="amount" class="form-control">
         </div>
         <div class="form-group">
           <label for="editScholarshipDeadline" class="form-label">Deadline *</label>
@@ -369,17 +436,20 @@
         </div>
         <div class="form-group">
           <label class="form-label">Requirements *</label>
-          <div id="editReqGroup" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: .75rem;">
-            <label><input type="checkbox" class="req-edit" value="report_card"> Latest Report Card / Grades</label>
+          <div id="editReqGroup" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: .75rem;">
+            <label><input type="checkbox" class="req-edit" value="photo_2x2"> Recent 2x2 or passport-size photo</label>
+            <label><input type="checkbox" class="req-edit" value="valid_id"> Valid School ID or any government-issued ID</label>
             <label><input type="checkbox" class="req-edit" value="enrollment_cert"> Certificate of Enrollment</label>
-            <label><input type="checkbox" class="req-edit" value="good_moral"> Good Moral Certificate</label>
-            <label><input type="checkbox" class="req-edit" value="itr_or_indigency"> Income Tax Return (ITR) or Barangay Indigency</label>
-            <label><input type="checkbox" class="req-edit" value="id_picture"> ID Picture (2x2 or 1x1)</label>
-            <label><input type="checkbox" class="req-edit" value="birth_cert"> Birth Certificate</label>
+            <label><input type="checkbox" class="req-edit" value="report_card"> Report Card / Transcript of Records (TOR)</label>
+            <label><input type="checkbox" class="req-edit" value="good_moral"> Certificate of Good Moral Character</label>
             <label><input type="checkbox" class="req-edit" value="recommendation_letter"> Recommendation Letter</label>
-            
-            <label><input type="checkbox" class="req-edit" value="proof_residency"> Proof of Residency</label>
-            <label><input type="checkbox" class="req-edit" value="community_involvement"> Community Involvement / Volunteer Proof</label>
+            <label><input type="checkbox" class="req-edit" value="honors_awards"> Honors or Awards Certificates</label>
+            <label><input type="checkbox" class="req-edit" value="indigency_cert"> Certificate of Indigency</label>
+            <label><input type="checkbox" class="req-edit" value="itr"> Parents' or Guardians' Income Tax Return (ITR)</label>
+            <label><input type="checkbox" class="req-edit" value="proof_income"> Proof of Income</label>
+            <label><input type="checkbox" class="req-edit" value="barangay_clearance"> Barangay Clearance or Residency Certificate</label>
+            <label><input type="checkbox" class="req-edit" value="birth_cert"> Birth Certificate (PSA or NSO)</label>
+            <label><input type="checkbox" class="req-edit" value="medical_cert"> Medical Certificate</label>
           </div>
           <div style="margin-top:1rem; display:grid; gap:.5rem;">
             <div style="display:grid; grid-template-columns: 1fr auto; gap:.5rem;">
@@ -450,18 +520,18 @@ function viewScholarship(id){
             <div><strong>Deadline:</strong> ${data.scholarship.deadline}</div>
             <div><strong>Created:</strong> ${data.scholarship.created_date}</div>
             <div><strong>Status:</strong> <span class="status ${data.scholarship.status.toLowerCase()}">${data.scholarship.status}</span></div>
-            <div><strong>Applications:</strong> ${data.scholarship.applications}</div>
-            <div><strong>Requirements:</strong><br>${data.scholarship.requirements.replace(/\n/g, '<br>')}</div>
+            <div><strong>Applications:</strong> ${data.scholarship.applications_count}</div>
+            <div><strong>Requirements:</strong><br>${(data.scholarship.requirements || '').split(',').map(req => `• ${req.trim()}`).join('<br>')}</div>
           </div>
         `;
         document.getElementById('viewScholarshipModal').style.display = 'block';
       } else {
-        alert('Error loading scholarship: ' + (data.error || 'Unknown error'));
+        showNotification('Error loading scholarship: ' + (data.error || 'Unknown error'), 'error');
       }
     })
     .catch(error => {
       console.error('Error:', error);
-      alert('Error loading scholarship details');
+      showNotification('Error loading scholarship details', 'error');
     });
 }
 
@@ -475,6 +545,8 @@ function editScholarship(id){
         document.getElementById('editScholarshipCode').value = data.scholarship.code;
         document.getElementById('editScholarshipCodeDisplay').textContent = data.scholarship.code;
         document.getElementById('editScholarshipTitle').value = data.scholarship.title;
+        document.getElementById('editScholarshipDescription').value = data.scholarship.description || '';
+        document.getElementById('editScholarshipAmount').value = data.scholarship.amount || '';
         document.getElementById('editScholarshipDeadline').value = data.scholarship.deadline;
         // Type select/other
         const knownTypes = ['Academic','Financial Aid','Working Scholar','Athletic','Research'];
@@ -487,7 +559,7 @@ function editScholarship(id){
           document.getElementById('editScholarshipTypeOther').style.display='';
           document.getElementById('editScholarshipTypeOther').value = data.scholarship.type;
         }
-        // Pre-check requirements checkboxes
+        // Pre-check requirements checkboxes using raw requirements
         const values = (data.scholarship.requirements || '').split(',').map(s=>s.trim()).filter(Boolean);
         document.querySelectorAll('#editScholarshipModal .req-edit').forEach(cb => { cb.checked = values.includes(cb.value); });
         const custom = values.filter(v => !Array.from(document.querySelectorAll('#editScholarshipModal .req-edit')).some(cb => cb.value === v));
@@ -497,18 +569,18 @@ function editScholarship(id){
         custom.forEach(c => addChip('editReqCustomList', c));
         document.getElementById('editScholarshipModal').style.display = 'block';
       } else {
-        alert('Error loading scholarship: ' + (data.error || 'Unknown error'));
+        showNotification('Error loading scholarship: ' + (data.error || 'Unknown error'), 'error');
       }
     })
     .catch(error => {
       console.error('Error:', error);
-      alert('Error loading scholarship details');
+      showNotification('Error loading scholarship details', 'error');
     });
 }
 
-// Delete scholarship function
-function deleteScholarship(id){
-  if (confirm('Are you sure you want to delete this scholarship? This action cannot be undone.')) {
+// Archive scholarship function
+function archiveScholarship(id){
+  if (confirm('Are you sure you want to archive this scholarship? It will be moved to the archive section and hidden from students.')) {
     fetch(`/provider/api/scholarship/${id}`, {
       method: 'DELETE',
       headers: {
@@ -518,16 +590,68 @@ function deleteScholarship(id){
     .then(response => response.json())
     .then(data => {
       if (data.success) {
-        alert('Scholarship deleted successfully');
+        showNotification('Scholarship archived successfully', 'success');
         location.reload();
       } else {
-        alert('Error deleting scholarship: ' + (data.error || 'Unknown error'));
+        showNotification('Error archiving scholarship: ' + (data.error || 'Unknown error'), 'error');
       }
     })
     .catch(error => {
       console.error('Error:', error);
-      alert('Error deleting scholarship');
+      showNotification('Error archiving scholarship', 'error');
     });
+  }
+}
+
+// Restore scholarship function
+function restoreScholarship(id){
+  if (confirm('Are you sure you want to restore this scholarship? It will be moved back to active scholarships and visible to students.')) {
+    fetch(`/provider/api/scholarship/${id}/restore`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      }
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.success) {
+        showNotification('Scholarship restored successfully', 'success');
+        location.reload();
+      } else {
+        showNotification('Error restoring scholarship: ' + (data.error || 'Unknown error'), 'error');
+      }
+    })
+    .catch(error => {
+      console.error('Error:', error);
+      showNotification('Error restoring scholarship', 'error');
+    });
+  }
+}
+
+// Permanent delete scholarship function
+function permanentDeleteScholarship(id){
+  if (confirm('⚠️ WARNING: This will permanently delete the scholarship from the database. This action cannot be undone!\n\nAre you absolutely sure you want to permanently delete this scholarship?')) {
+    if (confirm('This is your final warning. Click OK to permanently delete the scholarship. This cannot be reversed!')) {
+      fetch(`/provider/api/scholarship/${id}/permanent-delete`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          showNotification('Scholarship permanently deleted', 'success');
+          location.reload();
+        } else {
+          showNotification('Error deleting scholarship: ' + (data.error || 'Unknown error'), 'error');
+        }
+      })
+      .catch(error => {
+        console.error('Error:', error);
+        showNotification('Error deleting scholarship', 'error');
+      });
+    }
   }
 }
 
@@ -570,15 +694,15 @@ document.getElementById('createScholarshipForm').addEventListener('submit', asyn
     const ct = resp.headers.get('content-type') || '';
     const payload = ct.includes('application/json') ? await resp.json() : { success:false, error: await resp.text() };
     if (payload.success) {
-      alert('Scholarship created successfully!');
+      showNotification('Scholarship created successfully!', 'success');
       closeCreateModal();
       location.reload();
     } else {
-      alert('Error creating scholarship: ' + (payload.error || resp.statusText || 'Unknown error'));
+      showNotification('Error creating scholarship: ' + (payload.error || resp.statusText || 'Unknown error'), 'error');
     }
   } catch (err) {
     console.error('Create scholarship failed:', err);
-    alert('Error creating scholarship. Please try again.');
+    showNotification('Error creating scholarship. Please try again.', 'error');
   } finally {
     btns.forEach(b=>{ b.disabled=false; b.textContent='Create Scholarship'; });
   }
@@ -614,22 +738,22 @@ document.getElementById('editScholarshipForm').addEventListener('submit', async 
   btns.forEach(b=>{ b.disabled=true; b.textContent='Saving…'; });
   try {
     const resp = await fetch(`/provider/api/scholarship/${id}`, {
-      method: 'PUT',
+      method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify(data)
     });
     const ct = resp.headers.get('content-type') || '';
     const payload = ct.includes('application/json') ? await resp.json() : { success:false, error: await resp.text() };
     if (payload.success) {
-      alert('Scholarship updated successfully!');
+      showNotification('Scholarship updated successfully!', 'success');
       closeEditModal();
       location.reload();
     } else {
-      alert('Error updating scholarship: ' + (payload.error || resp.statusText || 'Unknown error'));
+      showNotification('Error updating scholarship: ' + (payload.error || resp.statusText || 'Unknown error'), 'error');
     }
   } catch (err) {
     console.error('Update scholarship failed:', err);
-    alert('Error updating scholarship. Please try again.');
+    showNotification('Error updating scholarship. Please try again.', 'error');
   } finally {
     btns.forEach(b=>{ b.disabled=false; b.textContent='Update Scholarship'; });
   }
@@ -639,11 +763,16 @@ function publishScholarshipPk(index){
   // We don't have the PK in the table, so request by code -> server maps code to pk
   const code = document.querySelectorAll('tbody tr')[index].children[0].textContent.trim();
   fetch('/provider/api/publish-by-code', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ code })})
-    .then(r=>r.json()).then(d=>{ if(d.success){ location.reload(); } else { alert(d.error||'Failed'); } });
+    .then(r=>r.json()).then(d=>{ if(d.success){ location.reload(); } else { showNotification(d.error||'Failed', 'error'); } });
 }
 
-function viewApps(id){ alert('Viewing applications for ' + id); }
-function publishScholarship(id){ alert('Publish ' + id + ' coming soon'); }
+function viewApps(id){ showNotification('Viewing applications for ' + id, 'info'); }
+function publishScholarship(id){ showNotification('Publish ' + id + ' coming soon', 'info'); }
+
+// Download scholarship report PDF
+function downloadScholarshipReport(scholarshipId){
+  window.location.href = `/provider/api/scholarship/${scholarshipId}/report-pdf`;
+}
 
 // UI helpers for custom requirement chips (frontend-only)
 function addChip(containerId, text){

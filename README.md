@@ -151,19 +151,19 @@ The application will be available at `http://localhost:5000`
 2. **Providers**: Can create scholarships, review applications, manage schedules
 3. **Admins**: Can manage users, oversee system, view analytics
 
-### Creating Test Users
+### Creating the Admin User
 
-You can create test users through the signup form or directly in the database:
+To create the default admin account, run the following script from your terminal:
 
-```sql
--- Create admin user
-INSERT INTO users (first_name, last_name, email, student_id, password_hash, role, created_at) 
-VALUES ('Admin', 'User', 'admin@scholarsphere.com', '00000000', 'hashed_password', 'admin', NOW());
-
--- Create provider user
-INSERT INTO users (first_name, last_name, email, student_id, password_hash, role, created_at) 
-VALUES ('Provider', 'User', 'provider@scholarsphere.com', '00000001', 'hashed_password', 'provider', NOW());
+```bash
+python create_admin.py
 ```
+
+This will create an admin user with the following credentials:
+- **Email**: `admin@scholarsphere.com`
+- **Password**: `admin123`
+
+It is strongly recommended to change the password after the first login.
 
 ## Development
 

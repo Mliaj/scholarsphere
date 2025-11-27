@@ -78,8 +78,12 @@
     <div class="table-container">
       <div class="table-header">
         <h3>Scholarships</h3>
-        <button class="export-btn" onclick="exportData()"><i class="fas fa-download"></i> Export Data</button>
+        <div style="display:flex; gap:.5rem;">
+          <button class="export-btn" onclick="exportData()"><i class="fas fa-download"></i> Export Data</button>
+          <button class="export-btn" style="background:#d32f2f;" onclick="cleanupMock()"><i class="fas fa-broom"></i> Remove Mock Data</button>
+        </div>
       </div>
+      {% if scholarships and scholarships|length > 0 %}
       <table class="scholarships-table">
           <thead>
             <tr>
@@ -119,6 +123,23 @@
             {% endfor %}
           </tbody>
       </table>
+      {% else %}
+      <div style="padding: 3rem; text-align: center; color: #666;">
+        <div style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.3;">
+          <i class="fas fa-graduation-cap"></i>
+        </div>
+        <h3 style="color: #333; margin-bottom: 0.5rem;">No Scholarships Found</h3>
+        <p style="margin-bottom: 1.5rem;">No active scholarships have been created by providers yet.</p>
+        <div style="background: #f8f9fa; padding: 1rem; border-radius: 8px; border-left: 4px solid #007bff; max-width: 500px; margin: 0 auto;">
+          <p style="margin: 0; font-size: 0.9rem;">
+            <strong>Next Steps:</strong><br>
+            • Providers need to create scholarships through their portal<br>
+            • Once created, scholarships will appear here for oversight<br>
+            • You can monitor applications and manage scholarship status
+          </p>
+        </div>
+      </div>
+      {% endif %}
     </div>
     </div>
   </div>
@@ -135,6 +156,13 @@ function setStatus(id, status){
     .then(r=>r.json()).then(d=>{ if(d.success){ location.reload(); } else { alert(d.error||'Failed'); } });
 }
 function editScholarship(id){ alert('Edit UI coming soon (ID: '+id+')'); }
+function cleanupMock(){
+  if(!confirm('Remove mock/seed scholarships (e.g., SCH-001 Academic Excellence)?')) return;
+  fetch('/admin/api/cleanup-mock', {method:'POST'})
+    .then(r=>r.json())
+    .then(d=>{ if(d.success){ alert(`Removed ${d.removed_scholarships} scholarship(s) and ${d.removed_applications||0} application(s).`); location.reload(); } else { alert(d.error||'Failed'); } })
+    .catch(e=>alert('Failed: '+e.message));
+}
 </script>
 {% endblock %}
 

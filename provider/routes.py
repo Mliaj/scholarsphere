@@ -1,9 +1,7 @@
-"""
-Provider dashboard routes for Scholarsphere
-"""
-
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, current_app
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 from flask_login import login_required, current_user
+from app import db, User, Scholarship, ScholarshipApplication, Credential, Schedule, Notification
+from email_utils import send_email
 
 provider_bp = Blueprint('provider', __name__)
 
@@ -15,569 +13,687 @@ def dashboard():
         flash('Access denied. Provider access required.', 'error')
         return redirect(url_for('index'))
     
-    # Mock provider dashboard data
-    dashboard_data = {
-        'user': current_user,
+    # Calculate dashboard stats
+    active_scholarships = Scholarship.query.filter(
+        Scholarship.provider_id == current_user.id,
+        Scholarship.status.in_(['active', 'approved'])
+    ).count()
+    draft_scholarships = Scholarship.query.filter_by(provider_id=current_user.id, status='draft').count()
+    
+    scholarships = Scholarship.query.filter_by(provider_id=current_user.id).all()
+    scholarship_ids = [s.id for s in scholarships]
+    
+    total_applications = ScholarshipApplication.query.filter(
+        ScholarshipApplication.scholarship_id.in_(scholarship_ids)
+    ).count() if scholarship_ids else 0
+    
+    pending_reviews = ScholarshipApplication.query.filter(
+        ScholarshipApplication.scholarship_id.in_(scholarship_ids),
+        ScholarshipApplication.status == 'pending'
+    ).count() if scholarship_ids else 0
+    
+    # Prepare data dictionary
+    data = {
         'stats': {
-            'active_scholarships': 8,
-            'draft_scholarships': 3,
-            'total_applications': 156,
-            'new_applications': 23,
-            'pending_reviews': 45,
-            'today_reviews': 12,
-            'awarded_this_month': 28,
-            'total_value': '₱2.1M'
+            'active_scholarships': active_scholarships,
+            'draft_scholarships': draft_scholarships,
+            'total_applications': total_applications,
+            'new_applications': 0, # Mock for now
+            'pending_reviews': pending_reviews,
+            'today_reviews': 0 # Mock for now
         }
     }
     
-    return render_template('provider/dashboard.html', data=dashboard_data)
+    return render_template('provider/dashboard.html', user=current_user, data=data)
 
 @provider_bp.route('/scholarships')
 @login_required
 def scholarships():
-    """Manage scholarships page"""
+    """Provider scholarships page"""
     if current_user.role != 'provider':
         flash('Access denied. Provider access required.', 'error')
         return redirect(url_for('index'))
+
+    all_scholarships = Scholarship.query.filter_by(provider_id=current_user.id).all()
     
-    # Load from database
-    import sqlite3
-    import os
-    from datetime import datetime
-    db_path = os.path.join(current_app.instance_path, 'scholarsphere.db')
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        SELECT id, code, title, deadline, created_at, applications_count, status
-        FROM scholarships
-        WHERE provider_id = ?
-        ORDER BY id ASC
-        """,
-        (current_user.id,)
-    )
-    rows = cursor.fetchall()
-    conn.close()
+    active_scholarships = [s for s in all_scholarships if s.status != 'archived']
+    archived_scholarships = [s for s in all_scholarships if s.status == 'archived']
 
-    def fmt_date(s):
-        if not s:
-            return ''
-        try:
-            return datetime.fromisoformat(s.replace('Z','+00:00')).strftime('%b %d, %Y')
-        except Exception:
-            return s
-
-    scholarships_data = [
-        {
-            'id': r[1] or f"SCH-{r[0]:03d}",
-            'title': r[2],
-            'deadline': fmt_date(r[3]),
-            'created_date': fmt_date(r[4]),
-            'applications': r[5] or 0,
-            'status': (r[6] or 'draft').title()
-        }
-        for r in rows
-    ]
-    
-    return render_template('provider/scholarships.html', scholarships=scholarships_data)
-
-@provider_bp.route('/api/scholarships/<int:scholarship_id>/publish', methods=['POST'])
-@login_required
-def publish_scholarship(scholarship_id):
-    if current_user.role != 'provider':
-        return jsonify({'error': 'Access denied'}), 403
-    try:
-        import sqlite3
-        import os
-        db_path = os.path.join(current_app.instance_path, 'scholarsphere.db')
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        # Ensure ownership
-        cursor.execute("SELECT id FROM scholarships WHERE id=? AND provider_id=?", (scholarship_id, current_user.id))
-        if not cursor.fetchone():
-            conn.close()
-            return jsonify({'success': False, 'error': 'Scholarship not found'}), 404
-        cursor.execute("UPDATE scholarships SET status='approved' WHERE id=?", (scholarship_id,))
-        conn.commit()
-        conn.close()
-        return jsonify({'success': True})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@provider_bp.route('/api/publish-by-code', methods=['POST'])
-@login_required
-def publish_by_code():
-    if current_user.role != 'provider':
-        return jsonify({'error': 'Access denied'}), 403
-    data = request.get_json() or {}
-    code = (data.get('code') or '').strip()
-    if not code:
-        return jsonify({'success': False, 'error': 'Code required'}), 400
-    try:
-        import sqlite3
-        import os
-        db_path = os.path.join(current_app.instance_path, 'scholarsphere.db')
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        cursor.execute("SELECT id FROM scholarships WHERE code=? AND provider_id=?", (code, current_user.id))
-        row = cursor.fetchone()
-        if not row:
-            conn.close()
-            return jsonify({'success': False, 'error': 'Scholarship not found'}), 404
-        cursor.execute("UPDATE scholarships SET status='approved' WHERE id=?", (row[0],))
-        conn.commit()
-        conn.close()
-        return jsonify({'success': True})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+    return render_template('provider/scholarships.html', 
+                           user=current_user, 
+                           scholarships=active_scholarships, 
+                           archived_scholarships=archived_scholarships)
 
 @provider_bp.route('/applications')
 @login_required
 def applications():
-    """Student applications page"""
+    """Provider applications page"""
     if current_user.role != 'provider':
         flash('Access denied. Provider access required.', 'error')
         return redirect(url_for('index'))
+
+    scholarships = Scholarship.query.filter_by(provider_id=current_user.id).all()
     
-    # Mock applications data
-    applications_data = [
-        {
-            'id': 'APP-001',
-            'student_name': 'John Doe',
-            'scholarship': 'Academic Excellence',
-            'date_applied': 'March 10, 2024',
-            'status': 'Under Review',
-            'documents': 'Complete'
-        },
-        {
-            'id': 'APP-002',
-            'student_name': 'Jane Smith',
-            'scholarship': 'Leadership Scholarship',
-            'date_applied': 'March 9, 2024',
-            'status': 'Approved',
-            'documents': 'Complete'
-        },
-        {
-            'id': 'APP-003',
-            'student_name': 'Mike Johnson',
-            'scholarship': 'Academic Excellence',
-            'date_applied': 'March 8, 2024',
-            'status': 'Pending',
-            'documents': 'Complete'
-        },
-        {
-            'id': 'APP-004',
-            'student_name': 'Sarah Wilson',
-            'scholarship': 'Leadership Scholarship',
-            'date_applied': 'March 7, 2024',
-            'status': 'Rejected',
-            'documents': 'Complete'
-        }
-    ]
-    
-    return render_template('provider/applications.html', applications=applications_data)
+    total_applications = 0
+    # Pre-process scholarships to attach application count and formatted applications if needed by template
+    for s in scholarships:
+        # Ensure we are counting correctly. 
+        # The template uses s.application_count (which might be a property or we set it here)
+        # and s.applications (relationship).
+        s.application_count = s.applications.count()
+        total_applications += s.application_count
+        
+        # Create a list to store processed applications
+        apps_list = list(s.applications)
+        
+        # enhance application objects for the template
+        for app in apps_list:
+            student = User.query.get(app.user_id)
+            app.student_name = student.get_full_name() if student else "Unknown"
+            app.student_email = student.email if student else ""
+            app.student_id = student.student_id if student else ""
+            app.application_id = app.id
+            app.date_applied = app.application_date.strftime('%Y-%m-%d')
+            # Count files
+            app.file_count = Credential.query.filter_by(user_id=app.user_id, is_active=True).count()
+            
+        s.display_applications = apps_list
+
+    return render_template('provider/applications.html', 
+                           user=current_user, 
+                           scholarships=scholarships, 
+                           total_applications=total_applications)
 
 @provider_bp.route('/schedules')
 @login_required
 def schedules():
-    """Scholarship schedules page"""
+    """Provider schedules page"""
     if current_user.role != 'provider':
         flash('Access denied. Provider access required.', 'error')
         return redirect(url_for('index'))
     
-    # Mock schedules data
-    schedules_data = [
-        {
-            'title': 'Interview Schedule - Academic Excellence',
-            'date': 'March 20, 2024',
-            'time': '9:00 AM - 5:00 PM',
-            'location': 'UC Main Campus, Room 301',
-            'description': 'Final interview for shortlisted candidates'
-        },
-        {
-            'title': 'Orientation - Leadership Scholarship',
-            'date': 'March 25, 2024',
-            'time': '2:00 PM - 4:00 PM',
-            'location': 'UC Auditorium',
-            'description': 'Welcome orientation for approved scholars'
-        }
-    ]
+    # Get applications to list for scheduling
+    scholarships = Scholarship.query.filter_by(provider_id=current_user.id).all()
+    scholarship_ids = [s.id for s in scholarships]
     
-    return render_template('provider/schedules.html', schedules=schedules_data)
+    raw_applications = ScholarshipApplication.query.filter(
+        ScholarshipApplication.scholarship_id.in_(scholarship_ids)
+    ).all()
+    
+    applications_data = []
+    for app in raw_applications:
+        student = User.query.get(app.user_id)
+        scholarship = Scholarship.query.get(app.scholarship_id)
+        
+        applications_data.append({
+            'application_id': f"APP-{str(app.id).zfill(3)}",
+            'application_id_raw': app.id,
+            'student_name': student.get_full_name() if student else "Unknown",
+            'student_email': student.email if student else "",
+            'scholarship_code': scholarship.code if scholarship else "",
+            'scholarship_title': scholarship.title if scholarship else "",
+            'status': app.status,
+            'date_applied': app.application_date.strftime('%Y-%m-%d')
+        })
+    
+    # Also fetch existing schedules if we want to show them (template might need update or we pass both)
+    # The current template iterates 'applications', so we pass that.
+    
+    return render_template('provider/schedules.html', 
+                           user=current_user, 
+                           applications=applications_data)
 
 @provider_bp.route('/documents')
 @login_required
 def documents():
-    """Application documents page"""
+    """Provider documents page"""
     if current_user.role != 'provider':
         flash('Access denied. Provider access required.', 'error')
         return redirect(url_for('index'))
-    
-    # Mock documents data
-    documents_data = [
-        {
-            'application_id': 'APP-001',
-            'student_name': 'John Doe',
-            'documents_submitted': 'Transcript, Enrollment Cert, Valid ID, Photo',
-            'completion_status': 'Complete',
-            'review_status': 'Under Review'
-        },
-        {
-            'application_id': 'APP-002',
-            'student_name': 'Jane Smith',
-            'documents_submitted': 'All Required Documents',
-            'completion_status': 'Complete',
-            'review_status': 'Approved'
-        }
-    ]
-    
-    return render_template('provider/documents.html', documents=documents_data)
 
-@provider_bp.route('/remarks')
-@login_required
-def remarks():
-    """Review remarks page"""
-    if current_user.role != 'provider':
-        flash('Access denied. Provider access required.', 'error')
-        return redirect(url_for('index'))
+    scholarships = Scholarship.query.filter_by(provider_id=current_user.id).all()
+    scholarship_ids = [s.id for s in scholarships]
     
-    # Mock remarks data
-    remarks_data = [
-        {
-            'application_id': 'APP-001',
-            'student_name': 'John Doe',
-            'status': 'Under Review',
-            'reviewer': 'Dr. Maria Santos',
-            'date': 'March 12, 2024',
-            'message': 'Strong academic performance. Need to verify financial need documents. Schedule interview for final assessment.'
-        },
-        {
-            'application_id': 'APP-002',
-            'student_name': 'Jane Smith',
-            'status': 'Approved',
-            'reviewer': 'Dr. Juan Dela Cruz',
-            'date': 'March 11, 2024',
-            'message': 'Excellent leadership record and academic standing. All requirements met. Approved for Leadership Scholarship.'
-        }
-    ]
+    # Get all applications for these scholarships
+    applications = ScholarshipApplication.query.filter(
+        ScholarshipApplication.scholarship_id.in_(scholarship_ids)
+    ).all()
     
-    return render_template('provider/remarks.html', remarks=remarks_data)
+    documents_data = []
+    
+    for app in applications:
+        student = User.query.get(app.user_id)
+        scholarship = Scholarship.query.get(app.scholarship_id)
+        
+        # Get credentials for this student
+        credentials = Credential.query.filter_by(user_id=app.user_id, is_active=True).all()
+        
+        if not credentials:
+            continue # Skip if no documents
+            
+        formatted_docs = []
+        for cred in credentials:
+            formatted_docs.append({
+                'requirement_type': cred.credential_type,
+                'file_name': cred.file_name,
+                'credential_type': cred.credential_type, # Template uses both
+                'file_path': cred.file_path # Use stored unique filename
+            })
+            
+        documents_data.append({
+            'student_name': student.get_full_name() if student else "Unknown",
+            'application_id': f"APP-{str(app.id).zfill(3)}",
+            'scholarship_code': scholarship.code if scholarship else "",
+            'scholarship_title': scholarship.title if scholarship else "",
+            'status': app.status,
+            'completion_status': 'Complete' if len(credentials) >= 1 else 'Incomplete', # Simple logic
+            'document_count': len(credentials),
+            'documents': formatted_docs
+        })
+        
+    return render_template('provider/documents.html', 
+                           user=current_user, 
+                           documents=documents_data)
 
 @provider_bp.route('/profile')
 @login_required
 def profile():
-    """Organization profile page"""
+    """Provider profile page"""
     if current_user.role != 'provider':
         flash('Access denied. Provider access required.', 'error')
         return redirect(url_for('index'))
-    
-    # Mock profile data
-    profile_data = {
-        'provider_id': 'PRV-001',
-        'organization_name': 'University of Cebu Main Campus',
-        'contact_number': '+63 32 255 7777',
-        'email': 'scholarships@uc.edu.ph',
-        'address': 'Sanciangko Street, Cebu City, Cebu, Philippines 6000',
-        'organization_type': 'Educational Institution',
-        'website': 'https://www.uc.edu.ph',
-        'description': 'The University of Cebu is a premier educational institution committed to academic excellence and community development. We provide various scholarship programs to support deserving students in their educational journey.'
-    }
-    
-    return render_template('provider/profile.html', profile=profile_data)
+        
+    return render_template('provider/profile.html', user=current_user, profile=current_user)
 
-# API endpoints for provider functions
+from datetime import datetime
+import io
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+from flask import make_response # make_response is already imported in the file
+
+@provider_bp.route('/generate_report_pdf')
+@login_required
+def generate_report_pdf():
+    """Generates a PDF report for the provider"""
+    if current_user.role != 'provider':
+        flash('Access denied. Provider access required.', 'error')
+        return redirect(url_for('index'))
+
+    # Create a file-like buffer to receive PDF data.
+    buffer = io.BytesIO()
+    
+    # Create the PDF object, using the buffer as its "file."
+    p = canvas.Canvas(buffer, pagesize=letter)
+    
+    # Draw things on the PDF. Here's where the PDF generation happens.
+    p.drawString(100, 750, f"Provider Report for {current_user.organization or current_user.get_full_name()}")
+    p.drawString(100, 730, f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    p.drawString(100, 710, "--------------------------------------------------")
+    
+    # Add some dummy data for now
+    p.drawString(100, 690, "Summary of Activities:")
+    p.drawString(120, 670, "- Total Scholarships: N/A")
+    p.drawString(120, 650, "- Total Applications: N/A")
+
+    # Close the PDF object cleanly.
+    p.showPage()
+    p.save()
+    
+    # Get the value of the BytesIO buffer and return it as a response
+    buffer.seek(0)
+    response = make_response(buffer.getvalue())
+    response.headers['Content-Type'] = 'application/pdf'
+    response.headers['Content-Disposition'] = 'attachment; filename=provider_report.pdf'
+    return response
+
+@provider_bp.route('/api/application/<int:application_id>/review', methods=['POST'])
+@login_required
+def review_application(application_id):
+    """Approve or reject a scholarship application"""
+    if current_user.role != 'provider':
+        return jsonify({'error': 'Access denied'}), 403
+
+    data = request.get_json()
+    action = data.get('action')
+
+    application = ScholarshipApplication.query.get_or_404(application_id)
+    scholarship = Scholarship.query.get_or_404(application.scholarship_id)
+
+    if scholarship.provider_id != current_user.id:
+        return jsonify({'error': 'Access denied'}), 403
+
+    # Map imperative action to status
+    status_map = {
+        'approve': 'approved',
+        'approved': 'approved',
+        'reject': 'rejected',
+        'rejected': 'rejected'
+    }
+
+    if action in status_map:
+        new_status = status_map[action]
+        application.status = new_status
+        db.session.commit()
+
+        student = User.query.get(application.user_id)
+        if student:
+            send_email(
+                student.email,
+                f'Your Application for {scholarship.title} has been {new_status}',
+                'email/application_status.html',
+                student_name=student.get_full_name(),
+                scholarship_name=scholarship.title,
+                new_status=new_status
+            )
+        return jsonify({'success': True})
+    return jsonify({'success': False, 'error': 'Invalid action'}), 400
+
+@provider_bp.route('/api/announcement/scholarship/<int:scholarship_id>', methods=['POST'])
+@login_required
+def send_scholarship_announcement(scholarship_id):
+    """Send announcement to all applicants of a scholarship"""
+    if current_user.role != 'provider':
+        return jsonify({'error': 'Access denied'}), 403
+
+    data = request.get_json()
+    message = data.get('message')
+    
+    scholarship = Scholarship.query.get_or_404(scholarship_id)
+    if scholarship.provider_id != current_user.id:
+        return jsonify({'error': 'Access denied'}), 403
+
+    applications = ScholarshipApplication.query.filter_by(scholarship_id=scholarship_id).all()
+    students = [User.query.get(app.user_id) for app in applications]
+
+    for student in students:
+        if student:
+            send_email(
+                student.email,
+                f'Announcement for {scholarship.title}',
+                'email/new_announcement.html',
+                student_name=student.get_full_name(),
+                announcement_title=f'Announcement for {scholarship.title}',
+                announcement_message=message
+            )
+    
+    return jsonify({'success': True, 'recipient_count': len(students), 'scholarship': scholarship.title})
+
+@provider_bp.route('/api/application/<int:application_id>/announcement', methods=['POST'])
+@login_required
+def send_application_announcement(application_id):
+    """Send announcement to a single applicant"""
+    if current_user.role != 'provider':
+        return jsonify({'error': 'Access denied'}), 403
+
+    data = request.get_json()
+    message = data.get('message')
+
+    application = ScholarshipApplication.query.get_or_404(application_id)
+    scholarship = Scholarship.query.get_or_404(application.scholarship_id)
+
+    if scholarship.provider_id != current_user.id:
+        return jsonify({'error': 'Access denied'}), 403
+
+    student = User.query.get(application.user_id)
+    if student:
+        send_email(
+            student.email,
+            f'Announcement for {scholarship.title}',
+            'email/new_announcement.html',
+            student_name=student.get_full_name(),
+            announcement_title=f'Announcement for {scholarship.title}',
+            announcement_message=message
+        )
+
+    return jsonify({'success': True})
+
+@provider_bp.route('/api/application/<int:application_id>/schedule', methods=['POST'])
+@login_required
+def create_schedule(application_id):
+    """Create a schedule for an application"""
+    if current_user.role != 'provider':
+        return jsonify({'error': 'Access denied'}), 403
+
+    data = request.get_json()
+    schedule_date = data.get('schedule_date')
+    schedule_time = data.get('schedule_time')
+    location = data.get('location')
+    notes = data.get('notes')
+
+    application = ScholarshipApplication.query.get_or_404(application_id)
+    scholarship = Scholarship.query.get_or_404(application.scholarship_id)
+
+    if scholarship.provider_id != current_user.id:
+        return jsonify({'error': 'Access denied'}), 403
+
+    schedule = Schedule(
+        application_id=application_id,
+        provider_id=current_user.id,
+        user_id=application.user_id,
+        schedule_date=schedule_date,
+        schedule_time=schedule_time,
+        location=location,
+        notes=notes
+    )
+    db.session.add(schedule)
+    db.session.commit()
+
+    student = User.query.get(application.user_id)
+    if student:
+        send_email(
+            student.email,
+            f'Schedule for {scholarship.title}',
+            'email/new_schedule.html',
+            student_name=student.get_full_name(),
+            scholarship_name=scholarship.title,
+            schedule_date=schedule_date,
+            schedule_time=schedule_time,
+            location=location,
+            notes=notes
+        )
+
+    return jsonify({'success': True})
+
+@provider_bp.route('/api/credential/<int:credential_id>/review', methods=['POST'])
+@login_required
+def review_credential(credential_id):
+    """Approve or reject a credential; notify student"""
+    if current_user.role != 'provider':
+        return jsonify({'error': 'Access denied'}), 403
+    try:
+        from flask import current_app
+        from datetime import datetime
+        db = current_app.extensions['sqlalchemy']
+        data = request.get_json() or {}
+        action = (data.get('action') or '').strip().lower()
+        if action not in ('approve', 'reject'):
+            return jsonify({'success': False, 'error': 'Invalid action'}), 400
+
+        # Load credential and verify ownership
+        credential = Credential.query.get(credential_id)
+        if not credential:
+            return jsonify({'success': False, 'error': 'Credential not found'}), 404
+
+        # Check that the provider has access to this student's application
+        application = ScholarshipApplication.query.join(Scholarship).filter(
+            Scholarship.provider_id == current_user.id,
+            ScholarshipApplication.user_id == credential.user_id
+        ).first()
+
+        if not application:
+            return jsonify({'success': False, 'error': 'Access to this credential is not authorized'}), 403
+
+        credential.status = action
+        db.session.commit()
+
+        # Send email notification
+        student = User.query.get(credential.user_id)
+        if student:
+            send_email(
+                student.email,
+                f'Your Document {credential.credential_type} has been {action}d',
+                'email/document_status.html',
+                student_name=student.get_full_name(),
+                document_name=credential.credential_type,
+                new_status=action.capitalize()
+            )
+
+        return jsonify({'success': True})
+    except Exception as e:
+        if 'db' in locals():
+            db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# --- New API Endpoints for Dashboard & Management ---
+
+@provider_bp.route('/api/scholarships/list')
+@login_required
+def api_scholarships_list():
+    """Get list of scholarships for dashboard charts/tables"""
+    if current_user.role != 'provider':
+        return jsonify([])
+    
+    scholarships = Scholarship.query.filter_by(provider_id=current_user.id).all()
+    data = []
+    for s in scholarships:
+        data.append({
+            'id': s.id,
+            'title': s.title,
+            'status': s.status,
+            'applications_count': s.applications.count(), # Use dynamic count
+            'deadline': s.deadline.strftime('%Y-%m-%d') if s.deadline else None,
+            'created_at': s.created_at.strftime('%Y-%m-%d')
+        })
+    return jsonify(data)
+
+@provider_bp.route('/api/applications/list')
+@login_required
+def api_applications_list():
+    """Get list of applications for dashboard"""
+    if current_user.role != 'provider':
+        return jsonify([])
+
+    scholarships = Scholarship.query.filter_by(provider_id=current_user.id).all()
+    scholarship_ids = [s.id for s in scholarships]
+    
+    applications = ScholarshipApplication.query.filter(
+        ScholarshipApplication.scholarship_id.in_(scholarship_ids)
+    ).all()
+    
+    data = []
+    for app in applications:
+        student = User.query.get(app.user_id)
+        scholarship = Scholarship.query.get(app.scholarship_id)
+        data.append({
+            'id': app.id,
+            'scholarship_name': scholarship.title if scholarship else 'Unknown',
+            'applicant_name': student.get_full_name() if student else 'Unknown',
+            'status': app.status,
+            'date': app.application_date.strftime('%Y-%m-%d')
+        })
+    return jsonify(data)
+
+@provider_bp.route('/api/announcements/history')
+@login_required
+def api_announcements_history():
+    """Get history of sent announcements (mock data for now or query notifications)"""
+    if current_user.role != 'provider':
+        return jsonify([])
+    # Ideally, we would query a 'SentNotifications' table or similar. 
+    # For now, return an empty list or basic mock to prevent 404.
+    return jsonify([])
+
+@provider_bp.route('/api/publish-by-code', methods=['POST'])
+@login_required
+def api_publish_by_code():
+    """Publish a scholarship by its code"""
+    if current_user.role != 'provider':
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+        
+    data = request.get_json()
+    code = data.get('code')
+    
+    if not code:
+        return jsonify({'success': False, 'error': 'Code required'}), 400
+        
+    scholarship = Scholarship.query.filter_by(code=code, provider_id=current_user.id).first()
+    if not scholarship:
+        return jsonify({'success': False, 'error': 'Scholarship not found'}), 404
+        
+    scholarship.status = 'approved'
+    db.session.commit()
+    
+    return jsonify({'success': True})
+
 @provider_bp.route('/api/create-scholarship', methods=['POST'])
 @login_required
-def create_scholarship():
-    """Create new scholarship"""
+def api_create_scholarship():
+    """Create a new scholarship"""
     if current_user.role != 'provider':
-        return jsonify({'error': 'Access denied'}), 403
-    
-    data = request.get_json()
-    if not data:
-        return jsonify({'success': False, 'error': 'No data provided'}), 400
-    
-    # Validate required fields
-    required_fields = ['code', 'title', 'deadline']
-    for field in required_fields:
-        if not data.get(field):
-            return jsonify({'success': False, 'error': f'{field} is required'}), 400
-    
-    try:
-        import sqlite3
-        import os
-        from datetime import datetime
-        db_path = os.path.join(current_app.instance_path, 'scholarsphere.db')
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
         
-        # Check if code already exists
-        cursor.execute("SELECT id FROM scholarships WHERE code = ?", (data['code'],))
-        if cursor.fetchone():
-            conn.close()
+    data = request.get_json()
+    
+    # Basic Validation
+    if not data.get('title') or not data.get('code'):
+        return jsonify({'success': False, 'error': 'Title and Code are required'}), 400
+        
+    try:
+        # Check for duplicate code
+        if Scholarship.query.filter_by(code=data['code']).first():
             return jsonify({'success': False, 'error': 'Scholarship code already exists'}), 400
+
+        new_scholarship = Scholarship(
+            provider_id=current_user.id,
+            title=data['title'],
+            code=data['code'],
+            description=data.get('description', ''),
+            amount=data.get('amount', ''),
+            status='draft', # Default to draft
+            # Parse deadline if provided
+            deadline=datetime.strptime(data['deadline'], '%Y-%m-%d').date() if data.get('deadline') else None
+        )
         
-        # Insert new scholarship with extended fields if columns exist
-        # Insert with extended columns (fallback to basic schema if migration not yet run)
+        db.session.add(new_scholarship)
+        db.session.commit()
+        
+        return jsonify({'success': True, 'id': new_scholarship.id})
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@provider_bp.route('/api/scholarship/<int:id>', methods=['GET', 'POST'])
+@login_required
+def api_scholarship_detail(id):
+    """Get or Update a scholarship"""
+    if current_user.role != 'provider':
+        return jsonify({'error': 'Unauthorized'}), 403
+        
+    scholarship = Scholarship.query.get_or_404(id)
+    
+    if scholarship.provider_id != current_user.id:
+        return jsonify({'error': 'Unauthorized'}), 403
+        
+    if request.method == 'GET':
+        return jsonify({
+            'success': True,
+            'scholarship': {
+                'id': scholarship.id,
+                'code': scholarship.code,
+                'title': scholarship.title,
+                'description': scholarship.description or '',
+                'amount': scholarship.amount or '',
+                'deadline': scholarship.deadline.strftime('%Y-%m-%d') if scholarship.deadline else '',
+                'created_date': scholarship.created_at.strftime('%Y-%m-%d') if scholarship.created_at else '',
+                'requirements': scholarship.requirements,
+                'status': scholarship.status,
+                'applications_count': scholarship.applications.count()
+            }
+        })
+        
+    elif request.method == 'POST':
+        data = request.get_json()
         try:
-            cursor.execute("""
-                INSERT INTO scholarships (
-                    code, title, description, type, level, eligibility,
-                    deadline, slots, contact_name, contact_email, contact_phone,
-                    requirements, provider_id, status, created_at, is_active
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, 1)
-            """, (
-                data['code'],
-                data['title'],
-                data.get('description'),
-                data.get('type'),
-                data.get('level'),
-                data.get('eligibility'),
-                data['deadline'],
-                int(data.get('slots') or 0) if str(data.get('slots') or '').strip().isdigit() else None,
-                data.get('contact_name'),
-                data.get('contact_email'),
-                data.get('contact_phone'),
-                (data.get('requirements') or ''),
-                current_user.id,
-                datetime.utcnow().isoformat()
-            ))
-        except Exception:
-            cursor.execute("""
-                INSERT INTO scholarships (code, title, deadline, requirements, provider_id, status, created_at, is_active)
-                VALUES (?, ?, ?, ?, ?, 'draft', ?, 1)
-            """, (
-                data['code'],
-                data['title'],
-                data['deadline'],
-                (data.get('requirements') or ''),
-                current_user.id,
-                datetime.utcnow().isoformat()
-            ))
-        
-        conn.commit()
-        conn.close()
-        
-        return jsonify({'success': True, 'message': 'Scholarship created successfully'})
-        
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+            if 'title' in data: scholarship.title = data['title']
+            if 'description' in data: scholarship.description = data['description']
+            if 'amount' in data: scholarship.amount = data['amount']
+            if 'requirements' in data: scholarship.requirements = data['requirements']
+            if 'deadline' in data and data['deadline']:
+                scholarship.deadline = datetime.strptime(data['deadline'], '%Y-%m-%d').date()
+            if 'status' in data: scholarship.status = data['status']
+            
+            db.session.commit()
+            return jsonify({'success': True})
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({'success': False, 'error': str(e)}), 500
 
-@provider_bp.route('/api/scholarship/<scholarship_id>', methods=['GET'])
+@provider_bp.route('/api/application/<int:id>')
 @login_required
-def get_scholarship(scholarship_id):
-    """Get scholarship details"""
+def api_application_detail(id):
+    """Get application details for modal"""
     if current_user.role != 'provider':
-        return jsonify({'error': 'Access denied'}), 403
-    
-    try:
-        import sqlite3
-        import os
-        from datetime import datetime
-        db_path = os.path.join(current_app.instance_path, 'scholarsphere.db')
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        
-        # Get scholarship by code (since we're using code as ID in the frontend)
-        cursor.execute("""
-            SELECT id, code, title, deadline, requirements, status, applications_count, created_at
-            FROM scholarships
-            WHERE code = ? AND provider_id = ?
-        """, (scholarship_id, current_user.id))
-        
-        row = cursor.fetchone()
-        conn.close()
-        
-        if not row:
-            return jsonify({'success': False, 'error': 'Scholarship not found'}), 404
-        
-        def fmt_date(s):
-            if not s:
-                return ''
-            try:
-                return datetime.fromisoformat(s.replace('Z','+00:00')).strftime('%Y-%m-%d')
-            except Exception:
-                return s
-        
-        scholarship = {
-            'id': row[0],
-            'code': row[1],
-            'title': row[2],
-            'deadline': fmt_date(row[3]),
-            'requirements': row[4] or '',
-            'status': (row[5] or 'draft').title(),
-            'applications': row[6] or 0,
-            'created_date': fmt_date(row[7])
-        }
-        
-        return jsonify({'success': True, 'scholarship': scholarship})
-        
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
 
-@provider_bp.route('/api/scholarship/<scholarship_id>', methods=['PUT'])
-@login_required
-def update_scholarship(scholarship_id):
-    """Update scholarship"""
-    if current_user.role != 'provider':
-        return jsonify({'error': 'Access denied'}), 403
+    application = ScholarshipApplication.query.get_or_404(id)
+    scholarship = Scholarship.query.get(application.scholarship_id)
     
-    data = request.get_json()
-    if not data:
-        return jsonify({'success': False, 'error': 'No data provided'}), 400
+    if not scholarship:
+        return jsonify({'success': False, 'error': 'Scholarship not found'}), 404
     
-    # Validate required fields
-    required_fields = ['code', 'title', 'deadline', 'requirements']
-    for field in required_fields:
-        if not data.get(field):
-            return jsonify({'success': False, 'error': f'{field} is required'}), 400
+    if scholarship.provider_id != current_user.id:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+        
+    student = User.query.get(application.user_id)
+    credentials = Credential.query.filter_by(user_id=application.user_id, is_active=True).all()
     
-    try:
-        import sqlite3
-        import os
-        from datetime import datetime
-        db_path = os.path.join(current_app.instance_path, 'scholarsphere.db')
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
+    cred_list = []
+    for cred in credentials:
+        cred_list.append({
+            'requirement_type': cred.credential_type,
+            'file_name': cred.file_name,
+            'file_path': cred.file_path
+        })
         
-        # Check if scholarship exists and belongs to current provider
-        cursor.execute("SELECT id FROM scholarships WHERE code = ? AND provider_id = ?", (scholarship_id, current_user.id))
-        if not cursor.fetchone():
-            conn.close()
-            return jsonify({'success': False, 'error': 'Scholarship not found'}), 404
-        
-        # Check if new code already exists (if code is being changed)
-        if data['code'] != scholarship_id:
-            cursor.execute("SELECT id FROM scholarships WHERE code = ? AND code != ?", (data['code'], scholarship_id))
-            if cursor.fetchone():
-                conn.close()
-                return jsonify({'success': False, 'error': 'Scholarship code already exists'}), 400
-        
-        # Update scholarship
-        updated = False
-        try:
-            cursor.execute("""
-                UPDATE scholarships 
-                SET code = ?, title = ?, description = ?, type = ?, level = ?, eligibility = ?, deadline = ?, slots = ?, contact_name = ?, contact_email = ?, contact_phone = ?, requirements = ?, updated_at = ?
-                WHERE code = ? AND provider_id = ?
-            """, (
-                data['code'],
-                data['title'],
-                data.get('description'),
-                data.get('type'),
-                data.get('level'),
-                data.get('eligibility'),
-                data['deadline'],
-                int(data.get('slots') or 0) if str(data.get('slots') or '').strip().isdigit() else None,
-                data.get('contact_name'),
-                data.get('contact_email'),
-                data.get('contact_phone'),
-                (data.get('requirements') or ''),
-                datetime.utcnow().isoformat(),
-                scholarship_id,
-                current_user.id
-            ))
-            updated = cursor.rowcount > 0
-        except Exception:
-            updated = False
-        if not updated:
-            cursor.execute("""
-                UPDATE scholarships 
-                SET code = ?, title = ?, deadline = ?, requirements = ?, updated_at = ?
-                WHERE code = ? AND provider_id = ?
-            """, (
-                data['code'],
-                data['title'],
-                data['deadline'],
-                (data.get('requirements') or ''),
-                datetime.utcnow().isoformat(),
-                scholarship_id,
-                current_user.id
-            ))
-        
-        conn.commit()
-        conn.close()
-        
-        return jsonify({'success': True, 'message': 'Scholarship updated successfully'})
-        
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+    return jsonify({
+        'success': True,
+        'application': {
+            'id': application.id,
+            'student_name': student.get_full_name() if student else 'Unknown',
+            'student_email': student.email if student else '',
+            'student_id': student.student_id if student else '',
+            'scholarship_title': scholarship.title,
+            'date_applied': application.application_date.strftime('%Y-%m-%d'),
+            'status': application.status
+        },
+        'credentials': cred_list
+    })
 
-@provider_bp.route('/api/scholarship/<scholarship_id>', methods=['DELETE'])
+@provider_bp.route('/api/scholarship/<int:id>/report-pdf')
 @login_required
-def delete_scholarship(scholarship_id):
-    """Delete scholarship"""
+def api_scholarship_report_pdf(id):
+    """Download PDF report for a specific scholarship"""
     if current_user.role != 'provider':
-        return jsonify({'error': 'Access denied'}), 403
-    
-    try:
-        import sqlite3
-        import os
-        db_path = os.path.join(current_app.instance_path, 'scholarsphere.db')
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        
-        # Check if scholarship exists and belongs to current provider
-        cursor.execute("SELECT id FROM scholarships WHERE code = ? AND provider_id = ?", (scholarship_id, current_user.id))
-        if not cursor.fetchone():
-            conn.close()
-            return jsonify({'success': False, 'error': 'Scholarship not found'}), 404
-        
-        # Delete scholarship
-        cursor.execute("DELETE FROM scholarships WHERE code = ? AND provider_id = ?", (scholarship_id, current_user.id))
-        
-        conn.commit()
-        conn.close()
-        
-        return jsonify({'success': True, 'message': 'Scholarship deleted successfully'})
-        
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return redirect(url_for('index'))
 
-@provider_bp.route('/api/approve-application', methods=['POST'])
-@login_required
-def approve_application():
-    """Approve application"""
-    if current_user.role != 'provider':
-        return jsonify({'error': 'Access denied'}), 403
-    
-    application_id = request.form.get('application_id')
-    
-    # Mock approval functionality
-    flash(f'Application {application_id} approved successfully!', 'success')
-    return jsonify({'message': f'Application {application_id} approved successfully'})
+    scholarship = Scholarship.query.get_or_404(id)
+    if scholarship.provider_id != current_user.id:
+        flash('Unauthorized', 'error')
+        return redirect(url_for('provider.scholarships'))
 
-@provider_bp.route('/api/reject-application', methods=['POST'])
-@login_required
-def reject_application():
-    """Reject application"""
-    if current_user.role != 'provider':
-        return jsonify({'error': 'Access denied'}), 403
+    buffer = io.BytesIO()
+    p = canvas.Canvas(buffer, pagesize=letter)
     
-    application_id = request.form.get('application_id')
+    p.drawString(100, 750, f"Scholarship Report: {scholarship.title}")
+    p.drawString(100, 730, f"Code: {scholarship.code}")
+    p.drawString(100, 710, f"Generated: {datetime.now().strftime('%Y-%m-%d')}")
+    p.drawString(100, 690, "-" * 50)
     
-    # Mock rejection functionality
-    flash(f'Application {application_id} rejected.', 'info')
-    return jsonify({'message': f'Application {application_id} rejected'})
+    y = 660
+    p.drawString(100, y, f"Status: {scholarship.status}")
+    y -= 20
+    p.drawString(100, y, f"Applicants: {scholarship.applications.count()}")
+    
+    # List applicants
+    y -= 40
+    p.drawString(100, y, "Applicant List:")
+    y -= 20
+    
+    for app in scholarship.applications:
+        student = User.query.get(app.user_id)
+        name = student.get_full_name() if student else "Unknown"
+        p.drawString(120, y, f"- {name} ({app.status})")
+        y -= 20
+        if y < 50: # New page if needed
+            p.showPage()
+            y = 750
 
-@provider_bp.route('/api/add-remarks', methods=['POST'])
-@login_required
-def add_remarks():
-    """Add application remarks"""
-    if current_user.role != 'provider':
-        return jsonify({'error': 'Access denied'}), 403
+    p.showPage()
+    p.save()
     
-    # Mock remarks addition
-    flash('Review remarks submitted successfully!', 'success')
-    return jsonify({'message': 'Review remarks submitted successfully'})
-
-@provider_bp.route('/api/create-schedule', methods=['POST'])
-@login_required
-def create_schedule():
-    """Create scholarship schedule"""
-    if current_user.role != 'provider':
-        return jsonify({'error': 'Access denied'}), 403
-    
-    # Mock schedule creation
-    flash('Schedule created successfully!', 'success')
-    return jsonify({'message': 'Schedule created successfully'})
+    buffer.seek(0)
+    response = make_response(buffer.getvalue())
+    response.headers['Content-Type'] = 'application/pdf'
+    response.headers['Content-Disposition'] = f'attachment; filename=report_{scholarship.code}.pdf'
+    return response

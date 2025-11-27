@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>New Announcement</title>
+</head>
+<body style="font-family: sans-serif; margin: 0; padding: 0; background-color: #f4f4f4;">
+    <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #f4f4f4;">
+        <tr>
+            <td align="center">
+                <table width="600" border="0" cellspacing="0" cellpadding="0" style="background-color: #ffffff; margin-top: 20px; margin-bottom: 20px;">
+                    <tr>
+                        <td align="center" style="padding: 20px 0;">
+                            <img src="cid:logo" alt="University of Cebu" width="150">
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 20px;">
+                            <h1 style="color: #333333;">{{ announcement_title }}</h1>
+                            <p style="color: #555555;">Dear {{ student_name }},</p>
+                            <p style="color: #555555;">
+                                {{ announcement_message|safe }}
+                            </p>
+                            <p style="color: #555555;">
+                                You can view more details by logging into the Scholarsphere portal.
+                            </p>
+                            <p style="color: #555555;">
+                                Thank you,<br>
+                                The Scholarsphere Team
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>

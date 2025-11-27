@@ -14,66 +14,79 @@ Adds columns if missing (safe to run multiple times):
 
 Usage: python migrate_extend_scholarships_fields.py
 """
-import os
-import sqlite3
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, 'instance', 'scholarsphere.db')
+from app import app, db
+from sqlalchemy import text
 
 
-def column_exists(cursor: sqlite3.Cursor, table: str, column: str) -> bool:
-    cursor.execute(f"PRAGMA table_info({table})")
-    cols = [row[1] for row in cursor.fetchall()]
-    return column in cols
+def column_exists(table: str, column: str) -> bool:
+    """Check if a column exists in a table (MySQL)"""
+    result = db.session.execute(text("""
+        SELECT COLUMN_NAME 
+        FROM INFORMATION_SCHEMA.COLUMNS 
+        WHERE TABLE_SCHEMA = DATABASE() 
+        AND TABLE_NAME = :table 
+        AND COLUMN_NAME = :column
+    """), {"table": table, "column": column})
+    return result.fetchone() is not None
 
 
-def add_column_if_missing(cursor: sqlite3.Cursor, table: str, column: str, ddl: str) -> None:
-    if not column_exists(cursor, table, column):
-        cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+def add_column_if_missing(table: str, column: str, ddl: str) -> None:
+    """Add a column if it doesn't exist (MySQL)"""
+    if not column_exists(table, column):
+        db.session.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}"))
 
 
 def migrate():
-    if not os.path.exists(DB_PATH):
-        raise SystemExit(f"Database not found at {DB_PATH}")
+    with app.app_context():
+        try:
+            # Check if scholarships table exists
+            result = db.session.execute(text("""
+                SELECT TABLE_NAME 
+                FROM INFORMATION_SCHEMA.TABLES 
+                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'scholarships'
+            """))
+            table_exists = result.fetchone() is not None
 
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
+            if not table_exists:
+                # Create scholarships table if it doesn't exist (MySQL syntax)
+                db.session.execute(text("""
+                    CREATE TABLE scholarships (
+                        id INT AUTO_INCREMENT NOT NULL,
+                        code VARCHAR(50) UNIQUE,
+                        PRIMARY KEY (id)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                """))
 
-    # Ensure scholarships table exists
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS scholarships (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            code TEXT UNIQUE
-        )
-    """)
+            # Add new columns if missing
+            add_column_if_missing('scholarships', 'description', 'TEXT')
+            add_column_if_missing('scholarships', 'type', 'VARCHAR(100)')
+            add_column_if_missing('scholarships', 'level', 'VARCHAR(100)')
+            add_column_if_missing('scholarships', 'eligibility', 'TEXT')
+            add_column_if_missing('scholarships', 'slots', 'INT')
+            add_column_if_missing('scholarships', 'contact_name', 'VARCHAR(255)')
+            add_column_if_missing('scholarships', 'contact_email', 'VARCHAR(255)')
+            add_column_if_missing('scholarships', 'contact_phone', 'VARCHAR(50)')
 
-    # Add new columns if missing
-    add_column_if_missing(cur, 'scholarships', 'description', 'TEXT')
-    add_column_if_missing(cur, 'scholarships', 'type', 'TEXT')
-    add_column_if_missing(cur, 'scholarships', 'level', 'TEXT')
-    add_column_if_missing(cur, 'scholarships', 'eligibility', 'TEXT')
-    add_column_if_missing(cur, 'scholarships', 'slots', 'INTEGER')
-    add_column_if_missing(cur, 'scholarships', 'contact_name', 'TEXT')
-    add_column_if_missing(cur, 'scholarships', 'contact_email', 'TEXT')
-    add_column_if_missing(cur, 'scholarships', 'contact_phone', 'TEXT')
+            # Keep existing columns commonly used by the app (no-op if present)
+            add_column_if_missing('scholarships', 'title', 'VARCHAR(255)')
+            add_column_if_missing('scholarships', 'deadline', 'DATE')
+            add_column_if_missing('scholarships', 'requirements', 'TEXT')
+            add_column_if_missing('scholarships', 'provider_id', 'INT')
+            add_column_if_missing('scholarships', 'status', "VARCHAR(20) DEFAULT 'draft'")
+            add_column_if_missing('scholarships', 'applications_count', 'INT DEFAULT 0')
+            add_column_if_missing('scholarships', 'pending_count', 'INT DEFAULT 0')
+            add_column_if_missing('scholarships', 'approved_count', 'INT DEFAULT 0')
+            add_column_if_missing('scholarships', 'disapproved_count', 'INT DEFAULT 0')
+            add_column_if_missing('scholarships', 'created_at', 'DATETIME')
+            add_column_if_missing('scholarships', 'updated_at', 'DATETIME')
+            add_column_if_missing('scholarships', 'is_active', 'TINYINT(1) DEFAULT 1')
 
-    # Keep existing columns commonly used by the app (no-op if present)
-    add_column_if_missing(cur, 'scholarships', 'title', 'TEXT')
-    add_column_if_missing(cur, 'scholarships', 'deadline', 'TEXT')
-    add_column_if_missing(cur, 'scholarships', 'requirements', 'TEXT')
-    add_column_if_missing(cur, 'scholarships', 'provider_id', 'INTEGER')
-    add_column_if_missing(cur, 'scholarships', 'status', "TEXT DEFAULT 'draft'")
-    add_column_if_missing(cur, 'scholarships', 'applications_count', 'INTEGER DEFAULT 0')
-    add_column_if_missing(cur, 'scholarships', 'pending_count', 'INTEGER DEFAULT 0')
-    add_column_if_missing(cur, 'scholarships', 'approved_count', 'INTEGER DEFAULT 0')
-    add_column_if_missing(cur, 'scholarships', 'disapproved_count', 'INTEGER DEFAULT 0')
-    add_column_if_missing(cur, 'scholarships', 'created_at', 'TEXT')
-    add_column_if_missing(cur, 'scholarships', 'updated_at', 'TEXT')
-    add_column_if_missing(cur, 'scholarships', 'is_active', 'INTEGER DEFAULT 1')
-
-    conn.commit()
-    conn.close()
-    print('Migration completed: scholarships table extended')
+            db.session.commit()
+            print('OK: Migration completed: scholarships table extended')
+            
+        except Exception as e:
+            db.session.rollback()
+            print(f'ERROR: Migration failed: {e}')
 
 
 if __name__ == '__main__':
