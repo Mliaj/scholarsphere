@@ -23,6 +23,11 @@ app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-here')
 
 # Construct MySQL database URL from environment variables if DATABASE_URL is not set
 database_url = os.environ.get('DATABASE_URL')
+
+# Fix for Render's Postgres URL (SQLAlchemy requires 'postgresql://', Render provides 'postgres://')
+if database_url and database_url.startswith('postgres://'):
+    database_url = database_url.replace('postgres://', 'postgresql://', 1)
+
 if not database_url or database_url.startswith('sqlite'):
     # Build MySQL connection string from individual environment variables
     db_host = os.environ.get('DB_HOST', '127.0.0.1')
