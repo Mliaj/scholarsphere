@@ -36,6 +36,9 @@ if not database_url or database_url.startswith('sqlite'):
     db_name = os.environ.get('DB_NAME', 'scholarsphere')
     db_port = int(os.environ.get('DB_PORT', 3306))
     database_url = f"mysql+pymysql://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
+    print(f"WARNING: Using MySQL fallback connection to {db_host}")
+else:
+    print(f"SUCCESS: Using PostgreSQL connection from DATABASE_URL")
 
 app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
