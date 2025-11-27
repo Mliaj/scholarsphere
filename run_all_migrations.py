@@ -92,6 +92,18 @@ def main():
             'function': 'backfill_from_legacy',
             'description': 'Migrate legacy schedule data to new schedule table (optional)',
             'optional': True
+        },
+        {
+            'name': 'Ensure Missing Tables',
+            'module': 'migrate_ensure_missing_tables',
+            'function': 'migrate',
+            'description': 'Final check to ensure scholarship_application_files and application_remarks exist'
+        },
+        {
+            'name': 'Drop Unique Constraint',
+            'module': 'migrate_drop_unique_constraint',
+            'function': 'migrate',
+            'description': 'Drop restrictive unique_user_scholarship index to allow re-application'
         }
     ]
     
