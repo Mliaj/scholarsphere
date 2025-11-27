@@ -503,22 +503,17 @@ def api_announcements_history():
     # For now, return an empty list or basic mock to prevent 404.
     return jsonify([])
 
-@provider_bp.route('/api/publish-by-code', methods=['POST'])
+@provider_bp.route('/api/scholarship/<int:id>/publish', methods=['POST'])
 @login_required
-def api_publish_by_code():
-    """Publish a scholarship by its code"""
+def api_publish_scholarship(id):
+    """Publish a scholarship by its ID"""
     if current_user.role != 'provider':
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
         
-    data = request.get_json()
-    code = data.get('code')
+    scholarship = Scholarship.query.get_or_404(id)
     
-    if not code:
-        return jsonify({'success': False, 'error': 'Code required'}), 400
-        
-    scholarship = Scholarship.query.filter_by(code=code, provider_id=current_user.id).first()
-    if not scholarship:
-        return jsonify({'success': False, 'error': 'Scholarship not found'}), 404
+    if scholarship.provider_id != current_user.id:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
         
     scholarship.status = 'approved'
     db.session.commit()
