@@ -173,7 +173,34 @@ class ScholarshipApplication(db.Model):
     # Relationships
     user = db.relationship('User', foreign_keys=[user_id], backref='scholarship_applications')
     reviewer = db.relationship('User', foreign_keys=[reviewed_by], backref='reviewed_applications')
+
+# Scholarship Application Files model (linking applications to credentials)
+class ScholarshipApplicationFile(db.Model):
+    __tablename__ = 'scholarship_application_files'
     
+    id = db.Column(db.Integer, primary_key=True)
+    application_id = db.Column(db.Integer, db.ForeignKey('scholarship_applications.id'), nullable=False)
+    credential_id = db.Column(db.Integer, db.ForeignKey('credentials.id'), nullable=False)
+    requirement_type = db.Column(db.String(100), nullable=False)
+    
+    # Relationships
+    application = db.relationship('ScholarshipApplication', backref='application_files')
+    credential = db.relationship('Credential')
+
+# Application Remarks model (for provider/admin notes on applications)
+class ApplicationRemark(db.Model):
+    __tablename__ = 'application_remarks'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    application_id = db.Column(db.Integer, db.ForeignKey('scholarship_applications.id'), nullable=False)
+    provider_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    remark_text = db.Column(db.Text, nullable=False)
+    status = db.Column(db.String(50), nullable=True) # e.g. 'pending', 'resolved'
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    
+    # Relationships
+    application = db.relationship('ScholarshipApplication', backref='remarks')
+    provider = db.relationship('User')
 
 # Notification model for student interactions
 class Notification(db.Model):
