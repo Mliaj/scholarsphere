@@ -301,35 +301,35 @@ def applications():
     applications_data = []
     for app in user_applications:
         # Parse dates robustly
-        app_date_str = str(app[4]) if app[4] else None
-        deadline_str = str(app[6]) if app[6] else None
+        app_date = app[4]
+        deadline_val = app[6]
 
-        app_date = None
-        if app_date_str:
+        if isinstance(app_date, str):
             try:
-                app_date = datetime.fromisoformat(app_date_str.replace('Z', '+00:00'))
+                app_date = datetime.fromisoformat(app_date.replace('Z', '+00:00'))
             except (ValueError, TypeError):
                 try:
-                    app_date = datetime.strptime(app_date_str, '%Y-%m-%d %H:%M:%S')
+                    app_date = datetime.strptime(app_date, '%Y-%m-%d %H:%M:%S')
                 except (ValueError, TypeError):
                     app_date = datetime.now() # Fallback
-        else:
+        elif not hasattr(app_date, 'strftime'):
             app_date = datetime.now()
 
         deadline = None
-        if deadline_str:
-            try:
-                deadline = datetime.fromisoformat(deadline_str.replace('Z', '+00:00'))
-            except (ValueError, TypeError):
+        if deadline_val:
+            if isinstance(deadline_val, str):
                 try:
-                    # For Date objects that get stringified
-                    deadline = datetime.strptime(deadline_str, '%Y-%m-%d')
+                    deadline = datetime.fromisoformat(deadline_val.replace('Z', '+00:00'))
                 except (ValueError, TypeError):
                     try:
-                        # For datetime strings without T
-                        deadline = datetime.strptime(deadline_str, '%Y-%m-%d %H:%M:%S')
+                        deadline = datetime.strptime(deadline_val, '%Y-%m-%d')
                     except (ValueError, TypeError):
-                        deadline = None
+                        try:
+                            deadline = datetime.strptime(deadline_val, '%Y-%m-%d %H:%M:%S')
+                        except (ValueError, TypeError):
+                            deadline = None
+            elif hasattr(deadline_val, 'strftime'):
+                deadline = deadline_val
         
         applications_data.append({
             'id': f"APP-{app[0]:03d}",
@@ -401,11 +401,21 @@ def scholarships():
         existing_application_status = application_statuses.get(scholarship_id)
         
         # Parse deadline
+        deadline_val = scholarship[5]
         deadline = None
-        if scholarship[5]:
-            try:
-                deadline = datetime.fromisoformat(scholarship[5].replace('Z','+00:00'))
-            except:
+        if deadline_val:
+            if isinstance(deadline_val, str):
+                try:
+                    deadline = datetime.fromisoformat(deadline_val.replace('Z','+00:00'))
+                except:
+                    # Try simple date format if isoformat fails
+                    try:
+                        deadline = datetime.strptime(deadline_val, '%Y-%m-%d')
+                    except:
+                        deadline = None
+            elif hasattr(deadline_val, 'strftime'):
+                deadline = deadline_val
+            else:
                 deadline = None
         
         # Convert requirements from short codes to descriptive names
