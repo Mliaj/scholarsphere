@@ -1143,22 +1143,41 @@ def update_profile():
                 current_user.profile_picture = unique_filename
         
         # Update user information
-        db.session.execute(
-            text("""
-                UPDATE users SET first_name=:fn, last_name=:ln, email=:em, birthday=:bd, year_level=:yl, course=:cr, updated_at=:ts
-                WHERE id = :id
-            """),
-            {
-                "fn": first_name,
-                "ln": last_name,
-                "em": email,
-                "bd": datetime.strptime(birthday, '%Y-%m-%d').date(),
-                "yl": year_level,
-                "cr": course,
-                "ts": datetime.utcnow(),
-                "id": current_user.id
-            }
-        )
+        if 'photo' in request.files and file.filename != '' and allowed_file(file.filename):
+             db.session.execute(
+                text("""
+                    UPDATE users SET first_name=:fn, last_name=:ln, email=:em, birthday=:bd, year_level=:yl, course=:cr, profile_picture=:pp, updated_at=:ts
+                    WHERE id = :id
+                """),
+                {
+                    "fn": first_name,
+                    "ln": last_name,
+                    "em": email,
+                    "bd": datetime.strptime(birthday, '%Y-%m-%d').date(),
+                    "yl": year_level,
+                    "cr": course,
+                    "pp": unique_filename,
+                    "ts": datetime.utcnow(),
+                    "id": current_user.id
+                }
+            )
+        else:
+             db.session.execute(
+                text("""
+                    UPDATE users SET first_name=:fn, last_name=:ln, email=:em, birthday=:bd, year_level=:yl, course=:cr, updated_at=:ts
+                    WHERE id = :id
+                """),
+                {
+                    "fn": first_name,
+                    "ln": last_name,
+                    "em": email,
+                    "bd": datetime.strptime(birthday, '%Y-%m-%d').date(),
+                    "yl": year_level,
+                    "cr": course,
+                    "ts": datetime.utcnow(),
+                    "id": current_user.id
+                }
+            )
 
         # Notify profile update
         db.session.execute(

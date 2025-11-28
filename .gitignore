@@ -28,3 +28,6 @@ Procfile
 # OS
 .DS_Store
 Thumbs.db
+
+# Uploaded files
+static/uploads/
