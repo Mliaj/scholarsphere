@@ -558,10 +558,10 @@ def api_create_scholarship():
         db.session.rollback()
         return jsonify({'success': False, 'error': str(e)}), 500
 
-@provider_bp.route('/api/scholarship/<int:id>', methods=['GET', 'POST'])
+@provider_bp.route('/api/scholarship/<int:id>', methods=['GET', 'POST', 'DELETE'])
 @login_required
 def api_scholarship_detail(id):
-    """Get or Update a scholarship"""
+    """Get, Update, or Archive a scholarship"""
     if current_user.role != 'provider':
         return jsonify({'error': 'Unauthorized'}), 403
         
@@ -603,6 +603,57 @@ def api_scholarship_detail(id):
         except Exception as e:
             db.session.rollback()
             return jsonify({'success': False, 'error': str(e)}), 500
+
+    elif request.method == 'DELETE':
+        try:
+            scholarship.status = 'archived'
+            db.session.commit()
+            return jsonify({'success': True})
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({'success': False, 'error': str(e)}), 500
+
+@provider_bp.route('/api/scholarship/<int:id>/restore', methods=['POST'])
+@login_required
+def api_scholarship_restore(id):
+    """Restore an archived scholarship"""
+    if current_user.role != 'provider':
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    scholarship = Scholarship.query.get_or_404(id)
+    
+    if scholarship.provider_id != current_user.id:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+        
+    try:
+        scholarship.status = 'draft'
+        db.session.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@provider_bp.route('/api/scholarship/<int:id>/permanent-delete', methods=['DELETE'])
+@login_required
+def api_scholarship_permanent_delete(id):
+    """Permanently delete a scholarship"""
+    if current_user.role != 'provider':
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    scholarship = Scholarship.query.get_or_404(id)
+    
+    if scholarship.provider_id != current_user.id:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+        
+    try:
+        # Try to delete. If foreign key constraints fail, it will raise an error.
+        db.session.delete(scholarship)
+        db.session.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        db.session.rollback()
+        # Check if error is due to integrity constraint (related records)
+        return jsonify({'success': False, 'error': 'Cannot delete scholarship. It may have related applications.'}), 500
 
 @provider_bp.route('/api/application/<int:id>')
 @login_required
