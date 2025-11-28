@@ -16,7 +16,7 @@ students_bp = Blueprint('students', __name__)
 UPLOAD_FOLDER = 'static/uploads/profile_pictures'
 CREDENTIALS_FOLDER = 'static/uploads/credentials'
 AWARDS_FOLDER = 'static/uploads/awards'
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf', 'doc', 'docx'}
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf', 'doc', 'docx', 'jfif'}
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -1121,7 +1121,8 @@ def update_profile():
         if row:
             return jsonify({'success': False, 'message': 'Email already taken by another user'}), 400
         
-        # Handle photo upload if provided
+        # Handle photo upload
+        new_profile_pic = None
         if 'photo' in request.files:
             file = request.files['photo']
             if file.filename != '' and allowed_file(file.filename):
@@ -1131,7 +1132,6 @@ def update_profile():
                 unique_filename = f"{uuid.uuid4()}_{current_user.id}.{file_extension}"
                 
                 # Create upload directory if it doesn't exist (absolute path)
-                from flask import current_app
                 base_dir = os.path.join(current_app.root_path, UPLOAD_FOLDER)
                 os.makedirs(base_dir, exist_ok=True)
                 
@@ -1139,11 +1139,12 @@ def update_profile():
                 file_path = os.path.join(base_dir, unique_filename)
                 file.save(file_path)
                 
-                # Update profile picture
-                current_user.profile_picture = unique_filename
+                new_profile_pic = unique_filename
+                # Update current_user object for immediate session consistency
+                current_user.profile_picture = new_profile_pic
         
-        # Update user information
-        if 'photo' in request.files and file.filename != '' and allowed_file(file.filename):
+        # Update user information in DB
+        if new_profile_pic:
              db.session.execute(
                 text("""
                     UPDATE users SET first_name=:fn, last_name=:ln, email=:em, birthday=:bd, year_level=:yl, course=:cr, profile_picture=:pp, updated_at=:ts
@@ -1156,7 +1157,7 @@ def update_profile():
                     "bd": datetime.strptime(birthday, '%Y-%m-%d').date(),
                     "yl": year_level,
                     "cr": course,
-                    "pp": unique_filename,
+                    "pp": new_profile_pic,
                     "ts": datetime.utcnow(),
                     "id": current_user.id
                 }
