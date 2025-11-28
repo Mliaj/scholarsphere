@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 from flask_login import login_required, current_user
-from app import db, User, Scholarship, ScholarshipApplication, Credential, Schedule, Notification
+from app import db, User, Scholarship, ScholarshipApplication, Credential, Schedule, Notification, ScholarshipApplicationFile
 from email_utils import send_email
 
 provider_bp = Blueprint('provider', __name__)
@@ -182,6 +182,7 @@ def documents():
             
         documents_data.append({
             'student_name': student.get_full_name() if student else "Unknown",
+            'student_id': student.student_id if student else "",
             'application_id': f"APP-{str(app.id).zfill(3)}",
             'scholarship_code': scholarship.code if scholarship else "",
             'scholarship_title': scholarship.title if scholarship else "",
@@ -545,6 +546,7 @@ def api_create_scholarship():
             description=data.get('description', ''),
             amount=data.get('amount', ''),
             status='draft', # Default to draft
+            requirements=data.get('requirements', ''),
             # Parse deadline if provided
             deadline=datetime.strptime(data['deadline'], '%Y-%m-%d').date() if data.get('deadline') else None
         )
@@ -558,10 +560,10 @@ def api_create_scholarship():
         db.session.rollback()
         return jsonify({'success': False, 'error': str(e)}), 500
 
-@provider_bp.route('/api/scholarship/<int:id>', methods=['GET', 'POST'])
+@provider_bp.route('/api/scholarship/<int:id>', methods=['GET', 'POST', 'DELETE'])
 @login_required
 def api_scholarship_detail(id):
-    """Get or Update a scholarship"""
+    """Get, Update, or Archive a scholarship"""
     if current_user.role != 'provider':
         return jsonify({'error': 'Unauthorized'}), 403
         
@@ -604,6 +606,57 @@ def api_scholarship_detail(id):
             db.session.rollback()
             return jsonify({'success': False, 'error': str(e)}), 500
 
+    elif request.method == 'DELETE':
+        try:
+            scholarship.status = 'archived'
+            db.session.commit()
+            return jsonify({'success': True})
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({'success': False, 'error': str(e)}), 500
+
+@provider_bp.route('/api/scholarship/<int:id>/restore', methods=['POST'])
+@login_required
+def api_scholarship_restore(id):
+    """Restore an archived scholarship"""
+    if current_user.role != 'provider':
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    scholarship = Scholarship.query.get_or_404(id)
+    
+    if scholarship.provider_id != current_user.id:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+        
+    try:
+        scholarship.status = 'draft'
+        db.session.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@provider_bp.route('/api/scholarship/<int:id>/permanent-delete', methods=['DELETE'])
+@login_required
+def api_scholarship_permanent_delete(id):
+    """Permanently delete a scholarship"""
+    if current_user.role != 'provider':
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    scholarship = Scholarship.query.get_or_404(id)
+    
+    if scholarship.provider_id != current_user.id:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+        
+    try:
+        # Try to delete. If foreign key constraints fail, it will raise an error.
+        db.session.delete(scholarship)
+        db.session.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        db.session.rollback()
+        # Check if error is due to integrity constraint (related records)
+        return jsonify({'success': False, 'error': 'Cannot delete scholarship. It may have related applications.'}), 500
+
 @provider_bp.route('/api/application/<int:id>')
 @login_required
 def api_application_detail(id):
@@ -621,15 +674,19 @@ def api_application_detail(id):
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
         
     student = User.query.get(application.user_id)
-    credentials = Credential.query.filter_by(user_id=application.user_id, is_active=True).all()
+    
+    # Fetch only the files linked to this specific application
+    application_files = ScholarshipApplicationFile.query.filter_by(application_id=application.id).all()
     
     cred_list = []
-    for cred in credentials:
-        cred_list.append({
-            'requirement_type': cred.credential_type,
-            'file_name': cred.file_name,
-            'file_path': cred.file_path
-        })
+    for app_file in application_files:
+        cred = app_file.credential
+        if cred and cred.is_active:
+            cred_list.append({
+                'requirement_type': app_file.requirement_type,
+                'file_name': cred.file_name,
+                'file_path': cred.file_path
+            })
         
     return jsonify({
         'success': True,

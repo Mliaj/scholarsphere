@@ -561,7 +561,7 @@
                 </div>
                 <div class="profile-field">
                     <label>Birthday</label>
-                    <input type="date" name="birthday" value="{{ user.birthday }}" required>
+                    <input type="date" name="birthday" value="{{ user.birthday }}" required id="editBirthday">
                 </div>
                 <div class="profile-field">
                     <label>Year Level</label>
@@ -603,6 +603,20 @@
 
 {% block extra_js %}
 <script>
+// Set max date for birthdate inputs to today
+document.addEventListener('DOMContentLoaded', function() {
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0'); // Months start at 0!
+    const dd = String(today.getDate()).padStart(2, '0');
+    const maxDate = `${yyyy}-${mm}-${dd}`;
+
+    const editBirthdayInput = document.getElementById('editBirthday');
+    if (editBirthdayInput) {
+        editBirthdayInput.setAttribute('max', maxDate);
+    }
+});
+
 function editProfile() {
     showModal('profileModal');
 }

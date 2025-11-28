@@ -440,6 +440,22 @@ async function loadNotifications(){
 function startNotif(){ loadNotifications(); if(notifTimer) clearInterval(notifTimer); notifTimer=setInterval(loadNotifications,10000); }
 async function markAllAsRead(){ try{ await fetch('/students/api/notifications/mark-read',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})}); await loadNotifications(); document.getElementById('notificationDropdown').classList.remove('show'); }catch(e){} }
 
+const REQUIREMENT_MAPPINGS = {
+    'photo_2x2': 'Recent 2x2 or passport-size photo',
+    'valid_id': 'Valid School ID or any government-issued ID',
+    'enrollment_cert': 'Certificate of Enrollment',
+    'report_card': 'Report Card / Transcript of Records (TOR)',
+    'good_moral': 'Certificate of Good Moral Character',
+    'recommendation_letter': 'Recommendation Letter',
+    'honors_awards': 'Honors or Awards Certificates',
+    'indigency_cert': 'Certificate of Indigency',
+    'itr': "Parents' or Guardians' Income Tax Return (ITR)",
+    'proof_income': 'Proof of Income',
+    'barangay_clearance': 'Barangay Clearance or Residency Certificate',
+    'birth_cert': 'Birth Certificate (PSA or NSO)',
+    'medical_cert': 'Medical Certificate'
+};
+
 document.addEventListener('DOMContentLoaded', startNotif);
 document.addEventListener('click', function(e){ const bell=document.querySelector('.notification-bell'); const dd=document.getElementById('notificationDropdown'); if(bell&&dd&&!bell.contains(e.target)) dd.classList.remove('show'); });
 function openAppDetails(appId){
@@ -448,7 +464,10 @@ function openAppDetails(appId){
     .then(d=>{
       if(!d.success){ showNotification(d.error||'Failed', 'error'); return; }
       const a=d.application;
-      const docs = a.documents.length ? a.documents.map(x=>`<li><strong>${x.requirement_type}:</strong> ${x.file_name}</li>`).join('') : '<li>No documents linked.</li>';
+      const docs = a.documents.length ? a.documents.map(x=> {
+          const label = REQUIREMENT_MAPPINGS[x.requirement_type] || x.requirement_type;
+          return `<li><strong>${label}:</strong> ${x.file_name}</li>`;
+      }).join('') : '<li>No documents linked.</li>';
       const remarks = a.remarks.length ? a.remarks.map(r=>`<div style="padding:.5rem 0; border-bottom:1px solid #eee;"><div><strong>${r.provider}</strong> — <em>${r.status}</em></div><div>${r.text}</div><div style="color:#999;font-size:.85rem;">${r.date||''}</div></div>`).join('') : '<div>No remarks yet.</div>';
       const schedules = a.schedules.length ? a.schedules.map(s=>`<li>${s.date} ${s.time} — ${s.location||'TBD'} ${s.notes?(' — '+s.notes):''}</li>`).join('') : '<li>No schedules yet.</li>';
       const html = `

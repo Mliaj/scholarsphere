@@ -506,12 +506,33 @@ window.onclick = function(event) {
   }
 }
 
+const REQUIREMENT_MAPPINGS = {
+    'photo_2x2': 'Recent 2x2 or passport-size photo',
+    'valid_id': 'Valid School ID or any government-issued ID',
+    'enrollment_cert': 'Certificate of Enrollment',
+    'report_card': 'Report Card / Transcript of Records (TOR)',
+    'good_moral': 'Certificate of Good Moral Character',
+    'recommendation_letter': 'Recommendation Letter',
+    'honors_awards': 'Honors or Awards Certificates',
+    'indigency_cert': 'Certificate of Indigency',
+    'itr': "Parents' or Guardians' Income Tax Return (ITR)",
+    'proof_income': 'Proof of Income',
+    'barangay_clearance': 'Barangay Clearance or Residency Certificate',
+    'birth_cert': 'Birth Certificate (PSA or NSO)',
+    'medical_cert': 'Medical Certificate'
+};
+
 // View scholarship function
 function viewScholarship(id){
   fetch(`/provider/api/scholarship/${id}`)
     .then(response => response.json())
     .then(data => {
       if (data.success) {
+        const reqs = (data.scholarship.requirements || '').split(',').filter(r=>r.trim()).map(req => {
+            const code = req.trim();
+            return REQUIREMENT_MAPPINGS[code] || code;
+        });
+
         const content = document.getElementById('viewScholarshipContent');
         content.innerHTML = `
           <div style="display: grid; gap: 1rem;">
@@ -521,7 +542,7 @@ function viewScholarship(id){
             <div><strong>Created:</strong> ${data.scholarship.created_date}</div>
             <div><strong>Status:</strong> <span class="status ${data.scholarship.status.toLowerCase()}">${data.scholarship.status}</span></div>
             <div><strong>Applications:</strong> ${data.scholarship.applications_count}</div>
-            <div><strong>Requirements:</strong><br>${(data.scholarship.requirements || '').split(',').map(req => `• ${req.trim()}`).join('<br>')}</div>
+            <div><strong>Requirements:</strong><br>${reqs.length ? reqs.map(r => `• ${r}`).join('<br>') : 'No specific requirements'}</div>
           </div>
         `;
         document.getElementById('viewScholarshipModal').style.display = 'block';
