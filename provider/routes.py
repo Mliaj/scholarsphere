@@ -182,6 +182,7 @@ def documents():
             
         documents_data.append({
             'student_name': student.get_full_name() if student else "Unknown",
+            'student_id': student.student_id if student else "",
             'application_id': f"APP-{str(app.id).zfill(3)}",
             'scholarship_code': scholarship.code if scholarship else "",
             'scholarship_title': scholarship.title if scholarship else "",

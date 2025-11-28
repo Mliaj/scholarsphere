@@ -74,13 +74,21 @@
       </div>
     </div>
 
-    <div>
+    <!-- Search Bar -->
+    <div style="margin-bottom: 2rem;">
+      <input type="text" id="docSearch" class="form-control" placeholder="Search by student name or ID..." style="max-width: 400px; padding: 0.8rem; border-radius: 10px; border: 1px solid #ddd; font-size: 1rem;">
+    </div>
+
+    <div id="documentsContainer">
       {% if documents %}
         {% for doc in documents %}
-        <div class="document-section">
+        <div class="document-section" data-student-name="{{ doc.student_name.lower() }}" data-student-id="{{ doc.student_id }}">
           <div class="document-header">
             <div class="student-info">
               <h3>{{ doc.student_name }}</h3>
+              {% if doc.student_id %}
+              <p style="color:#0072ce; font-weight:600;">ID: {{ doc.student_id }}</p>
+              {% endif %}
               <p><strong>Application:</strong> {{ doc.application_id }}</p>
               <p><strong>Scholarship:</strong> {{ doc.scholarship_code }} - {{ doc.scholarship_title }}</p>
               <p><strong>Status:</strong> {{ doc.status }}</p>
@@ -121,8 +129,34 @@
         </div>
       {% endif %}
     </div>
+    <div id="noResults" style="display:none; text-align:center; padding:3rem; color:#666;">
+      <i class="fas fa-search" style="font-size:2rem; margin-bottom:1rem; opacity:0.5;"></i>
+      <p>No matching documents found.</p>
+    </div>
   </div>
 </div>
+
+<script>
+document.getElementById('docSearch').addEventListener('keyup', function() {
+  const query = this.value.toLowerCase().trim();
+  const sections = document.querySelectorAll('.document-section');
+  let hasMatch = false;
+
+  sections.forEach(section => {
+    const name = section.getAttribute('data-student-name') || '';
+    const id = section.getAttribute('data-student-id') || '';
+    
+    if (name.includes(query) || id.includes(query)) {
+      section.style.display = '';
+      hasMatch = true;
+    } else {
+      section.style.display = 'none';
+    }
+  });
+
+  document.getElementById('noResults').style.display = (hasMatch || sections.length === 0) ? 'none' : 'block';
+});
+</script>
 {% endblock %}
 
 
