@@ -65,6 +65,25 @@
 
     .applications-container { display:grid; gap:1.5rem; }
     
+    /* Modal Styles */
+    .modal { display:none; position:fixed; z-index:1000; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.5); }
+    .modal-content { background:#fff; margin:2% auto; padding:0; border-radius:15px; width:90%; max-width:800px; max-height:90vh; overflow-y:auto; box-shadow:0 10px 30px rgba(0,0,0,0.3); }
+    .modal-header { padding:1.5rem; border-bottom:1px solid #e9ecef; background:#f8f9fa; border-radius:15px 15px 0 0; display:flex; justify-content:space-between; align-items:center; }
+    .modal-title { font-size:1.5rem; font-weight:700; color:#003366; margin:0; }
+    .close { background:none; border:none; font-size:2rem; color:#666; cursor:pointer; padding:0; width:30px; height:30px; display:flex; align-items:center; justify-content:center; }
+    .close:hover { color:#000; }
+    .modal-body { padding:2rem; }
+    .modal-footer { padding:1.5rem; border-top:1px solid #e9ecef; background:#f8f9fa; border-radius:0 0 15px 15px; display:flex; justify-content:flex-end; gap:1rem; }
+    .btn-modal { padding:0.75rem 1.5rem; border:none; border-radius:8px; font-weight:600; cursor:pointer; }
+    .btn-modal.primary { background:#007bff; color:#fff; }
+    .btn-modal.primary:hover { background:#0056b3; }
+    .btn-modal.secondary { background:#6c757d; color:#fff; }
+    .btn-modal.secondary:hover { background:#545b62; }
+    .form-group { margin-bottom:1.5rem; }
+    .form-group label { display:block; margin-bottom:.5rem; font-weight:600; color:#333; }
+    .form-control { width:100%; padding:.75rem; border:1px solid #ddd; border-radius:8px; font-size:1rem; box-sizing:border-box; }
+    .form-control:focus { outline:none; border-color:#007bff; }
+    
     @media (max-width:1024px){ .sidebar{width:250px;} .main-content{margin-left:250px;} }
     @media (max-width:768px){ .sidebar{transform:translateX(-100%); transition:transform .3s;} .sidebar.open{transform:translateX(0);} .main-content{margin-left:0;} .stats-bar{flex-direction:column;} }
 </style>
@@ -229,34 +248,13 @@
   </div>
 </div>
 
-
-
-
-<style>
-.modal { display:none; position:fixed; z-index:1000; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.5); }
-.modal-content { background:#fff; margin:2% auto; padding:0; border-radius:15px; width:90%; max-width:800px; max-height:90vh; overflow-y:auto; box-shadow:0 10px 30px rgba(0,0,0,0.3); }
-.modal-header { padding:1.5rem; border-bottom:1px solid #e9ecef; background:#f8f9fa; border-radius:15px 15px 0 0; display:flex; justify-content:space-between; align-items:center; }
-.modal-title { font-size:1.5rem; font-weight:700; color:#003366; margin:0; }
-.close { background:none; border:none; font-size:2rem; color:#666; cursor:pointer; padding:0; width:30px; height:30px; display:flex; align-items:center; justify-content:center; }
-.close:hover { color:#000; }
-.modal-body { padding:2rem; }
-.modal-footer { padding:1.5rem; border-top:1px solid #e9ecef; background:#f8f9fa; border-radius:0 0 15px 15px; display:flex; justify-content:flex-end; gap:1rem; }
-.btn-modal { padding:0.75rem 1.5rem; border:none; border-radius:8px; font-weight:600; cursor:pointer; }
-.btn-modal.primary { background:#007bff; color:#fff; }
-.btn-modal.primary:hover { background:#0056b3; }
-.btn-modal.secondary { background:#6c757d; color:#fff; }
-.btn-modal.secondary:hover { background:#545b62; }
-.form-group { margin-bottom:1.5rem; }
-.form-group label { display:block; margin-bottom:.5rem; font-weight:600; color:#333; }
-.form-control { width:100%; padding:.75rem; border:1px solid #ddd; border-radius:8px; font-size:1rem; box-sizing:border-box; }
-.form-control:focus { outline:none; border-color:#007bff; }
-
-
-</style>
-
 <script>
-// Track which applications have had their documents verified in this session
-const verifiedDocuments = {};
+// Track verification state for the current application view
+let currentAppVerification = {
+    id: null,
+    total: 0,
+    verifiedCount: 0
+};
 
 const REQUIREMENT_MAPPINGS = {
     'photo_2x2': 'Recent 2x2 or passport-size photo',
@@ -276,6 +274,8 @@ const REQUIREMENT_MAPPINGS = {
 
 function closeApplicationModal() {
   document.getElementById('applicationDetailsModal').style.display = 'none';
+  // Reset state
+  currentAppVerification = { id: null, total: 0, verifiedCount: 0 };
 }
 
 function closeReviewConfirm() {
@@ -284,12 +284,61 @@ function closeReviewConfirm() {
 }
 
 function viewApplication(applicationId) {
-  // Fetch application details from API
   fetch(`/provider/api/application/${applicationId}`)
     .then(response => response.json())
     .then(data => {
       if (data.success) {
+        // Initialize verification state based on API data
+        currentAppVerification.id = applicationId;
+        currentAppVerification.total = (data.credentials && data.credentials.length) ? data.credentials.length : 0;
+        currentAppVerification.verifiedCount = 0;
+
         const content = document.getElementById('applicationDetailsContent');
+        
+        let credentialsHtml = '<div><strong>No documents submitted yet.</strong></div>';
+        
+        if (data.credentials && data.credentials.length > 0) {
+            const rows = data.credentials.map((cred) => {
+                const reqLabel = REQUIREMENT_MAPPINGS[cred.requirement_type] || cred.requirement_type;
+                // Check backend status for 'approved' to determine verified state
+                const isVerified = (cred.status && cred.status.toLowerCase() === 'approved');
+                
+                if (isVerified) {
+                    currentAppVerification.verifiedCount++;
+                }
+
+                const btnHtml = isVerified 
+                    ? `<button class="btn-sm btn-approve" disabled style="opacity:0.6; cursor:not-allowed;"><i class="fas fa-check-circle"></i> Verified</button>`
+                    : `<button class="btn-sm btn-approve" id="verifyBtn-${cred.id}" onclick="verifyDocument(${cred.id}, 'verifyBtn-${cred.id}')"><i class="fas fa-check"></i> Verify</button>`;
+
+                return `
+                  <div style="padding:1rem; background:#f8f9fa; border-radius:8px; display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                      <strong>${reqLabel}</strong>
+                      <div style="font-size:0.9rem; color:#666;">${cred.file_name}</div>
+                    </div>
+                    <div style="display:flex; gap:0.5rem;">
+                      <button class="btn-sm btn-view" onclick="window.open('/static/uploads/credentials/${cred.file_path}', '_blank')">
+                        <i class="fas fa-download"></i> View
+                      </button>
+                      ${btnHtml}
+                    </div>
+                  </div>
+                `;
+            }).join('');
+            
+            credentialsHtml = `
+              <div>
+                <h3 style="color:#003366; margin-bottom:1rem;">Submitted Documents</h3>
+                <div style="margin-bottom:0.75rem; font-size:0.9rem; color:#555;" id="docsStatus">
+                  Documents verified: <strong>${currentAppVerification.verifiedCount} of ${currentAppVerification.total}</strong>
+                </div>
+                <div style="display:grid; gap:0.75rem;">
+                    ${rows}
+                </div>
+              </div>`;
+        }
+
         content.innerHTML = `
           <div style="display:grid; gap:1.5rem;">
             <div>
@@ -308,61 +357,9 @@ function viewApplication(applicationId) {
                 <div><strong>Status:</strong> <span class="application-status ${data.application.status.toLowerCase()}">${data.application.status}</span></div>
               </div>
             </div>
-            ${data.credentials && data.credentials.length > 0 ? `
-            <div>
-              <h3 style=\"color:#003366; margin-bottom:1rem;\">Submitted Documents</h3>
-              <div style=\"margin-bottom:0.75rem; font-size:0.9rem; color:#555;\" id=\"docsStatus-${applicationId}\">
-                Documents status: <strong>Loading...</strong>
-              </div>
-              <div style=\"display:grid; gap:0.75rem;\">
-                ${data.credentials.map((cred, idx) => {
-                  const reqLabel = REQUIREMENT_MAPPINGS[cred.requirement_type] || cred.requirement_type;
-                  return `
-                  <div style=\"padding:1rem; background:#f8f9fa; border-radius:8px; display:flex; justify-content:space-between; align-items:center;\" data-app-id=\"${applicationId}\" data-doc-index=\"${idx}\">
-                    <div>
-                      <strong>${reqLabel}</strong>
-                      <div style=\"font-size:0.9rem; color:#666;\">${cred.file_name}</div>
-                    </div>
-                    <div style=\"display:flex; gap:0.5rem;\">
-                      <button class=\"btn-sm btn-view\" onclick=\"window.open('/static/uploads/credentials/${cred.file_path}', '_blank')\">\n                        <i class=\"fas fa-download\"></i> View\n                      </button>
-                      <button class=\"btn-sm btn-approve\" id=\"verifyBtn-${applicationId}-${idx}\" onclick=\"verifyDocument(${applicationId}, ${idx})\">
-                        <i class=\"fas fa-check\"></i> Verify
-                      </button>
-                    </div>
-                  </div>
-                `;
-                }).join('')}
-              </div>
-            </div>
-            ` : '<div><strong>No documents submitted yet.</strong></div>'}
+            ${credentialsHtml}
           </div>
         `;
-
-        // Initialize verification tracking for this application (per-document)
-        const totalDocs = (data.credentials && data.credentials.length) ? data.credentials.length : 0;
-        const verifiedSet = loadVerifiedDocuments(applicationId);
-        verifiedDocuments[applicationId] = { total: totalDocs, verified: verifiedSet };
-        
-        // Save total count to localStorage for persistence across reloads
-        localStorage.setItem(`verified_total_${applicationId}`, totalDocs);
-        
-        // Update verification status display
-        updateVerificationStatus(applicationId, verifiedSet.size, totalDocs);
-        
-        // Update UI for already verified documents
-        if (data.credentials && data.credentials.length > 0) {
-          data.credentials.forEach((cred, idx) => {
-            if (verifiedSet.has(idx)) {
-              const verifyBtn = document.getElementById(`verifyBtn-${applicationId}-${idx}`);
-              if (verifyBtn) {
-                verifyBtn.innerHTML = '<i class="fas fa-check-circle"></i> Verified';
-                verifyBtn.disabled = true;
-                verifyBtn.style.opacity = '0.6';
-                verifyBtn.style.cursor = 'not-allowed';
-              }
-            }
-          });
-        }
 
         document.getElementById('applicationDetailsModal').style.display = 'block';
       } else {
@@ -371,50 +368,61 @@ function viewApplication(applicationId) {
     })
     .catch(error => {
       console.error('Error:', error);
-      showNotification('Error loading application details. Please try again.', 'error');
+      showNotification('Error loading application details', 'error');
     });
 }
 
-function closeApplicationModal() {
-  document.getElementById('applicationDetailsModal').style.display = 'none';
-}
+function verifyDocument(credentialId, btnId) {
+  const btn = document.getElementById(btnId);
+  const originalContent = btn.innerHTML;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+  btn.disabled = true;
 
-function closeReviewConfirm() {
-  document.getElementById('reviewConfirmModal').style.display = 'none';
-  location.reload(); // Reload to update list status
+  fetch(`/provider/api/credential/${credentialId}/review`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'approve' })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.success) {
+        btn.innerHTML = '<i class="fas fa-check-circle"></i> Verified';
+        btn.style.opacity = '0.6';
+        btn.style.cursor = 'not-allowed';
+        
+        currentAppVerification.verifiedCount++;
+        const statusEl = document.getElementById('docsStatus');
+        if (statusEl) {
+            statusEl.innerHTML = `Documents verified: <strong>${currentAppVerification.verifiedCount} of ${currentAppVerification.total}</strong>`;
+        }
+        showNotification('Document verified successfully.', 'success');
+    } else {
+        btn.innerHTML = originalContent;
+        btn.disabled = false;
+        showNotification('Verification failed: ' + (data.error || 'Unknown error'), 'error');
+    }
+  })
+  .catch(err => {
+    console.error(err);
+    btn.innerHTML = originalContent;
+    btn.disabled = false;
+    showNotification('Verification failed. Check connection.', 'error');
+  });
 }
-
-let pendingReviewAction = null;
 
 function reviewApplication(applicationId, action) {
   if (action === 'approve') {
-    let info = verifiedDocuments[applicationId];
-    
-    // If not in memory, try to load from localStorage
-    if (!info) {
-        const storedTotal = localStorage.getItem(`verified_total_${applicationId}`);
-        if (storedTotal !== null) {
-            const verifiedSet = loadVerifiedDocuments(applicationId);
-            info = { total: parseInt(storedTotal), verified: verifiedSet };
-            verifiedDocuments[applicationId] = info; // Cache it
+    // If modal is open for this app, use live count
+    if (currentAppVerification.id === applicationId) {
+        if (currentAppVerification.total > 0 && currentAppVerification.verifiedCount < currentAppVerification.total) {
+            showNotification('Please verify all documents before approving.', 'warning');
+            return;
         }
-    }
-
-    // If there are documents, require all of them to be verified
-    if (info && info.total > 0 && info.verified.size < info.total) {
-      showNotification('Please verify each submitted document for this application before approving.', 'warning');
-      // Open modal to help user verify
-      viewApplication(applicationId);
-      return;
-    }
-    
-    // If info is completely missing (never viewed), force view
-    if (!info) {
-         // We assume if we don't know about docs, we shouldn't blindly approve.
-         // Fetching details to check doc count would be ideal, but simpler to just open the modal.
-         showNotification('Please view application details and verify documents first.', 'info');
-         viewApplication(applicationId);
-         return;
+    } else {
+        // Force provider to view details first
+        viewApplication(applicationId);
+        showNotification('Please review details and verify documents first.', 'info');
+        return;
     }
   }
 
@@ -427,17 +435,18 @@ function reviewApplication(applicationId, action) {
 function proceedWithReview(applicationId, action) {
   fetch(`/provider/api/application/${applicationId}/review`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: action })
   })
     .then(response => response.json())
     .then(data => {
       if (data.success) {
-        // Show confirmation modal
         const body = document.getElementById('reviewConfirmBody');
-        body.innerHTML = `<div style=\"display:grid; gap:.75rem;\">\n  <div><strong>Application:</strong> APP-${String(applicationId).padStart(3,'0')}</div>\n  <div><strong>Result:</strong> ${action==='approve'?'Approved':'Rejected'}</div>\n  <div>The student has been notified.</div>\n</div>`;
+        body.innerHTML = `<div style="display:grid; gap:.75rem;">
+          <div><strong>Application:</strong> APP-${String(applicationId).padStart(3,'0')}</div>
+          <div><strong>Result:</strong> ${action==='approve'?'Approved':'Rejected'}</div>
+          <div>The student has been notified.</div>
+        </div>`;
         document.getElementById('reviewConfirmModal').style.display = 'block';
       } else {
         showNotification('Error: ' + (data.error || 'Unknown error'), 'error');
@@ -445,82 +454,11 @@ function proceedWithReview(applicationId, action) {
     })
     .catch(error => {
       console.error('Error:', error);
-      showNotification('Error processing application. Please try again.', 'error');
+      showNotification('Error processing application.', 'error');
     });
 }
 
-function verifyDocument(applicationId, docIndex) {
-  const info = verifiedDocuments[applicationId];
-  if (!info) {
-    // Initialize if somehow missing (defensive)
-    verifiedDocuments[applicationId] = { total: 1, verified: new Set() };
-  }
-
-  const currentInfo = verifiedDocuments[applicationId];
-  currentInfo.verified.add(docIndex);
-  
-  // Persist verification to localStorage
-  saveVerifiedDocument(applicationId, docIndex);
-
-  // Update UI
-  const verifyBtn = document.getElementById(`verifyBtn-${applicationId}-${docIndex}`);
-  if (verifyBtn) {
-    verifyBtn.innerHTML = '<i class="fas fa-check-circle"></i> Verified';
-    verifyBtn.disabled = true;
-    verifyBtn.style.opacity = '0.6';
-    verifyBtn.style.cursor = 'not-allowed';
-  }
-
-  // Update status display
-  updateVerificationStatus(applicationId, currentInfo.verified.size, currentInfo.total);
-
-  // Show success alert for document verification
-  showNotification('Document verified successfully.', 'success');
-}
-
-// Load verified documents from localStorage
-function loadVerifiedDocuments(applicationId) {
-  try {
-    const stored = localStorage.getItem(`verified_${applicationId}`);
-    if (stored) {
-      const indices = JSON.parse(stored);
-      return new Set(indices);
-    }
-  } catch (e) {
-    console.error('Error loading verified documents:', e);
-  }
-  return new Set();
-}
-
-// Save verified document to localStorage
-function saveVerifiedDocument(applicationId, docIndex) {
-  try {
-    const stored = localStorage.getItem(`verified_${applicationId}`);
-    let indices = stored ? JSON.parse(stored) : [];
-    if (!indices.includes(docIndex)) {
-      indices.push(docIndex);
-      localStorage.setItem(`verified_${applicationId}`, JSON.stringify(indices));
-    }
-  } catch (e) {
-    console.error('Error saving verified document:', e);
-  }
-}
-
-// Check if document is verified
-function isDocumentVerified(applicationId, docIndex) {
-  const verified = loadVerifiedDocuments(applicationId);
-  return verified.has(docIndex);
-}
-
-// Update verification status display
-function updateVerificationStatus(applicationId, verifiedCount, totalCount) {
-  const statusEl = document.getElementById(`docsStatus-${applicationId}`);
-  if (statusEl) {
-    statusEl.innerHTML = `Documents status: <strong>${verifiedCount} of ${totalCount} verified</strong>`;
-  }
-}
-
-// Simple client-side status filter for quick visibility of withdrawn / other applications
+// Client-side filter
 document.addEventListener('DOMContentLoaded', function() {
   const filter = document.getElementById('statusFilter');
   if (!filter) return;
@@ -538,8 +476,7 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 });
 
-// Auto-refresh logic: if new applications arrive for this provider, reload the page
-// so the list and counts reflect the latest state without manual refresh.
+// Auto-refresh
 (function autoRefreshOnNewApplications(){
   const initialTotal = {{ total_applications }};
   let lastTotal = initialTotal;
@@ -548,24 +485,15 @@ document.addEventListener('DOMContentLoaded', function() {
     try {
       const resp = await fetch('/provider/api/applications/list', { headers: { 'Accept': 'application/json' } });
       const data = await resp.json();
-      if (!data.success || !Array.isArray(data.applications)) {
-        return;
-      }
-      const currentTotal = data.applications.length;
-      if (currentTotal !== lastTotal) {
-        // New (or removed) applications detected – reload to reflect changes.
+      if (!data.success || !Array.isArray(data.applications)) return;
+      
+      // Only refresh if total count changed, to avoid interrupting review
+      if (data.applications.length !== lastTotal) {
         window.location.reload();
       }
-    } catch (e) {
-      // Fail silently; next interval will try again.
-      console.error('Auto-refresh check failed:', e);
-    }
+    } catch (e) { console.error('Auto-refresh check failed:', e); }
   }
-
-  // Poll every 10 seconds; adjust if needed.
   setInterval(checkForUpdates, 10000);
 })();
 </script>
 {% endblock %}
-
-

@@ -94,8 +94,8 @@ def applications():
             app.student_id = student.student_id if student else ""
             app.application_id = app.id
             app.date_applied = app.application_date.strftime('%Y-%m-%d')
-            # Count files
-            app.file_count = Credential.query.filter_by(user_id=app.user_id, is_active=True).count()
+            # Count files linked to this application
+            app.file_count = ScholarshipApplicationFile.query.filter_by(application_id=app.id).count()
             
         s.display_applications = apps_list
 
@@ -683,9 +683,11 @@ def api_application_detail(id):
         cred = app_file.credential
         if cred and cred.is_active:
             cred_list.append({
+                'id': cred.id,
                 'requirement_type': app_file.requirement_type,
                 'file_name': cred.file_name,
-                'file_path': cred.file_path
+                'file_path': cred.file_path,
+                'status': cred.status
             })
         
     return jsonify({
