@@ -545,6 +545,7 @@ def api_create_scholarship():
             description=data.get('description', ''),
             amount=data.get('amount', ''),
             status='draft', # Default to draft
+            requirements=data.get('requirements', ''),
             # Parse deadline if provided
             deadline=datetime.strptime(data['deadline'], '%Y-%m-%d').date() if data.get('deadline') else None
         )

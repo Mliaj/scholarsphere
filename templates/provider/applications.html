@@ -258,6 +258,22 @@
 // Track which applications have had their documents verified in this session
 const verifiedDocuments = {};
 
+const REQUIREMENT_MAPPINGS = {
+    'photo_2x2': 'Recent 2x2 or passport-size photo',
+    'valid_id': 'Valid School ID or any government-issued ID',
+    'enrollment_cert': 'Certificate of Enrollment',
+    'report_card': 'Report Card / Transcript of Records (TOR)',
+    'good_moral': 'Certificate of Good Moral Character',
+    'recommendation_letter': 'Recommendation Letter',
+    'honors_awards': 'Honors or Awards Certificates',
+    'indigency_cert': 'Certificate of Indigency',
+    'itr': "Parents' or Guardians' Income Tax Return (ITR)",
+    'proof_income': 'Proof of Income',
+    'barangay_clearance': 'Barangay Clearance or Residency Certificate',
+    'birth_cert': 'Birth Certificate (PSA or NSO)',
+    'medical_cert': 'Medical Certificate'
+};
+
 function closeApplicationModal() {
   document.getElementById('applicationDetailsModal').style.display = 'none';
 }
@@ -300,11 +316,11 @@ function viewApplication(applicationId) {
               </div>
               <div style=\"display:grid; gap:0.75rem;\">
                 ${data.credentials.map((cred, idx) => {
-                  // Check verification status - will be updated after modal loads
+                  const reqLabel = REQUIREMENT_MAPPINGS[cred.requirement_type] || cred.requirement_type;
                   return `
                   <div style=\"padding:1rem; background:#f8f9fa; border-radius:8px; display:flex; justify-content:space-between; align-items:center;\" data-app-id=\"${applicationId}\" data-doc-index=\"${idx}\">
                     <div>
-                      <strong>${cred.requirement_type}</strong>
+                      <strong>${reqLabel}</strong>
                       <div style=\"font-size:0.9rem; color:#666;\">${cred.file_name}</div>
                     </div>
                     <div style=\"display:flex; gap:0.5rem;\">
