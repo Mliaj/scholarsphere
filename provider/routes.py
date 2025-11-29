@@ -2,6 +2,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from flask_login import login_required, current_user
 from app import db, User, Scholarship, ScholarshipApplication, Credential, Schedule, Notification, ScholarshipApplicationFile
 from email_utils import send_email
+from datetime import datetime # Import datetime here
 
 provider_bp = Blueprint('provider', __name__)
 
@@ -59,10 +60,13 @@ def scholarships():
     active_scholarships = [s for s in all_scholarships if s.status != 'archived']
     archived_scholarships = [s for s in all_scholarships if s.status == 'archived']
 
+    today_date = datetime.now().strftime('%Y-%m-%d') # Get current date
+
     return render_template('provider/scholarships.html', 
                            user=current_user, 
                            scholarships=active_scholarships, 
-                           archived_scholarships=archived_scholarships)
+                           archived_scholarships=archived_scholarships,
+                           today_date=today_date) # Pass today_date to template
 
 @provider_bp.route('/applications')
 @login_required
@@ -94,8 +98,8 @@ def applications():
             app.student_id = student.student_id if student else ""
             app.application_id = app.id
             app.date_applied = app.application_date.strftime('%Y-%m-%d')
-            # Count files
-            app.file_count = Credential.query.filter_by(user_id=app.user_id, is_active=True).count()
+            # Count files linked to this application
+            app.file_count = ScholarshipApplicationFile.query.filter_by(application_id=app.id).count()
             
         s.display_applications = apps_list
 
@@ -139,9 +143,12 @@ def schedules():
     # Also fetch existing schedules if we want to show them (template might need update or we pass both)
     # The current template iterates 'applications', so we pass that.
     
+    today_date = datetime.now().strftime('%Y-%m-%d')
+
     return render_template('provider/schedules.html', 
                            user=current_user, 
-                           applications=applications_data)
+                           applications=applications_data,
+                           today_date=today_date)
 
 @provider_bp.route('/documents')
 @login_required
@@ -377,6 +384,18 @@ def create_schedule(application_id):
         notes=notes
     )
     db.session.add(schedule)
+    
+    # Create in-app notification for the student
+    notification = Notification(
+        user_id=application.user_id,
+        type='schedule',
+        title=f'Interview Scheduled: {scholarship.title}',
+        message=f'An interview has been scheduled for {schedule_date} at {schedule_time}. Location: {location}.',
+        created_at=datetime.utcnow(),
+        is_active=True
+    )
+    db.session.add(notification)
+    
     db.session.commit()
 
     student = User.query.get(application.user_id)
@@ -548,7 +567,15 @@ def api_create_scholarship():
             status='draft', # Default to draft
             requirements=data.get('requirements', ''),
             # Parse deadline if provided
-            deadline=datetime.strptime(data['deadline'], '%Y-%m-%d').date() if data.get('deadline') else None
+            deadline=datetime.strptime(data['deadline'], '%Y-%m-%d').date() if data.get('deadline') else None,
+            # New fields
+            type=data.get('type', ''),
+            level=data.get('level', ''),
+            eligibility=data.get('eligibility', ''),
+            slots=int(data.get('slots')) if data.get('slots') else None,
+            contact_name=data.get('contact_name', ''),
+            contact_email=data.get('contact_email', ''),
+            contact_phone=data.get('contact_phone', '')
         )
         
         db.session.add(new_scholarship)
@@ -585,7 +612,15 @@ def api_scholarship_detail(id):
                 'created_date': scholarship.created_at.strftime('%Y-%m-%d') if scholarship.created_at else '',
                 'requirements': scholarship.requirements,
                 'status': scholarship.status,
-                'applications_count': scholarship.applications.count()
+                'applications_count': scholarship.applications.count(),
+                # New fields
+                'type': scholarship.type or '',
+                'level': scholarship.level or '',
+                'eligibility': scholarship.eligibility or '',
+                'slots': scholarship.slots or '',
+                'contact_name': scholarship.contact_name or '',
+                'contact_email': scholarship.contact_email or '',
+                'contact_phone': scholarship.contact_phone or ''
             }
         })
         
@@ -599,6 +634,14 @@ def api_scholarship_detail(id):
             if 'deadline' in data and data['deadline']:
                 scholarship.deadline = datetime.strptime(data['deadline'], '%Y-%m-%d').date()
             if 'status' in data: scholarship.status = data['status']
+            # New fields update
+            if 'type' in data: scholarship.type = data['type']
+            if 'level' in data: scholarship.level = data['level']
+            if 'eligibility' in data: scholarship.eligibility = data['eligibility']
+            if 'slots' in data: scholarship.slots = int(data['slots']) if data['slots'] else None
+            if 'contact_name' in data: scholarship.contact_name = data['contact_name']
+            if 'contact_email' in data: scholarship.contact_email = data['contact_email']
+            if 'contact_phone' in data: scholarship.contact_phone = data['contact_phone']
             
             db.session.commit()
             return jsonify({'success': True})
@@ -683,9 +726,11 @@ def api_application_detail(id):
         cred = app_file.credential
         if cred and cred.is_active:
             cred_list.append({
+                'id': cred.id,
                 'requirement_type': app_file.requirement_type,
                 'file_name': cred.file_name,
-                'file_path': cred.file_path
+                'file_path': cred.file_path,
+                'status': cred.status
             })
         
     return jsonify({

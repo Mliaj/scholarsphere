@@ -369,10 +369,13 @@ def scholarships():
     )
     db.session.commit()
     
+    today_date = datetime.utcnow().date().isoformat()
+    
     available_scholarships = db.session.execute(
         text(
             """
-            SELECT s.id, s.code, s.title, s.description, s.amount, s.deadline, s.requirements, u.organization
+            SELECT s.id, s.code, s.title, s.description, s.amount, s.deadline, s.requirements, u.organization,
+                   s.type, s.level, s.eligibility, s.slots, s.contact_name, s.contact_email, s.contact_phone
             FROM scholarships s
             LEFT JOIN users u ON s.provider_id = u.id
             WHERE s.status IN ('active','approved') AND s.is_active = 1
@@ -441,13 +444,20 @@ def scholarships():
             'deadline': deadline.strftime('%B %d, %Y') if deadline else 'No deadline',
             'requirements': ', '.join(requirements_display) if requirements_display else 'No specific requirements',
             'provider': scholarship[7] or 'University of Cebu',
+            'type': scholarship[8] or 'Not specified',
+            'level': scholarship[9] or 'Not specified',
+            'eligibility': scholarship[10] or 'No specific eligibility criteria',
+            'slots': scholarship[11] or 'Unlimited',
+            'contact_name': scholarship[12] or '',
+            'contact_email': scholarship[13] or '',
+            'contact_phone': scholarship[14] or '',
             'scholarship_id': scholarship_id,
             'has_applied': has_applied,
             'application_status': existing_application_status,
             'can_apply_again': can_apply_again
         })
     
-    return render_template('students/scholarships.html', scholarships=scholarships_data, user=current_user)
+    return render_template('students/scholarships.html', scholarships=scholarships_data, user=current_user, today_date=today_date)
 
 @students_bp.route('/apply-scholarship/<int:scholarship_id>', methods=['POST'])
 @login_required
@@ -862,7 +872,27 @@ def get_application_detail(application_id):
             ).fetchall()
         except Exception:
             remarks = []
-        remarks_list = [{"text": r[0], "status": (r[1] or '').title(), "date": (r[2] or ''), "provider": f"{r[3]} {r[4]}"} for r in remarks]
+        # Helper to safely format dates
+        def format_dt(val, fmt):
+            if not val: return ''
+            if isinstance(val, str):
+                try:
+                    # Try isoformat first
+                    dt_obj = datetime.fromisoformat(val.replace('Z', '+00:00'))
+                except ValueError:
+                    try:
+                        # Try common SQL format
+                        dt_obj = datetime.strptime(val, '%Y-%m-%d %H:%M:%S')
+                    except ValueError:
+                        try:
+                            # Try just date
+                            dt_obj = datetime.strptime(val, '%Y-%m-%d')
+                        except ValueError:
+                            return val # Return as-is if parsing fails
+                return dt_obj.strftime(fmt)
+            return val.strftime(fmt)
+
+        remarks_list = [{"text": r[0], "status": (r[1] or '').title(), "date": format_dt(r[2], '%B %d, %Y %I:%M %p'), "provider": f"{r[3]} {r[4]}"} for r in remarks]
         # Schedules
         try:
             # Prefer new schedule table
@@ -887,7 +917,33 @@ def get_application_detail(application_id):
                 ).fetchall()
             except Exception:
                 scheds = []
-        schedules = [{"date": s[0], "time": s[1], "location": s[2], "notes": s[3], "created_at": s[4]} for s in scheds]
+        
+        # Special handling for time which might be a string like "14:00:00"
+        def format_time(val):
+            if not val: return ''
+            if isinstance(val, str):
+                try:
+                    # Try 24-hour format with seconds
+                    t_obj = datetime.strptime(val, '%H:%M:%S').time()
+                    return t_obj.strftime('%I:%M %p')
+                except ValueError:
+                    try:
+                        # Try 24-hour format without seconds
+                        t_obj = datetime.strptime(val, '%H:%M').time()
+                        return t_obj.strftime('%I:%M %p')
+                    except ValueError:
+                        return val
+            return val.strftime('%I:%M %p')
+
+        schedules = [
+            {
+                "date": format_dt(s[0], '%B %d, %Y'),
+                "time": format_time(s[1]),
+                "location": s[2],
+                "notes": s[3],
+                "created_at": format_dt(s[4], '%B %d, %Y %I:%M %p')
+            } for s in scheds
+        ]
         # Format
         from datetime import datetime as dt
         app_date = app_row[2]

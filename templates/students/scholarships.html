@@ -500,9 +500,24 @@
                 <div class="scholarship-card" data-id="{{ s.scholarship_id }}">
                     <div class="scholarship-meta">
                         <span class="badge">{{ s.provider }}</span>
+                        {% if s.type %}<span class="badge" style="background:#e9ecef; color:#495057; border-color:#ced4da;">{{ s.type }}</span>{% endif %}
+                        {% if s.level %}<span class="badge" style="background:#fff3cd; color:#856404; border-color:#ffeeba;">{{ s.level }}</span>{% endif %}
                     </div>
                     <h3>{{ s.title }}</h3>
                     <div class="scholarship-desc">{{ s.description }}</div>
+                    
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.5rem; margin-bottom:1rem; font-size:0.9rem; color:#555;">
+                        <div><strong>Amount:</strong> {{ s.amount or 'Not specified' }}</div>
+                        <div><strong>Slots:</strong> {{ s.slots or 'Unlimited' }}</div>
+                    </div>
+
+                    {% if s.eligibility and s.eligibility != 'No specific eligibility criteria' %}
+                    <div class="scholarship-req">
+                        <strong>Eligibility:</strong>
+                        <div style="font-size:0.9rem; color:#555; margin-top:0.25rem;">{{ s.eligibility }}</div>
+                    </div>
+                    {% endif %}
+
                     <div class="scholarship-req">
                         <strong>Requirements:</strong>
                         {% if s.requirements and s.requirements != 'No specific requirements' %}
@@ -519,9 +534,19 @@
                             </div>
                         {% endif %}
                     </div>
-                    <div class="scholarship-meta">
-                        <span><i class="fas fa-calendar-alt"></i> {{ s.deadline }}</span>
+                    
+                    <div class="scholarship-meta" style="justify-content:space-between;">
+                        <span><i class="fas fa-calendar-alt"></i> Deadline: {{ s.deadline }}</span>
                     </div>
+
+                    {% if s.contact_name or s.contact_email or s.contact_phone %}
+                    <div style="margin-top:0.5rem; padding-top:0.5rem; border-top:1px dashed #eee; font-size:0.85rem; color:#777;">
+                        <strong>Contact:</strong> {{ s.contact_name }} 
+                        {% if s.contact_email %} | {{ s.contact_email }}{% endif %}
+                        {% if s.contact_phone %} | {{ s.contact_phone }}{% endif %}
+                    </div>
+                    {% endif %}
+
                     <div class="actions">
                         {% if s.has_applied and not s.can_apply_again %}
                             <button class="btn-apply" disabled>Applied ({{ s.application_status|title }})</button>
@@ -869,19 +894,23 @@ function hidePageAlert(){
       <div class="modal-body">
         <div class="section-title">Personal Information</div>
         <div class="form-grid">
-          <div class="form-group"><label class="form-label">Full Name</label><input class="form-control" name="full_name" required></div>
-          <div class="form-group"><label class="form-label">Student ID Number</label><input class="form-control" name="student_id" required></div>
-          <div class="form-group"><label class="form-label">Course</label><input class="form-control" name="course" required></div>
-          <div class="form-group"><label class="form-label">Year Level</label><input class="form-control" name="year_level" required></div>
-          <div class="form-group"><label class="form-label">Department</label><input class="form-control" name="department"></div>
-          <div class="form-group"><label class="form-label">School / University</label><input class="form-control" name="school" required></div>
-          <div class="form-group"><label class="form-label">Date of Birth</label><input type="date" class="form-control" name="dob" required></div>
+          <div class="form-group"><label class="form-label">Full Name</label><input class="form-control" name="full_name" required value="{{ current_user.first_name }} {{ current_user.last_name }}"></div>
+          <div class="form-group"><label class="form-label">Student ID Number</label><input class="form-control" name="student_id" required value="{{ current_user.student_id or '' }}"></div>
+          <div class="form-group"><label class="form-label">Course</label><input class="form-control" name="course" required value="{{ current_user.course or '' }}"></div>
+          <div class="form-group"><label class="form-label">Year Level</label><input class="form-control" name="year_level" required value="{{ current_user.year_level or '' }}"></div>
+          <div class="form-group"><label class="form-label">Department</label><input class="form-control" name="department" value="{{ current_user.department or '' }}"></div>
+          <div class="form-group"><label class="form-label">School / University</label><input class="form-control" name="school" required value="{{ current_user.school or '' }}"></div>
+          <div class="form-group"><label class="form-label">Date of Birth</label><input type="date" class="form-control" name="dob" required value="{{ current_user.birthday.strftime('%Y-%m-%d') if current_user.birthday else '' }}" max="{{ today_date }}"></div>
           <div class="form-group"><label class="form-label">Gender</label>
-            <select class="form-control" name="gender"><option>Male</option><option>Female</option><option>Prefer not to say</option></select>
+            <select class="form-control" name="gender">
+                <option value="Male" {% if current_user.gender == 'Male' %}selected{% endif %}>Male</option>
+                <option value="Female" {% if current_user.gender == 'Female' %}selected{% endif %}>Female</option>
+                <option value="Prefer not to say" {% if current_user.gender == 'Prefer not to say' %}selected{% endif %}>Prefer not to say</option>
+            </select>
           </div>
-          <div class="form-group" style="grid-column:1 / -1"><label class="form-label">Address</label><input class="form-control" name="address" required></div>
-          <div class="form-group"><label class="form-label">Contact Number</label><input class="form-control" name="contact" required></div>
-          <div class="form-group"><label class="form-label">Email</label><input type="email" class="form-control" name="email" required></div>
+          <div class="form-group" style="grid-column:1 / -1"><label class="form-label">Address</label><input class="form-control" name="address" required value="{{ current_user.address or '' }}"></div>
+          <div class="form-group"><label class="form-label">Contact Number</label><input class="form-control" name="contact" required value="{{ current_user.contact_number or '' }}"></div>
+          <div class="form-group"><label class="form-label">Email</label><input type="email" class="form-control" name="email" required value="{{ current_user.email }}"></div>
         </div>
 
         <div class="section-title">Family Background</div>

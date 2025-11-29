@@ -290,7 +290,7 @@
         </div>
         <div class="form-group">
           <label for="scholarshipDeadline" class="form-label">Deadline *</label>
-          <input type="date" id="scholarshipDeadline" name="deadline" class="form-control" required>
+          <input type="date" id="scholarshipDeadline" name="deadline" class="form-control" required min="{{ today_date }}">
         </div>
         <div class="form-group">
           <label for="slots" class="form-label">Slots Available</label>
@@ -383,7 +383,7 @@
         </div>
         <div class="form-group">
           <label for="editScholarshipDeadline" class="form-label">Deadline *</label>
-          <input type="date" id="editScholarshipDeadline" name="deadline" class="form-control" required>
+          <input type="date" id="editScholarshipDeadline" name="deadline" class="form-control" required min="{{ today_date }}">
         </div>
         <div class="form-group">
           <label class="form-label">Eligibility Criteria</label>
@@ -536,13 +536,35 @@ function viewScholarship(id){
         const content = document.getElementById('viewScholarshipContent');
         content.innerHTML = `
           <div style="display: grid; gap: 1rem;">
-            <div><strong>Code:</strong> ${data.scholarship.code}</div>
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+              <div><strong>Code:</strong> ${data.scholarship.code}</div>
+              <div><strong>Status:</strong> <span class="status ${data.scholarship.status.toLowerCase()}">${data.scholarship.status}</span></div>
+            </div>
             <div><strong>Title:</strong> ${data.scholarship.title}</div>
-            <div><strong>Deadline:</strong> ${data.scholarship.deadline}</div>
-            <div><strong>Created:</strong> ${data.scholarship.created_date}</div>
-            <div><strong>Status:</strong> <span class="status ${data.scholarship.status.toLowerCase()}">${data.scholarship.status}</span></div>
-            <div><strong>Applications:</strong> ${data.scholarship.applications_count}</div>
+            <div><strong>Description:</strong><br>${data.scholarship.description || 'No description provided.'}</div>
+            
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; background: #f8f9fa; padding: 1rem; border-radius: 8px;">
+              <div><strong>Type:</strong> ${data.scholarship.type || 'Not specified'}</div>
+              <div><strong>Level:</strong> ${data.scholarship.level || 'Not specified'}</div>
+              <div><strong>Amount:</strong> ${data.scholarship.amount || 'Not specified'}</div>
+              <div><strong>Slots:</strong> ${data.scholarship.slots || 'Unlimited'}</div>
+              <div><strong>Deadline:</strong> ${data.scholarship.deadline}</div>
+              <div><strong>Created:</strong> ${data.scholarship.created_date}</div>
+            </div>
+
+            <div><strong>Eligibility:</strong><br>${data.scholarship.eligibility || 'No specific eligibility criteria.'}</div>
             <div><strong>Requirements:</strong><br>${reqs.length ? reqs.map(r => `• ${r}`).join('<br>') : 'No specific requirements'}</div>
+            
+            <div style="background: #eef2f7; padding: 1rem; border-radius: 8px;">
+              <div style="font-weight:600; margin-bottom:.5rem; color:#003366;">Contact Information</div>
+              <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: .5rem;">
+                <div><strong>Name:</strong> ${data.scholarship.contact_name || 'N/A'}</div>
+                <div><strong>Email:</strong> ${data.scholarship.contact_email || 'N/A'}</div>
+                <div><strong>Phone:</strong> ${data.scholarship.contact_phone || 'N/A'}</div>
+              </div>
+            </div>
+            
+            <div><strong>Total Applications:</strong> ${data.scholarship.applications_count}</div>
           </div>
         `;
         document.getElementById('viewScholarshipModal').style.display = 'block';
