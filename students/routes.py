@@ -369,6 +369,8 @@ def scholarships():
     )
     db.session.commit()
     
+    today_date = datetime.utcnow().date().isoformat()
+    
     available_scholarships = db.session.execute(
         text(
             """
@@ -447,7 +449,7 @@ def scholarships():
             'can_apply_again': can_apply_again
         })
     
-    return render_template('students/scholarships.html', scholarships=scholarships_data, user=current_user)
+    return render_template('students/scholarships.html', scholarships=scholarships_data, user=current_user, today_date=today_date)
 
 @students_bp.route('/apply-scholarship/<int:scholarship_id>', methods=['POST'])
 @login_required

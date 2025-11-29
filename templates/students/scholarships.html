@@ -875,7 +875,7 @@ function hidePageAlert(){
           <div class="form-group"><label class="form-label">Year Level</label><input class="form-control" name="year_level" required value="{{ current_user.year_level or '' }}"></div>
           <div class="form-group"><label class="form-label">Department</label><input class="form-control" name="department" value="{{ current_user.department or '' }}"></div>
           <div class="form-group"><label class="form-label">School / University</label><input class="form-control" name="school" required value="{{ current_user.school or '' }}"></div>
-          <div class="form-group"><label class="form-label">Date of Birth</label><input type="date" class="form-control" name="dob" required value="{{ current_user.birthday.strftime('%Y-%m-%d') if current_user.birthday else '' }}"></div>
+          <div class="form-group"><label class="form-label">Date of Birth</label><input type="date" class="form-control" name="dob" required value="{{ current_user.birthday.strftime('%Y-%m-%d') if current_user.birthday else '' }}" max="{{ today_date }}"></div>
           <div class="form-group"><label class="form-label">Gender</label>
             <select class="form-control" name="gender">
                 <option value="Male" {% if current_user.gender == 'Male' %}selected{% endif %}>Male</option>
