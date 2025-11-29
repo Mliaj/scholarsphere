@@ -69,6 +69,12 @@ def main():
             'description': 'Add status column to credentials table'
         },
         {
+            'name': 'Credentials - Verified Column',
+            'module': 'migrate_add_is_verified',
+            'function': 'migrate',
+            'description': 'Add is_verified column to credentials table'
+        },
+        {
             'name': 'Scholarship Application Files',
             'module': 'migrate_add_scholarship_application_files',
             'function': 'migrate',

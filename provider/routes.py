@@ -460,7 +460,10 @@ def review_credential(credential_id):
         if not application:
             return jsonify({'success': False, 'error': 'Access to this credential is not authorized'}), 403
 
-        credential.status = action
+        # Map action to status (past tense)
+        new_status = 'approved' if action == 'approve' else 'rejected'
+        credential.status = new_status
+        credential.is_verified = (new_status == 'approved')
         db.session.commit()
 
         # Send email notification
@@ -468,11 +471,11 @@ def review_credential(credential_id):
         if student:
             send_email(
                 student.email,
-                f'Your Document {credential.credential_type} has been {action}d',
+                f'Your Document {credential.credential_type} has been {new_status}',
                 'email/document_status.html',
                 student_name=student.get_full_name(),
                 document_name=credential.credential_type,
-                new_status=action.capitalize()
+                new_status=new_status.capitalize()
             )
 
         return jsonify({'success': True})
@@ -741,13 +744,15 @@ def api_application_detail(id):
     cred_list = []
     for app_file in application_files:
         cred = app_file.credential
-        if cred and cred.is_active:
+        if cred:
             cred_list.append({
                 'id': cred.id,
                 'requirement_type': app_file.requirement_type,
                 'file_name': cred.file_name,
                 'file_path': cred.file_path,
-                'status': cred.status
+                'status': cred.status,
+                'is_verified': cred.is_verified,
+                'is_active': cred.is_active
             })
         
     return jsonify({

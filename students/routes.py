@@ -825,6 +825,87 @@ def withdraw_application(application_id):
         db.session.rollback()
         return jsonify({'success': False, 'message': 'Failed to withdraw application'}), 500
 
+@students_bp.route('/api/application/<int:application_id>/replace-file', methods=['POST'])
+@login_required
+def replace_application_file(application_id):
+    """Replace a deleted document in an application"""
+    if current_user.role != 'student':
+        return jsonify({'error': 'Access denied'}), 403
+        
+    try:
+        from flask import current_app
+        db = current_app.extensions['sqlalchemy']
+        
+        # Verify application ownership
+        application = db.session.execute(
+            text("SELECT id FROM scholarship_applications WHERE id = :id AND user_id = :uid AND is_active = 1"),
+            {"id": application_id, "uid": current_user.id}
+        ).fetchone()
+        
+        if not application:
+            return jsonify({'success': False, 'message': 'Application not found'}), 404
+            
+        requirement_type = request.form.get('requirement_type')
+        file = request.files.get('file')
+        
+        if not requirement_type or not file:
+            return jsonify({'success': False, 'message': 'Missing file or requirement type'}), 400
+            
+        if file and allowed_file(file.filename):
+            # 1. Upload File
+            filename = secure_filename(file.filename)
+            file_extension = filename.rsplit('.', 1)[1].lower()
+            unique_filename = f"{uuid.uuid4()}_{current_user.id}.{file_extension}"
+            
+            base_dir = os.path.join(current_app.root_path, CREDENTIALS_FOLDER)
+            os.makedirs(base_dir, exist_ok=True)
+            file_path = os.path.join(base_dir, unique_filename)
+            file.save(file_path)
+            file_size = os.path.getsize(file_path)
+            
+            # 2. Create New Credential
+            res = db.session.execute(
+                text("""
+                    INSERT INTO credentials (user_id, credential_type, file_name, file_path, file_size, status, upload_date, is_active, is_verified)
+                    VALUES (:user_id, :ctype, :fname, :fpath, :fsize, 'uploaded', :udate, 1, 0)
+                """),
+                {
+                    "user_id": current_user.id,
+                    "ctype": requirement_type, # Using requirement type as credential type logic
+                    "fname": filename,
+                    "fpath": unique_filename,
+                    "fsize": file_size,
+                    "udate": datetime.utcnow()
+                }
+            )
+            new_cred_id = res.lastrowid
+            
+            # 3. Update Link in Application Files
+            # We update the existing link for this requirement to point to the new credential
+            db.session.execute(
+                text("""
+                    UPDATE scholarship_application_files 
+                    SET credential_id = :new_id
+                    WHERE application_id = :app_id AND requirement_type = :req_type
+                """),
+                {
+                    "new_id": new_cred_id,
+                    "app_id": application_id,
+                    "req_type": requirement_type
+                }
+            )
+            
+            db.session.commit()
+            
+            return jsonify({'success': True, 'message': 'Document replaced successfully'})
+            
+        return jsonify({'success': False, 'message': 'Invalid file'}), 400
+        
+    except Exception as e:
+        if 'db' in locals():
+            db.session.rollback()
+        return jsonify({'success': False, 'message': f'Error: {str(e)}'}), 500
+
 # API endpoints for AJAX requests
 @students_bp.route('/api/application/<int:application_id>')
 @login_required
@@ -849,14 +930,22 @@ def get_application_detail(application_id):
         # Documents
         docs = db.session.execute(
             text("""
-                SELECT saf.requirement_type, c.file_name, c.file_path, c.credential_type
+                SELECT saf.requirement_type, c.file_name, c.file_path, c.credential_type, c.id, c.is_active, c.is_verified
                 FROM scholarship_application_files saf
                 JOIN credentials c ON c.id = saf.credential_id
                 WHERE saf.application_id = :id
                 ORDER BY saf.requirement_type
             """), {"id": application_id}
         ).fetchall()
-        documents = [{"requirement_type": d[0], "file_name": d[1], "file_path": f"static/uploads/credentials/{d[2]}", "credential_type": d[3]} for d in docs]
+        documents = [{
+            "requirement_type": d[0], 
+            "file_name": d[1], 
+            "file_path": f"static/uploads/credentials/{d[2]}", 
+            "credential_type": d[3],
+            "id": d[4],
+            "is_active": d[5],
+            "is_verified": d[6]
+        } for d in docs]
         # Remarks
         try:
             remarks = db.session.execute(

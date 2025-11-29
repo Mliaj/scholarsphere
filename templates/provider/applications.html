@@ -274,8 +274,7 @@ const REQUIREMENT_MAPPINGS = {
 
 function closeApplicationModal() {
   document.getElementById('applicationDetailsModal').style.display = 'none';
-  // Reset state
-  currentAppVerification = { id: null, total: 0, verifiedCount: 0 };
+  // Do not reset state here, so we can approve from the list view immediately after closing
 }
 
 function closeReviewConfirm() {
@@ -300,8 +299,24 @@ function viewApplication(applicationId) {
         if (data.credentials && data.credentials.length > 0) {
             const rows = data.credentials.map((cred) => {
                 const reqLabel = REQUIREMENT_MAPPINGS[cred.requirement_type] || cred.requirement_type;
-                // Check backend status for 'approved' to determine verified state
-                const isVerified = (cred.status && cred.status.toLowerCase() === 'approved');
+                
+                // Handle deleted credentials
+                if (!cred.is_active) {
+                    return `
+                      <div style="padding:1rem; background:#fff5f5; border:1px dashed #dc3545; border-radius:8px; display:flex; justify-content:space-between; align-items:center;">
+                        <div>
+                          <strong>${reqLabel}</strong>
+                          <div style="font-size:0.9rem; color:#dc3545;">Deleted - waiting for new document to be uploaded</div>
+                        </div>
+                        <div style="display:flex; gap:0.5rem;">
+                          <button class="btn-sm btn-view" disabled style="opacity:0.5; cursor:not-allowed;">View</button>
+                          <button class="btn-sm btn-approve" disabled style="opacity:0.5; cursor:not-allowed;">Verify</button>
+                        </div>
+                      </div>
+                    `;
+                }
+
+                const isVerified = cred.is_verified; // Use the explicit boolean from backend
                 
                 if (isVerified) {
                     currentAppVerification.verifiedCount++;
