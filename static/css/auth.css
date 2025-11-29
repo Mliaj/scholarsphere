@@ -137,10 +137,13 @@
     color: #333;
 }
 
-.uc-auth-card input[type="text"],
-.uc-auth-card input[type="email"],
-.uc-auth-card input[type="password"],
-.uc-auth-card input[type="date"] {
+/* Password Toggle */
+.password-input-container {
+    position: relative;
+    width: 100%; /* Ensure it takes full width of parent form-group */
+}
+
+.password-input-container input { /* Target all inputs inside this container */
     width: 100%;
     padding: 0.75rem 1rem;
     border: 2px solid #e1e5e9;
@@ -150,6 +153,28 @@
     transition: all 0.3s;
     box-sizing: border-box;
     font-family: inherit;
+}
+
+.password-input-container input[type="password"] {
+    padding-right: 3rem; /* Make space for the eye icon */
+}
+
+.password-toggle {
+    position: absolute;
+    right: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+    cursor: pointer;
+    color: #888;
+    transition: color 0.3s ease;
+    font-size: 1rem;
+    height: 100%; /* Ensure it takes full height of the container to assist vertical alignment */
+    display: flex;
+    align-items: center;
+}
+
+.password-toggle:hover {
+    color: #003366;
 }
 
 .uc-auth-card input:focus {

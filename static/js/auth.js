@@ -4,6 +4,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeAuthForms();
     initializePasswordValidation();
     initializeStudentIdValidation();
+    initializePasswordToggle(); // Call the new password toggle function
 });
 
 // Initialize authentication forms
@@ -187,7 +188,12 @@ function validatePasswordStrength(input) {
 
 // Get or create password strength indicator
 function getOrCreateStrengthIndicator(input) {
-    let indicator = input.parentNode.querySelector('.password-strength');
+    // Determine the target parent: if input is in password-input-container, go up one level
+    const targetParent = input.parentNode.classList.contains('password-input-container') 
+        ? input.parentNode.parentNode 
+        : input.parentNode;
+
+    let indicator = targetParent.querySelector('.password-strength');
     
     if (!indicator) {
         indicator = document.createElement('div');
@@ -196,7 +202,7 @@ function getOrCreateStrengthIndicator(input) {
             margin-top: 0.5rem;
             font-size: 0.875rem;
         `;
-        input.parentNode.appendChild(indicator);
+        targetParent.appendChild(indicator);
     }
     
     return indicator;
@@ -265,13 +271,22 @@ function showFieldError(input, message) {
     errorDiv.className = 'form-error';
     errorDiv.textContent = message;
     
-    input.parentNode.appendChild(errorDiv);
+    // Determine insertion point: if wrapped, append to the wrapper's parent
+    const targetParent = input.parentNode.classList.contains('password-input-container') 
+        ? input.parentNode.parentNode 
+        : input.parentNode;
+        
+    targetParent.appendChild(errorDiv);
 }
 
 function clearFieldError(input) {
     input.classList.remove('is-invalid');
     
-    const existingError = input.parentNode.querySelector('.form-error');
+    const targetParent = input.parentNode.classList.contains('password-input-container') 
+        ? input.parentNode.parentNode 
+        : input.parentNode;
+
+    const existingError = targetParent.querySelector('.form-error');
     if (existingError) {
         existingError.remove();
     }
@@ -349,3 +364,25 @@ function submitFormAjax(form, successCallback, errorCallback) {
         if (errorCallback) errorCallback({ error: 'Network error occurred' });
     });
 }
+
+// Function to toggle password visibility
+function initializePasswordToggle() {
+    const passwordField = document.getElementById('password');
+    const toggleButton = document.getElementById('password-toggle');
+
+    if (passwordField && toggleButton) {
+        toggleButton.addEventListener('click', function() {
+            // Toggle the type attribute
+            const type = passwordField.getAttribute('type') === 'password' ? 'text' : 'password';
+            passwordField.setAttribute('type', type);
+
+            // Toggle the eye icon
+            const icon = this.querySelector('i');
+            if (icon) {
+                icon.classList.toggle('fa-eye');
+                icon.classList.toggle('fa-eye-slash');
+            }
+        });
+    }
+}
+
