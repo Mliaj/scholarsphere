@@ -869,19 +869,23 @@ function hidePageAlert(){
       <div class="modal-body">
         <div class="section-title">Personal Information</div>
         <div class="form-grid">
-          <div class="form-group"><label class="form-label">Full Name</label><input class="form-control" name="full_name" required></div>
-          <div class="form-group"><label class="form-label">Student ID Number</label><input class="form-control" name="student_id" required></div>
-          <div class="form-group"><label class="form-label">Course</label><input class="form-control" name="course" required></div>
-          <div class="form-group"><label class="form-label">Year Level</label><input class="form-control" name="year_level" required></div>
-          <div class="form-group"><label class="form-label">Department</label><input class="form-control" name="department"></div>
-          <div class="form-group"><label class="form-label">School / University</label><input class="form-control" name="school" required></div>
-          <div class="form-group"><label class="form-label">Date of Birth</label><input type="date" class="form-control" name="dob" required></div>
+          <div class="form-group"><label class="form-label">Full Name</label><input class="form-control" name="full_name" required value="{{ current_user.first_name }} {{ current_user.last_name }}"></div>
+          <div class="form-group"><label class="form-label">Student ID Number</label><input class="form-control" name="student_id" required value="{{ current_user.student_id or '' }}"></div>
+          <div class="form-group"><label class="form-label">Course</label><input class="form-control" name="course" required value="{{ current_user.course or '' }}"></div>
+          <div class="form-group"><label class="form-label">Year Level</label><input class="form-control" name="year_level" required value="{{ current_user.year_level or '' }}"></div>
+          <div class="form-group"><label class="form-label">Department</label><input class="form-control" name="department" value="{{ current_user.department or '' }}"></div>
+          <div class="form-group"><label class="form-label">School / University</label><input class="form-control" name="school" required value="{{ current_user.school or '' }}"></div>
+          <div class="form-group"><label class="form-label">Date of Birth</label><input type="date" class="form-control" name="dob" required value="{{ current_user.birthday.strftime('%Y-%m-%d') if current_user.birthday else '' }}"></div>
           <div class="form-group"><label class="form-label">Gender</label>
-            <select class="form-control" name="gender"><option>Male</option><option>Female</option><option>Prefer not to say</option></select>
+            <select class="form-control" name="gender">
+                <option value="Male" {% if current_user.gender == 'Male' %}selected{% endif %}>Male</option>
+                <option value="Female" {% if current_user.gender == 'Female' %}selected{% endif %}>Female</option>
+                <option value="Prefer not to say" {% if current_user.gender == 'Prefer not to say' %}selected{% endif %}>Prefer not to say</option>
+            </select>
           </div>
-          <div class="form-group" style="grid-column:1 / -1"><label class="form-label">Address</label><input class="form-control" name="address" required></div>
-          <div class="form-group"><label class="form-label">Contact Number</label><input class="form-control" name="contact" required></div>
-          <div class="form-group"><label class="form-label">Email</label><input type="email" class="form-control" name="email" required></div>
+          <div class="form-group" style="grid-column:1 / -1"><label class="form-label">Address</label><input class="form-control" name="address" required value="{{ current_user.address or '' }}"></div>
+          <div class="form-group"><label class="form-label">Contact Number</label><input class="form-control" name="contact" required value="{{ current_user.contact_number or '' }}"></div>
+          <div class="form-group"><label class="form-label">Email</label><input type="email" class="form-control" name="email" required value="{{ current_user.email }}"></div>
         </div>
 
         <div class="section-title">Family Background</div>
