@@ -143,9 +143,12 @@ def schedules():
     # Also fetch existing schedules if we want to show them (template might need update or we pass both)
     # The current template iterates 'applications', so we pass that.
     
+    today_date = datetime.now().strftime('%Y-%m-%d')
+
     return render_template('provider/schedules.html', 
                            user=current_user, 
-                           applications=applications_data)
+                           applications=applications_data,
+                           today_date=today_date)
 
 @provider_bp.route('/documents')
 @login_required
@@ -381,6 +384,18 @@ def create_schedule(application_id):
         notes=notes
     )
     db.session.add(schedule)
+    
+    # Create in-app notification for the student
+    notification = Notification(
+        user_id=application.user_id,
+        type='schedule',
+        title=f'Interview Scheduled: {scholarship.title}',
+        message=f'An interview has been scheduled for {schedule_date} at {schedule_time}. Location: {location}.',
+        created_at=datetime.utcnow(),
+        is_active=True
+    )
+    db.session.add(notification)
+    
     db.session.commit()
 
     student = User.query.get(application.user_id)

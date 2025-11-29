@@ -862,7 +862,27 @@ def get_application_detail(application_id):
             ).fetchall()
         except Exception:
             remarks = []
-        remarks_list = [{"text": r[0], "status": (r[1] or '').title(), "date": (r[2] or ''), "provider": f"{r[3]} {r[4]}"} for r in remarks]
+        # Helper to safely format dates
+        def format_dt(val, fmt):
+            if not val: return ''
+            if isinstance(val, str):
+                try:
+                    # Try isoformat first
+                    dt_obj = datetime.fromisoformat(val.replace('Z', '+00:00'))
+                except ValueError:
+                    try:
+                        # Try common SQL format
+                        dt_obj = datetime.strptime(val, '%Y-%m-%d %H:%M:%S')
+                    except ValueError:
+                        try:
+                            # Try just date
+                            dt_obj = datetime.strptime(val, '%Y-%m-%d')
+                        except ValueError:
+                            return val # Return as-is if parsing fails
+                return dt_obj.strftime(fmt)
+            return val.strftime(fmt)
+
+        remarks_list = [{"text": r[0], "status": (r[1] or '').title(), "date": format_dt(r[2], '%B %d, %Y %I:%M %p'), "provider": f"{r[3]} {r[4]}"} for r in remarks]
         # Schedules
         try:
             # Prefer new schedule table
@@ -887,7 +907,33 @@ def get_application_detail(application_id):
                 ).fetchall()
             except Exception:
                 scheds = []
-        schedules = [{"date": s[0], "time": s[1], "location": s[2], "notes": s[3], "created_at": s[4]} for s in scheds]
+        
+        # Special handling for time which might be a string like "14:00:00"
+        def format_time(val):
+            if not val: return ''
+            if isinstance(val, str):
+                try:
+                    # Try 24-hour format with seconds
+                    t_obj = datetime.strptime(val, '%H:%M:%S').time()
+                    return t_obj.strftime('%I:%M %p')
+                except ValueError:
+                    try:
+                        # Try 24-hour format without seconds
+                        t_obj = datetime.strptime(val, '%H:%M').time()
+                        return t_obj.strftime('%I:%M %p')
+                    except ValueError:
+                        return val
+            return val.strftime('%I:%M %p')
+
+        schedules = [
+            {
+                "date": format_dt(s[0], '%B %d, %Y'),
+                "time": format_time(s[1]),
+                "location": s[2],
+                "notes": s[3],
+                "created_at": format_dt(s[4], '%B %d, %Y %I:%M %p')
+            } for s in scheds
+        ]
         # Format
         from datetime import datetime as dt
         app_date = app_row[2]
