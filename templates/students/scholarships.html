@@ -500,9 +500,24 @@
                 <div class="scholarship-card" data-id="{{ s.scholarship_id }}">
                     <div class="scholarship-meta">
                         <span class="badge">{{ s.provider }}</span>
+                        {% if s.type %}<span class="badge" style="background:#e9ecef; color:#495057; border-color:#ced4da;">{{ s.type }}</span>{% endif %}
+                        {% if s.level %}<span class="badge" style="background:#fff3cd; color:#856404; border-color:#ffeeba;">{{ s.level }}</span>{% endif %}
                     </div>
                     <h3>{{ s.title }}</h3>
                     <div class="scholarship-desc">{{ s.description }}</div>
+                    
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.5rem; margin-bottom:1rem; font-size:0.9rem; color:#555;">
+                        <div><strong>Amount:</strong> {{ s.amount or 'Not specified' }}</div>
+                        <div><strong>Slots:</strong> {{ s.slots or 'Unlimited' }}</div>
+                    </div>
+
+                    {% if s.eligibility and s.eligibility != 'No specific eligibility criteria' %}
+                    <div class="scholarship-req">
+                        <strong>Eligibility:</strong>
+                        <div style="font-size:0.9rem; color:#555; margin-top:0.25rem;">{{ s.eligibility }}</div>
+                    </div>
+                    {% endif %}
+
                     <div class="scholarship-req">
                         <strong>Requirements:</strong>
                         {% if s.requirements and s.requirements != 'No specific requirements' %}
@@ -519,9 +534,19 @@
                             </div>
                         {% endif %}
                     </div>
-                    <div class="scholarship-meta">
-                        <span><i class="fas fa-calendar-alt"></i> {{ s.deadline }}</span>
+                    
+                    <div class="scholarship-meta" style="justify-content:space-between;">
+                        <span><i class="fas fa-calendar-alt"></i> Deadline: {{ s.deadline }}</span>
                     </div>
+
+                    {% if s.contact_name or s.contact_email or s.contact_phone %}
+                    <div style="margin-top:0.5rem; padding-top:0.5rem; border-top:1px dashed #eee; font-size:0.85rem; color:#777;">
+                        <strong>Contact:</strong> {{ s.contact_name }} 
+                        {% if s.contact_email %} | {{ s.contact_email }}{% endif %}
+                        {% if s.contact_phone %} | {{ s.contact_phone }}{% endif %}
+                    </div>
+                    {% endif %}
+
                     <div class="actions">
                         {% if s.has_applied and not s.can_apply_again %}
                             <button class="btn-apply" disabled>Applied ({{ s.application_status|title }})</button>

@@ -567,7 +567,15 @@ def api_create_scholarship():
             status='draft', # Default to draft
             requirements=data.get('requirements', ''),
             # Parse deadline if provided
-            deadline=datetime.strptime(data['deadline'], '%Y-%m-%d').date() if data.get('deadline') else None
+            deadline=datetime.strptime(data['deadline'], '%Y-%m-%d').date() if data.get('deadline') else None,
+            # New fields
+            type=data.get('type', ''),
+            level=data.get('level', ''),
+            eligibility=data.get('eligibility', ''),
+            slots=int(data.get('slots')) if data.get('slots') else None,
+            contact_name=data.get('contact_name', ''),
+            contact_email=data.get('contact_email', ''),
+            contact_phone=data.get('contact_phone', '')
         )
         
         db.session.add(new_scholarship)
@@ -604,7 +612,15 @@ def api_scholarship_detail(id):
                 'created_date': scholarship.created_at.strftime('%Y-%m-%d') if scholarship.created_at else '',
                 'requirements': scholarship.requirements,
                 'status': scholarship.status,
-                'applications_count': scholarship.applications.count()
+                'applications_count': scholarship.applications.count(),
+                # New fields
+                'type': scholarship.type or '',
+                'level': scholarship.level or '',
+                'eligibility': scholarship.eligibility or '',
+                'slots': scholarship.slots or '',
+                'contact_name': scholarship.contact_name or '',
+                'contact_email': scholarship.contact_email or '',
+                'contact_phone': scholarship.contact_phone or ''
             }
         })
         
@@ -618,6 +634,14 @@ def api_scholarship_detail(id):
             if 'deadline' in data and data['deadline']:
                 scholarship.deadline = datetime.strptime(data['deadline'], '%Y-%m-%d').date()
             if 'status' in data: scholarship.status = data['status']
+            # New fields update
+            if 'type' in data: scholarship.type = data['type']
+            if 'level' in data: scholarship.level = data['level']
+            if 'eligibility' in data: scholarship.eligibility = data['eligibility']
+            if 'slots' in data: scholarship.slots = int(data['slots']) if data['slots'] else None
+            if 'contact_name' in data: scholarship.contact_name = data['contact_name']
+            if 'contact_email' in data: scholarship.contact_email = data['contact_email']
+            if 'contact_phone' in data: scholarship.contact_phone = data['contact_phone']
             
             db.session.commit()
             return jsonify({'success': True})

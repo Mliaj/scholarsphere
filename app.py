@@ -139,6 +139,13 @@ class Scholarship(db.Model):
     code = db.Column(db.String(50), unique=True, nullable=False)
     title = db.Column(db.String(255), nullable=False)
     description = db.Column(db.Text, nullable=True)
+    type = db.Column(db.String(100), nullable=True) # e.g., 'Academic', 'Athletic'
+    level = db.Column(db.String(100), nullable=True) # e.g., 'Undergraduate', 'Graduate'
+    eligibility = db.Column(db.Text, nullable=True)
+    slots = db.Column(db.Integer, nullable=True)
+    contact_name = db.Column(db.String(255), nullable=True)
+    contact_email = db.Column(db.String(255), nullable=True)
+    contact_phone = db.Column(db.String(50), nullable=True)
     provider_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     status = db.Column(db.String(20), nullable=False, default='draft')  # draft, approved, active, closed
     deadline = db.Column(db.Date, nullable=True)

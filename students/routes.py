@@ -374,7 +374,8 @@ def scholarships():
     available_scholarships = db.session.execute(
         text(
             """
-            SELECT s.id, s.code, s.title, s.description, s.amount, s.deadline, s.requirements, u.organization
+            SELECT s.id, s.code, s.title, s.description, s.amount, s.deadline, s.requirements, u.organization,
+                   s.type, s.level, s.eligibility, s.slots, s.contact_name, s.contact_email, s.contact_phone
             FROM scholarships s
             LEFT JOIN users u ON s.provider_id = u.id
             WHERE s.status IN ('active','approved') AND s.is_active = 1
@@ -443,6 +444,13 @@ def scholarships():
             'deadline': deadline.strftime('%B %d, %Y') if deadline else 'No deadline',
             'requirements': ', '.join(requirements_display) if requirements_display else 'No specific requirements',
             'provider': scholarship[7] or 'University of Cebu',
+            'type': scholarship[8] or 'Not specified',
+            'level': scholarship[9] or 'Not specified',
+            'eligibility': scholarship[10] or 'No specific eligibility criteria',
+            'slots': scholarship[11] or 'Unlimited',
+            'contact_name': scholarship[12] or '',
+            'contact_email': scholarship[13] or '',
+            'contact_phone': scholarship[14] or '',
             'scholarship_id': scholarship_id,
             'has_applied': has_applied,
             'application_status': existing_application_status,
