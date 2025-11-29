@@ -2,9 +2,13 @@
 
 document.addEventListener('DOMContentLoaded', function() {
     initializeAuthForms();
-    initializePasswordValidation();
     initializeStudentIdValidation();
-    initializePasswordToggle(); // Call the new password toggle function
+    initializePasswordToggle();
+
+    // ONLY run password strength validation if on the signup page
+    if (document.getElementById('studentSignupForm')) {
+        initializePasswordValidation();
+    }
 });
 
 // Initialize authentication forms
@@ -367,22 +371,25 @@ function submitFormAjax(form, successCallback, errorCallback) {
 
 // Function to toggle password visibility
 function initializePasswordToggle() {
-    const passwordField = document.getElementById('password');
-    const toggleButton = document.getElementById('password-toggle');
+    const toggleButtons = document.querySelectorAll('.password-toggle');
 
-    if (passwordField && toggleButton) {
-        toggleButton.addEventListener('click', function() {
-            // Toggle the type attribute
-            const type = passwordField.getAttribute('type') === 'password' ? 'text' : 'password';
-            passwordField.setAttribute('type', type);
+    toggleButtons.forEach(toggleButton => {
+        const passwordField = toggleButton.previousElementSibling; // Assuming input is the sibling before the toggle
 
-            // Toggle the eye icon
-            const icon = this.querySelector('i');
-            if (icon) {
-                icon.classList.toggle('fa-eye');
-                icon.classList.toggle('fa-eye-slash');
-            }
-        });
-    }
+        if (passwordField && passwordField.type === 'password' || passwordField.type === 'text') {
+            toggleButton.addEventListener('click', function() {
+                // Toggle the type attribute
+                const type = passwordField.getAttribute('type') === 'password' ? 'text' : 'password';
+                passwordField.setAttribute('type', type);
+
+                // Toggle the eye icon
+                const icon = this.querySelector('i');
+                if (icon) {
+                    icon.classList.toggle('fa-eye');
+                    icon.classList.toggle('fa-eye-slash');
+                }
+            });
+        }
+    });
 }
 
