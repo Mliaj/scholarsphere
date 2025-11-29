@@ -280,6 +280,23 @@ def review_application(application_id):
 
     if action in status_map:
         new_status = status_map[action]
+        
+        # Logic for approval with slots
+        if new_status == 'approved' and application.status != 'approved':
+            if scholarship.slots is not None:
+                if scholarship.slots <= 0:
+                    return jsonify({'success': False, 'error': 'No slots available for this scholarship.'}), 400
+                scholarship.slots -= 1
+            scholarship.approved_count = (scholarship.approved_count or 0) + 1
+            if application.status == 'pending':
+                scholarship.pending_count = max(0, (scholarship.pending_count or 0) - 1)
+        
+        # Logic for rejection
+        elif new_status == 'rejected' and application.status != 'rejected':
+            scholarship.disapproved_count = (scholarship.disapproved_count or 0) + 1
+            if application.status == 'pending':
+                scholarship.pending_count = max(0, (scholarship.pending_count or 0) - 1)
+
         application.status = new_status
         db.session.commit()
 
