@@ -2,6 +2,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from flask_login import login_required, current_user
 from app import db, User, Scholarship, ScholarshipApplication, Credential, Schedule, Notification, ScholarshipApplicationFile
 from email_utils import send_email
+from datetime import datetime # Import datetime here
 
 provider_bp = Blueprint('provider', __name__)
 
@@ -59,10 +60,13 @@ def scholarships():
     active_scholarships = [s for s in all_scholarships if s.status != 'archived']
     archived_scholarships = [s for s in all_scholarships if s.status == 'archived']
 
+    today_date = datetime.now().strftime('%Y-%m-%d') # Get current date
+
     return render_template('provider/scholarships.html', 
                            user=current_user, 
                            scholarships=active_scholarships, 
-                           archived_scholarships=archived_scholarships)
+                           archived_scholarships=archived_scholarships,
+                           today_date=today_date) # Pass today_date to template
 
 @provider_bp.route('/applications')
 @login_required

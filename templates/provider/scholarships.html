@@ -290,7 +290,7 @@
         </div>
         <div class="form-group">
           <label for="scholarshipDeadline" class="form-label">Deadline *</label>
-          <input type="date" id="scholarshipDeadline" name="deadline" class="form-control" required>
+          <input type="date" id="scholarshipDeadline" name="deadline" class="form-control" required min="{{ today_date }}">
         </div>
         <div class="form-group">
           <label for="slots" class="form-label">Slots Available</label>
@@ -383,7 +383,7 @@
         </div>
         <div class="form-group">
           <label for="editScholarshipDeadline" class="form-label">Deadline *</label>
-          <input type="date" id="editScholarshipDeadline" name="deadline" class="form-control" required>
+          <input type="date" id="editScholarshipDeadline" name="deadline" class="form-control" required min="{{ today_date }}">
         </div>
         <div class="form-group">
           <label class="form-label">Eligibility Criteria</label>
