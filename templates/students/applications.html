@@ -466,10 +466,17 @@ function openAppDetails(appId){
       const a=d.application;
       const docs = a.documents.length ? a.documents.map(x=> {
           const label = REQUIREMENT_MAPPINGS[x.requirement_type] || x.requirement_type;
-          return `<li><strong>${label}:</strong> ${x.file_name}</li>`;
+          if (!x.is_active) {
+              return `
+                <li style="margin-bottom:0.5rem; color:#dc3545;">
+                    <strong>${label}:</strong> <span style="font-style:italic;">Deleted</span>
+                    <button onclick="triggerReplace(${a.id}, '${x.requirement_type}')" class="btn-sm" style="margin-left:0.5rem; font-size:0.8rem; background:#007bff; color:white; border:none; padding:0.2rem 0.5rem; border-radius:4px; cursor:pointer;">Upload New</button>
+                </li>`;
+          }
+          const verifiedBadge = x.is_verified ? '<span style="color:#28a745; font-size:0.8rem; margin-left:0.5rem;"><i class="fas fa-check-circle"></i> Verified</span>' : '';
+          return `<li><strong>${label}:</strong> <a href="/students/view-credential/${x.id}" target="_blank">${x.file_name}</a>${verifiedBadge}</li>`;
       }).join('') : '<li>No documents linked.</li>';
-      const remarks = a.remarks.length ? a.remarks.map(r=>`<div style="padding:.5rem 0; border-bottom:1px solid #eee;"><div><strong>${r.provider}</strong> — <em>${r.status}</em></div><div>${r.text}</div><div style="color:#999;font-size:.85rem;">${r.date||''}</div></div>`).join('') : '<div>No remarks yet.</div>';
-      const schedules = a.schedules.length ? a.schedules.map(s=>`<li>${s.date} ${s.time} — ${s.location||'TBD'} ${s.notes?(' — '+s.notes):''}</li>`).join('') : '<li>No schedules yet.</li>';
+      
       const html = `
         <div style="display:grid; gap:1rem;">
           <section>
@@ -487,18 +494,66 @@ function openAppDetails(appId){
           </section>
           <section>
             <h3 style="color:#003366; margin-bottom:.5rem;">Provider Remarks</h3>
-            ${remarks}
+            ${a.remarks.length ? a.remarks.map(r=>`<div style="padding:.5rem 0; border-bottom:1px solid #eee;"><div><strong>${r.provider}</strong> — <em>${r.status}</em></div><div>${r.text}</div><div style="color:#999;font-size:.85rem;">${r.date||''}</div></div>`).join('') : '<div>No remarks yet.</div>'}
           </section>
           <section>
             <h3 style="color:#003366; margin-bottom:.5rem;">Next Steps (Schedules)</h3>
-            <ul style="padding-left:1rem;">${schedules}</ul>
+            <ul style="padding-left:1rem;">${a.schedules.length ? a.schedules.map(s=>`<li>${s.date} ${s.time} — ${s.location||'TBD'} ${s.notes?(' — '+s.notes):''}</li>`).join('') : '<li>No schedules yet.</li>'}</ul>
           </section>
-        </div>`;
+        </div>
+        <!-- Hidden replacement form -->
+        <input type="file" id="replaceFileInput" style="display:none;" onchange="handleReplaceFile()">
+        <input type="hidden" id="replaceAppId">
+        <input type="hidden" id="replaceReqType">
+        `;
       document.getElementById('appDetailsContent').innerHTML = html;
       document.getElementById('appDetailsModal').style.display='block';
     })
     .catch(err=>{ console.error(err); showNotification('Failed to load details', 'error'); });
 }
+
+function triggerReplace(appId, reqType) {
+    document.getElementById('replaceAppId').value = appId;
+    document.getElementById('replaceReqType').value = reqType;
+    document.getElementById('replaceFileInput').click();
+}
+
+function handleReplaceFile() {
+    const fileInput = document.getElementById('replaceFileInput');
+    const appId = document.getElementById('replaceAppId').value;
+    const reqType = document.getElementById('replaceReqType').value;
+    
+    if (!fileInput.files[0]) return;
+    
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+    formData.append('requirement_type', reqType);
+    
+    // Show loading
+    showNotification('Uploading replacement...', 'info');
+    
+    fetch(`/students/api/application/${appId}/replace-file`, {
+        method: 'POST',
+        body: formData
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            showNotification('Document replaced successfully!', 'success');
+            // Refresh modal
+            openAppDetails(appId);
+        } else {
+            showNotification('Error: ' + (data.message || 'Upload failed'), 'error');
+        }
+        fileInput.value = ''; // Reset
+    })
+    .catch(err => {
+        console.error(err);
+        showNotification('Error uploading file', 'error');
+        fileInput.value = '';
+    });
+}
+
 function closeAppModal(){ document.getElementById('appDetailsModal').style.display='none'; }
 </script>
 {% endblock %}

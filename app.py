@@ -125,6 +125,7 @@ class Credential(db.Model):
     file_path = db.Column(db.String(500), nullable=False)
     file_size = db.Column(db.Integer)  # File size in bytes
     status = db.Column(db.String(20), default='uploaded')  # uploaded, pending_review, approved, rejected
+    is_verified = db.Column(db.Boolean, default=False)
     upload_date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     is_active = db.Column(db.Boolean, default=True)
     
