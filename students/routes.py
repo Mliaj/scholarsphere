@@ -880,24 +880,33 @@ def replace_application_file(application_id):
             )
             new_cred_id = res.lastrowid
             
-            # 3. Update Link in Application Files
-            # We update the existing link for this requirement to point to the new credential
-            db.session.execute(
-                text("""
-                    UPDATE scholarship_application_files 
-                    SET credential_id = :new_id
-                    WHERE application_id = :app_id AND requirement_type = :req_type
-                """),
-                {
-                    "new_id": new_cred_id,
-                    "app_id": application_id,
-                    "req_type": requirement_type
-                }
-            )
+            # 3. Link in Application Files (Upsert logic)
+            existing_link = db.session.execute(
+                text("SELECT id FROM scholarship_application_files WHERE application_id = :app_id AND requirement_type = :req_type"),
+                {"app_id": application_id, "req_type": requirement_type}
+            ).fetchone()
+            
+            if existing_link:
+                db.session.execute(
+                    text("""
+                        UPDATE scholarship_application_files 
+                        SET credential_id = :new_id
+                        WHERE id = :link_id
+                    """),
+                    {"new_id": new_cred_id, "link_id": existing_link[0]}
+                )
+            else:
+                db.session.execute(
+                    text("""
+                        INSERT INTO scholarship_application_files (application_id, credential_id, requirement_type)
+                        VALUES (:app_id, :new_id, :req_type)
+                    """),
+                    {"app_id": application_id, "new_id": new_cred_id, "req_type": requirement_type}
+                )
             
             db.session.commit()
             
-            return jsonify({'success': True, 'message': 'Document replaced successfully'})
+            return jsonify({'success': True, 'message': 'Document uploaded/replaced successfully'})
             
         return jsonify({'success': False, 'message': 'Invalid file'}), 400
         
@@ -919,7 +928,9 @@ def get_application_detail(application_id):
         # Verify ownership and fetch
         app_row = db.session.execute(
             text("""
-                SELECT sa.id, sa.status, sa.application_date, s.title, s.code, s.deadline
+                SELECT sa.id, sa.status, sa.application_date, s.title, s.code, s.deadline,
+                       s.type, s.level, s.eligibility, s.slots, s.contact_name, s.contact_email, s.contact_phone,
+                       s.requirements
                 FROM scholarship_applications sa
                 JOIN scholarships s ON sa.scholarship_id = s.id
                 WHERE sa.id=:id AND sa.user_id=:uid AND sa.is_active=1
@@ -927,26 +938,53 @@ def get_application_detail(application_id):
         ).fetchone()
         if not app_row:
             return jsonify({'success': False, 'error': 'Application not found'}), 404
-        # Documents
+            
+        # Get current requirements
+        req_str = app_row[13] or ''
+        current_requirements = [r.strip() for r in req_str.split(',') if r.strip()]
+        
+        # Existing Documents
         docs = db.session.execute(
             text("""
                 SELECT saf.requirement_type, c.file_name, c.file_path, c.credential_type, c.id, c.is_active, c.is_verified
                 FROM scholarship_application_files saf
                 JOIN credentials c ON c.id = saf.credential_id
                 WHERE saf.application_id = :id
-                ORDER BY saf.requirement_type
             """), {"id": application_id}
         ).fetchall()
-        documents = [{
-            "requirement_type": d[0], 
-            "file_name": d[1], 
-            "file_path": f"static/uploads/credentials/{d[2]}", 
-            "credential_type": d[3],
-            "id": d[4],
-            "is_active": d[5],
-            "is_verified": d[6]
-        } for d in docs]
-        # Remarks
+        
+        # Map existing docs by requirement type
+        existing_docs_map = {}
+        for d in docs:
+            existing_docs_map[d[0]] = {
+                "requirement_type": d[0], 
+                "file_name": d[1], 
+                "file_path": f"static/uploads/credentials/{d[2]}", 
+                "credential_type": d[3],
+                "id": d[4],
+                "is_active": d[5],
+                "is_verified": d[6],
+                "status": "submitted"
+            }
+            
+        # Merge: Create final list
+        documents = []
+        
+        # 1. Add all current requirements (finding existing files if they exist)
+        for req in current_requirements:
+            if req in existing_docs_map:
+                documents.append(existing_docs_map[req])
+                del existing_docs_map[req] # Mark as handled
+            else:
+                # Missing requirement
+                documents.append({
+                    "requirement_type": req,
+                    "file_name": None,
+                    "status": "missing",
+                    "is_active": True # technically the 'slot' is active
+                })
+            
+        # Documents
         try:
             remarks = db.session.execute(
                 text("""
@@ -1054,7 +1092,15 @@ def get_application_detail(application_id):
             'deadline': deadline_fmt,
             'documents': documents,
             'remarks': remarks_list,
-            'schedules': schedules
+            'schedules': schedules,
+            # New fields
+            'scholarship_type': app_row[6] or 'Not specified',
+            'scholarship_level': app_row[7] or 'Not specified',
+            'eligibility': app_row[8] or 'No specific eligibility criteria',
+            'slots': app_row[9] or 'Unlimited',
+            'contact_name': app_row[10] or '',
+            'contact_email': app_row[11] or '',
+            'contact_phone': app_row[12] or ''
         }
         return jsonify({'success': True, 'application': payload})
     except Exception as e:
@@ -1622,20 +1668,41 @@ def delete_credential(credential_id):
         from flask import current_app
         db = current_app.extensions['sqlalchemy']
         row = db.session.execute(
-            text("SELECT file_path FROM credentials WHERE id = :id AND user_id = :uid AND is_active = 1"),
+            text("SELECT credential_type, file_path FROM credentials WHERE id = :id AND user_id = :uid AND is_active = 1"),
             {"id": credential_id, "uid": current_user.id}
         ).fetchone()
         if not row:
             return jsonify({'success': False, 'message': 'Credential not found'}), 404
+        
+        credential_type = row[0]
+        file_path_in_db = row[1]
+
         # Delete file
-        file_path = os.path.join(current_app.root_path, CREDENTIALS_FOLDER, row[0])
-        if os.path.exists(file_path):
-            os.remove(file_path)
+        file_path_full = os.path.join(current_app.root_path, CREDENTIALS_FOLDER, file_path_in_db)
+        if os.path.exists(file_path_full):
+            os.remove(file_path_full)
+        
         # Soft delete
         db.session.execute(
             text("UPDATE credentials SET is_active = 0 WHERE id = :id"),
             {"id": credential_id}
         )
+        
+        # Create notification
+        db.session.execute(
+            text("""
+                INSERT INTO notifications (user_id, type, title, message, created_at, is_active)
+                VALUES (:user_id, :type, :title, :message, :created_at, 1)
+            """),
+            {
+                "user_id": current_user.id,
+                "type": 'credential',
+                "title": 'Credential Deleted',
+                "message": f'Credential "{credential_type}" has been deleted.',
+                "created_at": datetime.utcnow()
+            }
+        )
+        
         db.session.commit()
         return jsonify({'success': True, 'message': 'Credential deleted successfully'})
     except Exception:

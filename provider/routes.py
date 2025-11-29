@@ -738,11 +738,19 @@ def api_application_detail(id):
         
     student = User.query.get(application.user_id)
     
+    # Get current scholarship requirements
+    req_str = scholarship.requirements or ''
+    current_requirements = [r.strip() for r in req_str.split(',') if r.strip()]
+    
     # Fetch only the files linked to this specific application
     application_files = ScholarshipApplicationFile.query.filter_by(application_id=application.id).all()
     
     cred_list = []
     for app_file in application_files:
+        # Only show files for current requirements
+        if app_file.requirement_type not in current_requirements:
+            continue
+            
         cred = app_file.credential
         if cred:
             cred_list.append({
