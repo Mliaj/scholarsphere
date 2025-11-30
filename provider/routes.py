@@ -464,6 +464,18 @@ def review_credential(credential_id):
         new_status = 'approved' if action == 'approve' else 'rejected'
         credential.status = new_status
         credential.is_verified = (new_status == 'approved')
+        
+        # Create in-app notification for the student
+        notification = Notification(
+            user_id=credential.user_id,
+            type='document',
+            title=f'Document Reviewed: {credential.credential_type}',
+            message=f'Your document "{credential.credential_type}" has been {new_status}.',
+            created_at=datetime.utcnow(),
+            is_active=True
+        )
+        db.session.add(notification)
+        
         db.session.commit()
 
         # Send email notification
