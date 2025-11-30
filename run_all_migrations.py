@@ -116,6 +116,12 @@ def main():
             'module': 'migrate_drop_unique_constraint',
             'function': 'migrate',
             'description': 'Drop restrictive unique_user_scholarship index to allow re-application'
+        },
+        {
+            'name': 'Password Reset Tokens',
+            'module': 'migrate_add_password_reset',
+            'function': 'migrate',
+            'description': 'Add reset_token and reset_token_expires columns to users table'
         }
     ]
     
