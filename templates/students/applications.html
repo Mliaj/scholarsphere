@@ -717,6 +717,24 @@ function closeAppModal(){ document.getElementById('appDetailsModal').style.displ
                         <div><strong>Deadline:</strong> {{ application.deadline }}</div>
                         <div><strong>Status:</strong> {{ application.status }}</div>
                         <div><strong>Type:</strong> Scholarship Application</div>
+                        {% if application.status == 'Approved' %}
+                        <div style="grid-column:1 / -1;">
+                            <strong>Active Status:</strong> 
+                            <span style="padding: 0.25rem 0.75rem; border-radius: 20px; font-size: 0.8rem; font-weight: 500; 
+                                {% if application.is_active %}
+                                    background: #d4edda; color: #155724;
+                                {% else %}
+                                    background: #f8d7da; color: #721c24;
+                                {% endif %}">
+                                {% if application.is_active %}Active{% else %}Inactive{% endif %}
+                            </span>
+                        </div>
+                        {% if not application.is_active %}
+                        <div style="grid-column:1 / -1; font-size:0.85rem; color:#856404; margin-top:0.5rem;">
+                            This scholarship has been archived, so your application is no longer active.
+                        </div>
+                        {% endif %}
+                        {% endif %}
                         {% if application.status in ['Rejected', 'Withdrawn'] %}
                         <div style="grid-column:1 / -1; font-size:0.85rem; color:#856404;">
                             If this scholarship is still accepting applications and you do not have another approved scholarship, you can apply again from the "Browse Scholarships" page.

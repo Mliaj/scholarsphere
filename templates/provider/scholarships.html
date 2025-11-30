@@ -150,7 +150,7 @@
           <td>{{ s.title }}</td>
           <td>{{ s.deadline }}</td>
           <td>{{ s.created_at | safe_strftime('%Y-%m-%d') }}</td>
-          <td>{{ s.applications.count() }}</td>
+          <td>{{ s.display_app_count | default(0) }}</td>
           <td>
             {% if s.status.lower() == 'approved' %}
               <span class="status active">Active</span>
@@ -186,7 +186,7 @@
     {% if archived_scholarships %}
     <div class="table-container" id="archivedScholarshipsContainer" style="margin-top: 2rem;">
       <div class="table-header">
-        <h3>Archive Scholar (Archived/Soft-Deleted Scholarships)</h3>
+        <h3>Archived Scholarships</h3>
       </div>
       <table>
       <thead>
@@ -207,7 +207,7 @@
           <td>{{ s.title }}</td>
           <td>{{ s.deadline }}</td>
           <td>{{ s.created_at | safe_strftime('%Y-%m-%d') }}</td>
-          <td>{{ s.applications.count() }}</td>
+          <td>{{ s.display_app_count | default(0) }}</td>
           <td>
             {% if s.status.lower() == 'approved' %}
               <span class="status active">Active</span>
@@ -218,6 +218,7 @@
           <td>
             <div class="actions">
               <button class="btn blue" onclick="viewScholarship('{{ s.id }}')">View</button>
+              <button class="btn" onclick="downloadScholarshipReport('{{ s.id }}')" style="background:#000000; color:#fff;" title="Download PDF Report"><i class="fas fa-file-pdf"></i> PDF</button>
               <button class="btn green" onclick="restoreScholarship('{{ s.id }}')">Restore</button>
               <button class="btn red" onclick="permanentDeleteScholarship('{{ s.id }}')">Delete</button>
             </div>
@@ -674,7 +675,13 @@ function archiveScholarship(id){
 
 // Restore scholarship function
 function restoreScholarship(id){
-  if (confirm('Are you sure you want to restore this scholarship? It will be moved back to active scholarships and visible to students.')) {
+  const confirmMessage = '⚠️ IMPORTANT: Restoring this scholarship will:\n\n' +
+    '• Remove ALL student applications\n' +
+    '• Reset application counts to zero\n' +
+    '• Students will need to apply again\n\n' +
+    'Are you sure you want to restore this scholarship?';
+  
+  if (confirm(confirmMessage)) {
     fetch(`/provider/api/scholarship/${id}/restore`, {
       method: 'POST',
       headers: {
@@ -684,7 +691,8 @@ function restoreScholarship(id){
     .then(response => response.json())
     .then(data => {
       if (data.success) {
-        showNotification('Scholarship restored successfully', 'success');
+        const message = data.message || 'Scholarship restored successfully. All applications have been removed.';
+        showNotification(message, 'success');
         location.reload();
       } else {
         showNotification('Error restoring scholarship: ' + (data.error || 'Unknown error'), 'error');

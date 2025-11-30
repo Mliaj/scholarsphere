@@ -51,7 +51,21 @@ def dashboard():
         {"user_id": current_user.id}
     ).scalar()
     
-    # Deadlines: nearest counts for current and next month
+    # Count active applications (approved applications where scholarship is not archived)
+    active_applications = db.session.execute(
+        text("""
+            SELECT COUNT(*) FROM scholarship_applications sa
+            JOIN scholarships s ON sa.scholarship_id = s.id
+            WHERE sa.user_id = :user_id 
+              AND sa.status = 'approved' 
+              AND sa.is_active = 1
+              AND s.is_active = 1
+              AND s.status != 'archived'
+        """),
+        {"user_id": current_user.id}
+    ).scalar() or 0
+    
+    # Deadlines: count for this month and upcoming months (beyond current month)
     from datetime import date
     today = date.today()
     first_of_month = today.replace(day=1)
@@ -59,12 +73,8 @@ def dashboard():
         first_next_month = first_of_month.replace(year=first_of_month.year + 1, month=1)
     else:
         first_next_month = first_of_month.replace(month=first_of_month.month + 1)
-    if first_next_month.month == 12:
-        first_after_next = first_next_month.replace(year=first_next_month.year + 1, month=1)
-    else:
-        first_after_next = first_next_month.replace(month=first_next_month.month + 1)
 
-    # Count scholarships with deadlines this month and next month
+    # Count scholarships with deadlines this month
     this_month_deadlines = db.session.execute(
         text("""
             SELECT COUNT(*) FROM scholarships
@@ -75,14 +85,15 @@ def dashboard():
         {"start": first_of_month.isoformat(), "end": first_next_month.isoformat()}
     ).scalar() or 0
 
-    next_month_deadlines = db.session.execute(
+    # Count scholarships with deadlines in upcoming months (beyond current month)
+    upcoming_months_deadlines = db.session.execute(
         text("""
             SELECT COUNT(*) FROM scholarships
             WHERE status IN ('active','approved') AND is_active = 1
               AND deadline IS NOT NULL
-              AND DATE(deadline) >= :start AND DATE(deadline) < :end
+              AND DATE(deadline) >= :start
         """),
-        {"start": first_next_month.isoformat(), "end": first_after_next.isoformat()}
+        {"start": first_next_month.isoformat()}
     ).scalar() or 0
 
     dashboard_data = {
@@ -92,11 +103,12 @@ def dashboard():
         },
         'applications': {
             'total': total_applications,
-            'approved': approved_applications
+            'approved': approved_applications,
+            'active': active_applications
         },
         'deadlines': {
             'this_month': this_month_deadlines,
-            'next_month': next_month_deadlines
+            'upcoming_months': upcoming_months_deadlines
         }
     }
     
@@ -192,13 +204,17 @@ def credentials():
     for cred in credentials_list:
         print(f"  ID: {cred['id']}, Upload Date: {cred['upload_date']}, Type: {type(cred['upload_date'])}")
     
-    # Get approved scholarship for the student
+    # Get approved scholarship for the student (only if scholarship is not archived)
     approved_scholarship = db.session.execute(
         text("""
-            SELECT s.title, s.code
+            SELECT s.title, s.code, s.is_active, s.status
             FROM scholarship_applications sa
             JOIN scholarships s ON sa.scholarship_id = s.id
-            WHERE sa.user_id = :user_id AND sa.status = 'approved' AND sa.is_active = 1
+            WHERE sa.user_id = :user_id 
+              AND sa.status = 'approved' 
+              AND sa.is_active = 1
+              AND s.is_active = 1
+              AND s.status != 'archived'
             ORDER BY sa.reviewed_at DESC
             LIMIT 1
         """),
@@ -289,7 +305,7 @@ def applications():
     user_applications = db.session.execute(
         text("""
             SELECT sa.id, sa.user_id, sa.scholarship_id, sa.status, sa.application_date, 
-                   s.title, s.deadline
+                   s.title, s.deadline, s.is_active as scholarship_is_active, s.status as scholarship_status
             FROM scholarship_applications sa
             JOIN scholarships s ON sa.scholarship_id = s.id
             WHERE sa.user_id = :user_id AND sa.is_active = 1
@@ -331,6 +347,16 @@ def applications():
             elif hasattr(deadline_val, 'strftime'):
                 deadline = deadline_val
         
+        # Determine if application is active
+        # Active = approved AND scholarship is not archived
+        scholarship_is_active = app[7] if len(app) > 7 else True
+        scholarship_status = (app[8] or '').lower() if len(app) > 8 else ''
+        app_status = app[3].lower()
+        
+        is_active = False
+        if app_status == 'approved' and scholarship_is_active and scholarship_status != 'archived':
+            is_active = True
+        
         applications_data.append({
             'id': f"APP-{app[0]:03d}",
             'scholarship': app[5],
@@ -338,7 +364,8 @@ def applications():
             'date_applied': app_date.strftime('%B %d, %Y'),
             'deadline': deadline.strftime('%B %d, %Y') if deadline else 'No deadline',
             'scholarship_id': app[2],
-            'application_id': app[0]
+            'application_id': app[0],
+            'is_active': is_active
         })
     
     return render_template('students/applications.html', applications=applications_data, user=current_user)

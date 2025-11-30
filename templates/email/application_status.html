@@ -44,13 +44,27 @@
         <div class="content">
             <h1>Application Status Update</h1>
             <p>Dear {{ student_name }},</p>
-            <p>
-                Your application for the scholarship "<strong>{{ scholarship_name }}</strong>" has been <strong>{{ new_status }}</strong>.
-            </p>
-            {% if new_status == 'approved' %}
-                <p>Congratulations! Please log in to your account for more details.</p>
+            {% if new_status == 'archived' %}
+                <p>
+                    The scholarship "<strong>{{ scholarship_name }}</strong>" that you applied for has been <strong>archived</strong> by the provider.
+                </p>
+                <p>Your application status may be affected. Please log in to your account to check your application status.</p>
+                <p>We encourage you to explore other available scholarships on the platform.</p>
+            {% elif new_status == 'restored' %}
+                <p>
+                    The scholarship "<strong>{{ scholarship_name }}</strong>" that you previously applied for has been <strong>restored</strong> by the provider.
+                </p>
+                <p>Your previous application has been removed. If you are still interested in this scholarship, you will need to submit a new application.</p>
+                <p>Please log in to your account to view the scholarship and apply again if you wish.</p>
             {% else %}
-                <p>We encourage you to apply for other scholarships. Please log in to your account to view other opportunities.</p>
+                <p>
+                    Your application for the scholarship "<strong>{{ scholarship_name }}</strong>" has been <strong>{{ new_status }}</strong>.
+                </p>
+                {% if new_status == 'approved' %}
+                    <p>Congratulations! Please log in to your account for more details.</p>
+                {% else %}
+                    <p>We encourage you to apply for other scholarships. Please log in to your account to view other opportunities.</p>
+                {% endif %}
             {% endif %}
             <p>Thank you,</p>
             <p>The Scholarsphere Team</p>
