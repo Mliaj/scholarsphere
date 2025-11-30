@@ -86,6 +86,11 @@
       <div class="nav-item" onclick="window.location.href='{{ url_for('provider.profile') }}'"><i class="fas fa-building"></i> Organization Profile</div>
       <div class="nav-item" onclick="window.location.href='{{ url_for('logout') }}'"><i class="fas fa-sign-out-alt"></i> Logout</div>
     </nav>
+    <div style="padding: 1rem 1.5rem; margin-top: 2rem; border-top: 1px solid rgba(255,255,255,0.1);">
+      <button onclick="openProviderGuidelinesModal()" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; padding: 0.75rem 1rem; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 0.9rem; width: 100%; text-align: center; transition: all 0.3s;">
+        <i class="fas fa-info-circle"></i> Guidelines
+      </button>
+    </div>
   </div>
 
   <!-- Main Content -->
@@ -391,6 +396,74 @@ window.addEventListener('profilePictureUpdated', function(e) {
         sidebarImg.src = e.detail.imageUrl;
     }
 });
+</script>
+
+<!-- Provider Guidelines Modal -->
+<div id="providerGuidelinesModal" style="display: none; position: fixed; z-index: 10000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); overflow: auto;">
+    <div style="background: #fff; margin: 5% auto; padding: 0; border-radius: 15px; width: 90%; max-width: 700px; max-height: 85vh; display: flex; flex-direction: column; box-shadow: 0 8px 32px rgba(0,0,0,0.2);">
+        <div style="padding: 1.5rem 2rem; border-bottom: 2px solid #e9ecef; display: flex; justify-content: space-between; align-items: center;">
+            <h2 style="margin: 0; color: #003366; font-size: 1.8rem;">Provider Portal Guidelines</h2>
+            <button onclick="closeProviderGuidelinesModal()" style="background: none; border: none; font-size: 1.8rem; color: #666; cursor: pointer; padding: 0; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">&times;</button>
+        </div>
+        <div style="padding: 2rem; overflow-y: auto; flex: 1;">
+            <h3 style="color: #003366; margin-bottom: 1.5rem; font-size: 1.5rem;">Guidelines for Provider</h3>
+            <ul style="list-style: none; padding: 0; margin: 0;">
+                <li style="margin-bottom: 1rem; padding-left: 1.5rem; position: relative; line-height: 1.6;">
+                    <span style="position: absolute; left: 0; color: #0072ce; font-weight: bold;">•</span>
+                    In your dashboard, you can see brief info of the scholarships and number of applicants.
+                </li>
+                <li style="margin-bottom: 1rem; padding-left: 1.5rem; position: relative; line-height: 1.6;">
+                    <span style="position: absolute; left: 0; color: #0072ce; font-weight: bold;">•</span>
+                    You can also send announcement to your offered scholarship to those who applied or to a specific student.
+                </li>
+                <li style="margin-bottom: 1rem; padding-left: 1.5rem; position: relative; line-height: 1.6;">
+                    <span style="position: absolute; left: 0; color: #0072ce; font-weight: bold;">•</span>
+                    You can create scholarship in "Manage Scholarships". Once created it's marked as draft and click publish to go online. You can also view, update, create a PDF report, and archive.
+                </li>
+                <li style="margin-bottom: 1rem; padding-left: 1.5rem; position: relative; line-height: 1.6;">
+                    <span style="position: absolute; left: 0; color: #0072ce; font-weight: bold;">•</span>
+                    Another list will appear if you archive. You can create a PDF report of it as well.
+                </li>
+                <li style="margin-bottom: 1rem; padding-left: 1.5rem; position: relative; line-height: 1.6;">
+                    <span style="position: absolute; left: 0; color: #0072ce; font-weight: bold;">•</span>
+                    Once archived, the students who are approved/applying the scholarship will be removed. You can restore it and those students will have to apply again if they want to. An update will be sent to the students accordingly.
+                </li>
+                <li style="margin-bottom: 1rem; padding-left: 1.5rem; position: relative; line-height: 1.6;">
+                    <span style="position: absolute; left: 0; color: #0072ce; font-weight: bold;">•</span>
+                    You can check the application of the students of the scholarship you created and view their details. Approve their documents. Approval can happen when you verified all the documents. You can reject anytime.
+                </li>
+                <li style="margin-bottom: 1rem; padding-left: 1.5rem; position: relative; line-height: 1.6;">
+                    <span style="position: absolute; left: 0; color: #0072ce; font-weight: bold;">•</span>
+                    You can set appointments to student in schedule page, multiple scheduled appointment can be sent to the student.
+                </li>
+                <li style="margin-bottom: 1rem; padding-left: 1.5rem; position: relative; line-height: 1.6;">
+                    <span style="position: absolute; left: 0; color: #0072ce; font-weight: bold;">•</span>
+                    In documents you can search student name or id to check their document, you can check even all the students available even if they are not on your scholarship and you can only view their document.
+                </li>
+                <li style="margin-bottom: 1rem; padding-left: 1.5rem; position: relative; line-height: 1.6;">
+                    <span style="position: absolute; left: 0; color: #0072ce; font-weight: bold;">•</span>
+                    In Organization is where your information is and you can update it as well.
+                </li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<script>
+function openProviderGuidelinesModal() {
+    document.getElementById('providerGuidelinesModal').style.display = 'block';
+}
+
+function closeProviderGuidelinesModal() {
+    document.getElementById('providerGuidelinesModal').style.display = 'none';
+}
+
+window.onclick = function(event) {
+    const modal = document.getElementById('providerGuidelinesModal');
+    if (event.target == modal) {
+        closeProviderGuidelinesModal();
+    }
+}
 </script>
 {% endblock %}
 
