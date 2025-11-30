@@ -22,6 +22,49 @@
     .welcome-text h1 { font-size:2rem; color:#003366; margin-bottom:.5rem; }
     .welcome-text p { color:#666; }
     
+    /* Search container styles */
+    .search-container { transition: all 0.3s ease; }
+    .search-container.centered { 
+        display: flex; 
+        justify-content: center; 
+        align-items: center; 
+        min-height: 60vh; 
+        margin: 0;
+    }
+    .search-container.top { 
+        margin-bottom: 2rem; 
+    }
+    .search-wrapper {
+        width: 100%;
+        max-width: 600px;
+        transition: all 0.3s ease;
+    }
+    .search-wrapper.centered {
+        text-align: center;
+    }
+    .search-wrapper.top {
+        text-align: left;
+    }
+    #docSearch {
+        width: 100%;
+        padding: 1rem 1.5rem;
+        border-radius: 12px;
+        border: 2px solid #ddd;
+        font-size: 1.1rem;
+        transition: all 0.3s ease;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    }
+    #docSearch:focus {
+        outline: none;
+        border-color: #0072ce;
+        box-shadow: 0 4px 20px rgba(0, 114, 206, 0.15);
+    }
+    .search-placeholder {
+        margin-top: 1rem;
+        color: #666;
+        font-size: 0.95rem;
+    }
+    
     .document-section { background:#fff; border-radius:15px; box-shadow:0 4px 20px rgba(0,0,0,0.08); margin-bottom:2rem; padding:1.5rem; }
     .document-header { display:flex; justify-content:space-between; align-items:start; margin-bottom:1.5rem; padding-bottom:1rem; border-bottom:2px solid #e9ecef; }
     .student-info h3 { color:#003366; margin-bottom:.25rem; }
@@ -37,6 +80,14 @@
     .btn-view { background:#007bff; color:#fff; padding:.5rem 1rem; border-radius:8px; border:none; cursor:pointer; font-weight:600; font-size:.9rem; }
     
     .no-documents { text-align:center; padding:2rem; color:#666; }
+    
+    .results-container { 
+        animation: fadeIn 0.3s ease;
+    }
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
     
     @media (max-width:1024px){ .sidebar{width:250px;} .main-content{margin-left:250px;} }
     @media (max-width:768px){ .sidebar{transform:translateX(-100%);} .main-content{margin-left:0;} }
@@ -74,15 +125,23 @@
       </div>
     </div>
 
-    <!-- Search Bar -->
-    <div style="margin-bottom: 2rem;">
-      <input type="text" id="docSearch" class="form-control" placeholder="Search by student name or ID..." style="max-width: 400px; padding: 0.8rem; border-radius: 10px; border: 1px solid #ddd; font-size: 1rem;">
+    <!-- Search Bar Container -->
+    <div class="search-container centered" id="searchContainer">
+      <div class="search-wrapper centered" id="searchWrapper">
+        <input type="text" id="docSearch" placeholder="Search by student name or ID...">
+        <div class="search-placeholder" id="searchPlaceholder">
+          <i class="fas fa-search" style="font-size: 2rem; color: #ddd; margin-bottom: 0.5rem; display: block;"></i>
+          <p>Enter a student name or ID to search for documents</p>
+        </div>
+      </div>
     </div>
 
-    <div id="documentsContainer">
+    <!-- Results Container -->
+    <div id="resultsContainer" class="results-container" style="display: none;">
+      <div id="documentsContainer">
       {% if documents %}
         {% for doc in documents %}
-        <div class="document-section" data-student-name="{{ doc.student_name.lower() }}" data-student-id="{{ doc.student_id }}">
+        <div class="document-section" data-student-name="{{ doc.student_name.lower() }}" data-student-id="{{ doc.student_id }}" style="display: none;">
           <div class="document-header">
             <div class="student-info">
               <h3>{{ doc.student_name }}</h3>
@@ -128,33 +187,91 @@
           <p style="color:#666;">No students have submitted applications yet.</p>
         </div>
       {% endif %}
-    </div>
-    <div id="noResults" style="display:none; text-align:center; padding:3rem; color:#666;">
-      <i class="fas fa-search" style="font-size:2rem; margin-bottom:1rem; opacity:0.5;"></i>
-      <p>No matching documents found.</p>
+      </div>
+      <div id="noResults" style="display:none; text-align:center; padding:3rem; color:#666;">
+        <i class="fas fa-search" style="font-size:2rem; margin-bottom:1rem; opacity:0.5;"></i>
+        <p>No matching documents found.</p>
+      </div>
     </div>
   </div>
 </div>
 
 <script>
-document.getElementById('docSearch').addEventListener('keyup', function() {
-  const query = this.value.toLowerCase().trim();
+document.addEventListener('DOMContentLoaded', function() {
+  const searchInput = document.getElementById('docSearch');
+  const searchContainer = document.getElementById('searchContainer');
+  const searchWrapper = document.getElementById('searchWrapper');
+  const searchPlaceholder = document.getElementById('searchPlaceholder');
+  const resultsContainer = document.getElementById('resultsContainer');
+  const documentsContainer = document.getElementById('documentsContainer');
+  const noResults = document.getElementById('noResults');
+  
+  // Initially hide all documents
   const sections = document.querySelectorAll('.document-section');
-  let hasMatch = false;
-
   sections.forEach(section => {
-    const name = section.getAttribute('data-student-name') || '';
-    const id = section.getAttribute('data-student-id') || '';
-    
-    if (name.includes(query) || id.includes(query)) {
-      section.style.display = '';
-      hasMatch = true;
+    section.style.display = 'none';
+  });
+  
+  function performSearch() {
+    const query = searchInput.value.toLowerCase().trim();
+    let hasMatch = false;
+    let visibleCount = 0;
+
+    sections.forEach(section => {
+      const name = section.getAttribute('data-student-name') || '';
+      const id = section.getAttribute('data-student-id') || '';
+      
+      if (query === '' || name.includes(query) || id.includes(query)) {
+        section.style.display = '';
+        if (query !== '') {
+          hasMatch = true;
+          visibleCount++;
+        }
+      } else {
+        section.style.display = 'none';
+      }
+    });
+
+    // If search query exists and has results
+    if (query !== '') {
+      // Move search to top
+      searchContainer.classList.remove('centered');
+      searchContainer.classList.add('top');
+      searchWrapper.classList.remove('centered');
+      searchWrapper.classList.add('top');
+      searchPlaceholder.style.display = 'none';
+      resultsContainer.style.display = 'block';
+      
+      // Show/hide no results message
+      if (visibleCount === 0) {
+        noResults.style.display = 'block';
+        documentsContainer.style.display = 'none';
+      } else {
+        noResults.style.display = 'none';
+        documentsContainer.style.display = 'block';
+      }
     } else {
-      section.style.display = 'none';
+      // Reset to centered state
+      searchContainer.classList.remove('top');
+      searchContainer.classList.add('centered');
+      searchWrapper.classList.remove('top');
+      searchWrapper.classList.add('centered');
+      searchPlaceholder.style.display = 'block';
+      resultsContainer.style.display = 'none';
+      noResults.style.display = 'none';
+    }
+  }
+  
+  searchInput.addEventListener('input', performSearch);
+  searchInput.addEventListener('keyup', performSearch);
+  
+  // Handle Enter key
+  searchInput.addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      performSearch();
     }
   });
-
-  document.getElementById('noResults').style.display = (hasMatch || sections.length === 0) ? 'none' : 'block';
 });
 </script>
 {% endblock %}

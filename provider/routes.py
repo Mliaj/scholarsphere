@@ -644,6 +644,38 @@ def api_applications_list():
         })
     return jsonify(data)
 
+@provider_bp.route('/api/scholarships/search')
+@login_required
+def api_scholarships_search():
+    """Autocomplete search for scholarships"""
+    if current_user.role != 'provider':
+        return jsonify([])
+    
+    query = request.args.get('q', '').strip()
+    if not query or len(query) < 2:
+        return jsonify([])
+
+    # Find matching scholarships for this provider
+    scholarships = Scholarship.query.filter_by(provider_id=current_user.id)\
+        .filter(or_(
+            Scholarship.title.like(f"%{query}%"),
+            Scholarship.code.like(f"%{query}%")
+        ))\
+        .limit(10).all()
+        
+    data = []
+    for s in scholarships:
+        # Format: "Title (Code)"
+        display = f"{s.title} ({s.code})"
+        data.append({
+            'id': s.id,
+            'display': display,
+            'title': s.title,
+            'code': s.code
+        })
+        
+    return jsonify(data)
+
 @provider_bp.route('/api/students/search')
 @login_required
 def api_students_search():
@@ -662,7 +694,7 @@ def api_students_search():
         return jsonify([])
 
     # Find matching students
-    results = db.session.query(User.first_name, User.last_name, User.student_id, User.email)\
+    results = db.session.query(User.id, User.first_name, User.last_name, User.student_id, User.email)\
         .join(ScholarshipApplication, User.id == ScholarshipApplication.user_id)\
         .filter(ScholarshipApplication.scholarship_id.in_(scholarship_ids))\
         .filter(or_(
@@ -674,12 +706,16 @@ def api_students_search():
         
     data = []
     for r in results:
-        full_name = f"{r[0]} {r[1]}"
-        # Format: "Name (ID) - Email"
-        # We will return just "Name (ID)" for the input value, or maybe full string
-        # The UI will handle display.
-        display = f"{full_name} ({r[2]})"
-        data.append(display)
+        full_name = f"{r[1]} {r[2]}"
+        # Format: "Name (ID)"
+        display = f"{full_name} ({r[3]})"
+        data.append({
+            'id': r[0],
+            'display': display,
+            'name': full_name,
+            'student_id': r[3],
+            'email': r[4]
+        })
         
     return jsonify(data)
 
@@ -905,108 +941,115 @@ def api_scholarship_permanent_delete(id):
 @login_required
 def api_application_detail(id):
     """Get application details for modal"""
-    if current_user.role != 'provider':
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    try:
+        if current_user.role != 'provider':
+            return jsonify({'success': False, 'error': 'Unauthorized'}), 403
 
-    application = ScholarshipApplication.query.get_or_404(id)
-    scholarship = Scholarship.query.get(application.scholarship_id)
-    
-    if not scholarship:
-        return jsonify({'success': False, 'error': 'Scholarship not found'}), 404
-    
-    if scholarship.provider_id != current_user.id:
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+        application = ScholarshipApplication.query.get_or_404(id)
+        scholarship = Scholarship.query.get(application.scholarship_id)
         
-    student = User.query.get(application.user_id)
-    
-    # Get current scholarship requirements
-    req_str = scholarship.requirements or ''
-    current_requirements = [r.strip() for r in req_str.split(',') if r.strip()]
-    
-    # Fetch files linked to this specific application
-    linked_files = ScholarshipApplicationFile.query.filter_by(application_id=application.id).all()
-    
-    # Fetch all active loose credentials for user
-    loose_creds_orm = Credential.query.filter_by(user_id=student.id, is_active=True).order_by(Credential.upload_date.desc()).all()
-    
-    # Convert to list of dicts for Matcher
-    loose_creds_list = []
-    for c in loose_creds_orm:
-        loose_creds_list.append({
-            'credential_type': c.credential_type,
-            'file_name': c.file_name,
-            'file_path': c.file_path,
-            'id': c.id,
-            'is_verified': c.is_verified,
-            'status': c.status,
-            'upload_date': c.upload_date
-        })
+        if not scholarship:
+            return jsonify({'success': False, 'error': 'Scholarship not found'}), 404
         
-    # Find matches using advanced logic
-    matched_loose = CredentialMatcher.find_matching_credentials(current_requirements, loose_creds_list)
-    
-    # Map linked files by requirement type
-    linked_map = {f.requirement_type: f.credential for f in linked_files if f.credential}
-    
-    cred_list = []
-    
-    # Iterate requirements to build the list
-    for req in current_requirements:
-        cred = linked_map.get(req)
+        if scholarship.provider_id != current_user.id:
+            return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+            
+        student = User.query.get(application.user_id)
         
-        if cred:
-            # Linked file exists
-            cred_list.append({
-                'id': cred.id,
-                'requirement_type': req,
-                'file_name': cred.file_name,
-                'file_path': cred.file_path,
-                'status': cred.status,
-                'is_verified': cred.is_verified,
-                'is_active': cred.is_active
+        if not student:
+            return jsonify({'success': False, 'error': 'Student not found'}), 404
+        
+        # Get current scholarship requirements
+        req_str = scholarship.requirements or ''
+        current_requirements = [r.strip() for r in req_str.split(',') if r.strip()]
+        
+        # Fetch files linked to this specific application
+        linked_files = ScholarshipApplicationFile.query.filter_by(application_id=application.id).all()
+        
+        # Fetch all active loose credentials for user
+        loose_creds_orm = Credential.query.filter_by(user_id=student.id, is_active=True).order_by(Credential.upload_date.desc()).all()
+        
+        # Convert to list of dicts for Matcher
+        loose_creds_list = []
+        for c in loose_creds_orm:
+            loose_creds_list.append({
+                'credential_type': c.credential_type,
+                'file_name': c.file_name,
+                'file_path': c.file_path,
+                'id': c.id,
+                'is_verified': c.is_verified,
+                'status': c.status,
+                'upload_date': c.upload_date
             })
-        else:
-            # Check for loose match
-            matches = matched_loose.get(req, [])
-            if matches:
-                # Use the best match (first one, as loose_creds is sorted DESC)
-                match = matches[0]
+            
+        # Find matches using advanced logic
+        matched_loose = CredentialMatcher.find_matching_credentials(current_requirements, loose_creds_list)
+        
+        # Map linked files by requirement type
+        linked_map = {f.requirement_type: f.credential for f in linked_files if f.credential}
+        
+        cred_list = []
+        
+        # Iterate requirements to build the list
+        for req in current_requirements:
+            cred = linked_map.get(req)
+            
+            if cred:
+                # Linked file exists
                 cred_list.append({
-                    'id': match['id'],
+                    'id': cred.id,
                     'requirement_type': req,
-                    'file_name': match['file_name'],
-                    'file_path': match['file_path'],
-                    'status': match['status'],
-                    'is_verified': match['is_verified'],
-                    'is_active': True
+                    'file_name': cred.file_name,
+                    'file_path': cred.file_path,
+                    'status': cred.status,
+                    'is_verified': cred.is_verified,
+                    'is_active': cred.is_active
                 })
-    
-    # Also include any linked files that are NOT in current requirements (extra/old requirements)
-    for req, cred in linked_map.items():
-        if req not in current_requirements:
-             cred_list.append({
-                'id': cred.id,
-                'requirement_type': req,
-                'file_name': cred.file_name,
-                'file_path': cred.file_path,
-                'status': cred.status,
-                'is_verified': cred.is_verified,
-                'is_active': cred.is_active
-            })
+            else:
+                # Check for loose match
+                matches = matched_loose.get(req, [])
+                if matches:
+                    # Use the best match (first one, as loose_creds is sorted DESC)
+                    match = matches[0]
+                    cred_list.append({
+                        'id': match['id'],
+                        'requirement_type': req,
+                        'file_name': match['file_name'],
+                        'file_path': match['file_path'],
+                        'status': match['status'],
+                        'is_verified': match['is_verified'],
+                        'is_active': True
+                    })
         
-    return jsonify({
-        'success': True,
-        'application': {
-            'id': application.id,
-            'student_name': student.get_full_name() if student else 'Unknown',
-            'student_email': student.email if student else '',
-            'student_id': student.student_id if student else '',
-            'scholarship_title': scholarship.title,
-            'date_applied': application.application_date.strftime('%Y-%m-%d'),
-            'status': application.status
-        },
-        'credentials': cred_list
-    })
+        # Also include any linked files that are NOT in current requirements (extra/old requirements)
+        for req, cred in linked_map.items():
+            if req not in current_requirements:
+                 cred_list.append({
+                    'id': cred.id,
+                    'requirement_type': req,
+                    'file_name': cred.file_name,
+                    'file_path': cred.file_path,
+                    'status': cred.status,
+                    'is_verified': cred.is_verified,
+                    'is_active': cred.is_active
+                })
+            
+        return jsonify({
+            'success': True,
+            'application': {
+                'id': application.id,
+                'student_name': student.get_full_name() if student else 'Unknown',
+                'student_email': student.email if student else '',
+                'student_id': student.student_id if student else '',
+                'scholarship_title': scholarship.title,
+                'date_applied': application.application_date.strftime('%Y-%m-%d'),
+                'status': application.status
+            },
+            'credentials': cred_list
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': f'Error loading application details: {str(e)}'}), 500
 
 @provider_bp.route('/api/scholarship/<int:id>/report-pdf')
 @login_required

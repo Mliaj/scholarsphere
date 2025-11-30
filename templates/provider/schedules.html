@@ -22,6 +22,27 @@
     .welcome-text h1 { font-size:2rem; color:#003366; margin-bottom:.5rem; }
     .welcome-text p { color:#666; }
     
+    /* Search bar styles */
+    .search-bar-container { margin-bottom: 1.5rem; }
+    .search-bar-container input { 
+        width: 100%; 
+        max-width: 500px; 
+        padding: 0.8rem 1.2rem; 
+        border-radius: 10px; 
+        border: 2px solid #ddd; 
+        font-size: 1rem;
+        transition: all 0.3s ease;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    }
+    .search-bar-container input:focus { 
+        outline: none; 
+        border-color: #0072ce; 
+        box-shadow: 0 4px 20px rgba(0, 114, 206, 0.15);
+    }
+    .search-bar-container input::placeholder {
+        color: #999;
+    }
+    
     .table-container { background:#fff; border-radius:15px; box-shadow:0 4px 20px rgba(0,0,0,0.08); overflow:hidden; }
     table { width:100%; border-collapse:collapse; }
     th { background:#f8f9fa; padding:1rem; text-align:left; font-weight:600; color:#1a1a1a; border-bottom:2px solid #e9ecef; }
@@ -72,6 +93,11 @@
       </div>
     </div>
 
+    <!-- Search Bar -->
+    <div class="search-bar-container">
+      <input type="text" id="scheduleSearch" placeholder="Search by student name, scholarship title, or code..." autocomplete="off">
+    </div>
+
     <div class="table-container">
       <table>
         <thead>
@@ -87,7 +113,7 @@
         <tbody>
           {% if applications %}
             {% for app in applications %}
-            <tr>
+            <tr class="schedule-row" data-student-name="{{ app.student_name.lower() }}" data-scholarship-title="{{ app.scholarship_title.lower() }}" data-scholarship-code="{{ app.scholarship_code.lower() }}">
               <td>{{ app.application_id }}</td>
               <td><strong>{{ app.student_name }}</strong><br><small>{{ app.student_email }}</small></td>
               <td><strong>{{ app.scholarship_code }}</strong><br><small>{{ app.scholarship_title }}</small></td>
@@ -105,7 +131,7 @@
             </tr>
             {% endfor %}
           {% else %}
-            <tr>
+            <tr id="noApplicationsRow">
               <td colspan="6" style="text-align:center; padding:3rem;">
                 <i class="fas fa-calendar-times" style="font-size:3rem; color:#ddd; margin-bottom:1rem;"></i>
                 <p>No applications to schedule yet.</p>
@@ -279,6 +305,70 @@ window.onclick = function(event) {
   const modal = document.getElementById('scheduleModal');
   if (event.target === modal) closeScheduleModal();
 }
+
+// Search functionality
+document.addEventListener('DOMContentLoaded', function() {
+  const searchInput = document.getElementById('scheduleSearch');
+  const scheduleRows = document.querySelectorAll('.schedule-row');
+  const noApplicationsRow = document.getElementById('noApplicationsRow');
+  const tbody = document.querySelector('tbody');
+  
+  // Create a "no results" row if it doesn't exist
+  let noResultsRow = null;
+  
+  function createNoResultsRow() {
+    if (!noResultsRow) {
+      noResultsRow = document.createElement('tr');
+      noResultsRow.id = 'noResultsRow';
+      noResultsRow.style.display = 'none';
+      noResultsRow.innerHTML = `
+        <td colspan="6" style="text-align:center; padding:3rem;">
+          <i class="fas fa-search" style="font-size:3rem; color:#ddd; margin-bottom:1rem;"></i>
+          <p>No matching applications found.</p>
+        </td>
+      `;
+      tbody.appendChild(noResultsRow);
+    }
+  }
+  
+  createNoResultsRow();
+  
+  function performSearch() {
+    const query = searchInput.value.toLowerCase().trim();
+    let visibleCount = 0;
+    
+    scheduleRows.forEach(row => {
+      const studentName = row.getAttribute('data-student-name') || '';
+      const scholarshipTitle = row.getAttribute('data-scholarship-title') || '';
+      const scholarshipCode = row.getAttribute('data-scholarship-code') || '';
+      
+      if (query === '' || studentName.includes(query) || scholarshipTitle.includes(query) || scholarshipCode.includes(query)) {
+        row.style.display = '';
+        if (query !== '') {
+          visibleCount++;
+        }
+      } else {
+        row.style.display = 'none';
+      }
+    });
+    
+    // Show/hide no results message
+    if (query !== '' && visibleCount === 0) {
+      noResultsRow.style.display = '';
+      if (noApplicationsRow) {
+        noApplicationsRow.style.display = 'none';
+      }
+    } else {
+      noResultsRow.style.display = 'none';
+      if (noApplicationsRow) {
+        noApplicationsRow.style.display = '';
+      }
+    }
+  }
+  
+  searchInput.addEventListener('input', performSearch);
+  searchInput.addEventListener('keyup', performSearch);
+});
 </script>
 {% endblock %}
 
