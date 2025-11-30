@@ -2,10 +2,10 @@
 Authentication routes for Scholarsphere
 """
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app
+from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app, make_response
 from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
-from datetime import datetime
+from datetime import datetime, timedelta
 from sqlalchemy import text
 import re
 
@@ -109,20 +109,36 @@ def login():
             user = None
         
         if user and user.check_password(password):
-            login_user(user)
+            remember = request.form.get('remember') == 'on'
+            login_user(user, remember=remember)
             flash(f'Welcome back, {user.get_full_name()}!', 'success')
             
-            # Redirect based on role
+            # Determine redirect URL
             if user.role == 'student':
-                return redirect(url_for('students.dashboard'))
+                next_url = url_for('students.dashboard')
             elif user.role == 'provider':
-                return redirect(url_for('provider.dashboard'))
+                next_url = url_for('provider.dashboard')
             elif user.role == 'admin':
-                return redirect(url_for('admin.dashboard'))
+                next_url = url_for('admin.dashboard')
+            else:
+                next_url = url_for('index')
+            
+            # Handle cookie for remember username
+            resp = make_response(redirect(next_url))
+            if remember:
+                # Set cookie for 30 days
+                expire_date = datetime.now() + timedelta(days=30)
+                resp.set_cookie('remembered_identifier', identifier, expires=expire_date)
+            else:
+                resp.set_cookie('remembered_identifier', '', expires=0)
+            
+            return resp
         else:
             flash('Invalid credentials.', 'error')
     
-    return render_template('auth/login.html')
+    # GET request: Check for remembered identifier
+    remembered_identifier = request.cookies.get('remembered_identifier', '')
+    return render_template('auth/login.html', remembered_identifier=remembered_identifier)
 
 @auth_bp.route('/signup', methods=['GET', 'POST'])
 def signup():

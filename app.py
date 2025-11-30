@@ -245,6 +245,22 @@ class Schedule(db.Model):
     provider = db.relationship('User', foreign_keys=[provider_id], backref='provider_schedules')
     student = db.relationship('User', foreign_keys=[user_id], backref='student_schedules')
 
+# Announcement model (Provider history)
+class Announcement(db.Model):
+    __tablename__ = 'announcements'
+
+    id = db.Column(db.Integer, primary_key=True)
+    provider_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    type = db.Column(db.String(50), nullable=False) # 'broadcast' or 'individual'
+    recipient_filter = db.Column(db.String(255)) # e.g. "Scholarship A (Approved)"
+    recipient_count = db.Column(db.Integer, default=0)
+    title = db.Column(db.String(255), nullable=False)
+    message = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    # Relationship
+    provider = db.relationship('User', backref='sent_announcements')
+
 @login_manager.user_loader
 def load_user(user_id):
     return db.session.get(User, int(user_id))

@@ -1,8 +1,9 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 from flask_login import login_required, current_user
-from app import db, User, Scholarship, ScholarshipApplication, Credential, Schedule, Notification, ScholarshipApplicationFile
+from app import db, User, Scholarship, ScholarshipApplication, Credential, Schedule, Notification, ScholarshipApplicationFile, Announcement
 from email_utils import send_email
 from datetime import datetime # Import datetime here
+from sqlalchemy import or_
 
 provider_bp = Blueprint('provider', __name__)
 
@@ -315,62 +316,158 @@ def review_application(application_id):
 
 @provider_bp.route('/api/announcement/scholarship/<int:scholarship_id>', methods=['POST'])
 @login_required
-def send_scholarship_announcement(scholarship_id):
-    """Send announcement to all applicants of a scholarship"""
+def send_broadcast_announcement(scholarship_id):
+    """Send announcement to applicants of a scholarship, optionally filtered by status"""
     if current_user.role != 'provider':
         return jsonify({'error': 'Access denied'}), 403
 
     data = request.get_json()
     message = data.get('message')
+    title = data.get('title')
+    status_filter = data.get('status_filter') # e.g. 'approved', 'pending', 'all'
+    
+    if not title or not message:
+        return jsonify({'error': 'Title and message are required'}), 400
     
     scholarship = Scholarship.query.get_or_404(scholarship_id)
     if scholarship.provider_id != current_user.id:
         return jsonify({'error': 'Access denied'}), 403
 
-    applications = ScholarshipApplication.query.filter_by(scholarship_id=scholarship_id).all()
-    students = [User.query.get(app.user_id) for app in applications]
-
-    for student in students:
-        if student:
-            send_email(
-                student.email,
-                f'Announcement for {scholarship.title}',
-                'email/new_announcement.html',
-                student_name=student.get_full_name(),
-                announcement_title=f'Announcement for {scholarship.title}',
-                announcement_message=message
-            )
+    # Build query
+    query = ScholarshipApplication.query.filter_by(scholarship_id=scholarship_id)
     
-    return jsonify({'success': True, 'recipient_count': len(students), 'scholarship': scholarship.title})
+    if status_filter and status_filter.lower() != 'all':
+        query = query.filter(ScholarshipApplication.status == status_filter.lower())
+        
+    applications = query.all()
+    students = [User.query.get(app.user_id) for app in applications]
+    
+    # Filter out None values just in case
+    students = [s for s in students if s]
 
-@provider_bp.route('/api/application/<int:application_id>/announcement', methods=['POST'])
+    if not students:
+        return jsonify({'success': False, 'error': 'No recipients found matching criteria'})
+
+    # Send emails and notifications
+    for student in students:
+        # Email
+        send_email(
+            student.email,
+            f'{title} - {scholarship.title}',
+            'email/new_announcement.html',
+            student_name=student.get_full_name(),
+            announcement_title=title,
+            announcement_message=message
+        )
+        
+        # In-app Notification
+        notification = Notification(
+            user_id=student.id,
+            type='info',
+            title=title,
+            message=f"Announcement regarding {scholarship.title}: {message}",
+            created_at=datetime.utcnow(),
+            is_active=True
+        )
+        db.session.add(notification)
+
+    # Record Announcement History
+    filter_desc = f"Scholarship: {scholarship.code} ({status_filter.title() if status_filter else 'All'})"
+    announcement = Announcement(
+        provider_id=current_user.id,
+        type='broadcast',
+        recipient_filter=filter_desc,
+        recipient_count=len(students),
+        title=title,
+        message=message,
+        created_at=datetime.utcnow()
+    )
+    db.session.add(announcement)
+    db.session.commit()
+    
+    return jsonify({'success': True, 'recipient_count': len(students), 'scholarship': scholarship.title, 'message': 'Announcement sent successfully'})
+
+@provider_bp.route('/api/announcement/individual', methods=['POST'])
 @login_required
-def send_application_announcement(application_id):
-    """Send announcement to a single applicant"""
+def send_individual_announcement():
+    """Send announcement to a specific student by looking them up"""
     if current_user.role != 'provider':
         return jsonify({'error': 'Access denied'}), 403
 
     data = request.get_json()
+    recipient_str = data.get('recipient') # Name, ID, or Email string
+    title = data.get('title')
     message = data.get('message')
 
-    application = ScholarshipApplication.query.get_or_404(application_id)
-    scholarship = Scholarship.query.get_or_404(application.scholarship_id)
+    if not recipient_str or not title or not message:
+        return jsonify({'error': 'Recipient, title, and message are required'}), 400
 
-    if scholarship.provider_id != current_user.id:
-        return jsonify({'error': 'Access denied'}), 403
+    # Find the student
+    # We search for a student who has applied to ANY of this provider's scholarships
+    scholarships = Scholarship.query.filter_by(provider_id=current_user.id).all()
+    scholarship_ids = [s.id for s in scholarships]
+    
+    if not scholarship_ids:
+        return jsonify({'error': 'You have no scholarships/students'}), 400
 
-    student = User.query.get(application.user_id)
-    if student:
-        send_email(
-            student.email,
-            f'Announcement for {scholarship.title}',
-            'email/new_announcement.html',
-            student_name=student.get_full_name(),
-            announcement_title=f'Announcement for {scholarship.title}',
-            announcement_message=message
+    # Helper to parse input (could be "John Doe (12345678)")
+    search_term = recipient_str
+    if '(' in recipient_str:
+         # Extract ID if present in format "Name (ID)"
+         import re
+         # Match content inside the last pair of parentheses
+         match = re.search(r'\(([^)]+)\)$', recipient_str.strip())
+         if match:
+             search_term = match.group(1)
+
+    # Query logic: Join User with Applications
+    student = User.query.join(ScholarshipApplication, User.id == ScholarshipApplication.user_id).filter(
+        ScholarshipApplication.scholarship_id.in_(scholarship_ids),
+        or_(
+            User.student_id == search_term,
+            User.email == search_term,
+            (User.first_name + ' ' + User.last_name).like(f"%{search_term}%")
         )
+    ).first()
 
-    return jsonify({'success': True})
+    if not student:
+         return jsonify({'error': 'Student not found or not an applicant to your scholarships'}), 404
+
+    # Send Email
+    send_email(
+        student.email,
+        f'{title}',
+        'email/new_announcement.html',
+        student_name=student.get_full_name(),
+        announcement_title=title,
+        announcement_message=message
+    )
+    
+    # In-app Notification
+    notification = Notification(
+        user_id=student.id,
+        type='info',
+        title=title,
+        message=message,
+        created_at=datetime.utcnow(),
+        is_active=True
+    )
+    db.session.add(notification)
+
+    # Record History
+    announcement = Announcement(
+        provider_id=current_user.id,
+        type='individual',
+        recipient_filter=f"Student: {student.get_full_name()} ({student.student_id})",
+        recipient_count=1,
+        title=title,
+        message=message,
+        created_at=datetime.utcnow()
+    )
+    db.session.add(announcement)
+    db.session.commit()
+
+    return jsonify({'success': True, 'message': 'Announcement sent successfully'})
 
 @provider_bp.route('/api/application/<int:application_id>/schedule', methods=['POST'])
 @login_required
@@ -464,6 +561,18 @@ def review_credential(credential_id):
         new_status = 'approved' if action == 'approve' else 'rejected'
         credential.status = new_status
         credential.is_verified = (new_status == 'approved')
+        
+        # Create in-app notification for the student
+        notification = Notification(
+            user_id=credential.user_id,
+            type='document',
+            title=f'Document Reviewed: {credential.credential_type}',
+            message=f'Your document "{credential.credential_type}" has been {new_status}.',
+            created_at=datetime.utcnow(),
+            is_active=True
+        )
+        db.session.add(notification)
+        
         db.session.commit()
 
         # Send email notification
@@ -491,20 +600,21 @@ def review_credential(credential_id):
 def api_scholarships_list():
     """Get list of scholarships for dashboard charts/tables"""
     if current_user.role != 'provider':
-        return jsonify([])
+        return jsonify({'success': False, 'error': 'Access denied'})
     
     scholarships = Scholarship.query.filter_by(provider_id=current_user.id).all()
     data = []
     for s in scholarships:
         data.append({
             'id': s.id,
+            'code': s.code,
             'title': s.title,
             'status': s.status,
             'applications_count': s.applications.count(), # Use dynamic count
             'deadline': s.deadline.strftime('%Y-%m-%d') if s.deadline else None,
             'created_at': s.created_at.strftime('%Y-%m-%d')
         })
-    return jsonify(data)
+    return jsonify({'success': True, 'scholarships': data})
 
 @provider_bp.route('/api/applications/list')
 @login_required
@@ -533,15 +643,85 @@ def api_applications_list():
         })
     return jsonify(data)
 
+@provider_bp.route('/api/students/search')
+@login_required
+def api_students_search():
+    """Autocomplete search for students"""
+    if current_user.role != 'provider':
+        return jsonify([])
+    
+    query = request.args.get('q', '').strip()
+    if not query or len(query) < 2:
+        return jsonify([])
+
+    scholarships = Scholarship.query.filter_by(provider_id=current_user.id).all()
+    scholarship_ids = [s.id for s in scholarships]
+    
+    if not scholarship_ids:
+        return jsonify([])
+
+    # Find matching students
+    results = db.session.query(User.first_name, User.last_name, User.student_id, User.email)\
+        .join(ScholarshipApplication, User.id == ScholarshipApplication.user_id)\
+        .filter(ScholarshipApplication.scholarship_id.in_(scholarship_ids))\
+        .filter(or_(
+            User.student_id.like(f"%{query}%"),
+            User.email.like(f"%{query}%"),
+            (User.first_name + ' ' + User.last_name).like(f"%{query}%")
+        ))\
+        .distinct().limit(10).all()
+        
+    data = []
+    for r in results:
+        full_name = f"{r[0]} {r[1]}"
+        # Format: "Name (ID) - Email"
+        # We will return just "Name (ID)" for the input value, or maybe full string
+        # The UI will handle display.
+        display = f"{full_name} ({r[2]})"
+        data.append(display)
+        
+    return jsonify(data)
+
 @provider_bp.route('/api/announcements/history')
 @login_required
 def api_announcements_history():
-    """Get history of sent announcements (mock data for now or query notifications)"""
+    """Get history of sent announcements with search"""
     if current_user.role != 'provider':
         return jsonify([])
-    # Ideally, we would query a 'SentNotifications' table or similar. 
-    # For now, return an empty list or basic mock to prevent 404.
-    return jsonify([])
+    
+    search_q = request.args.get('search', '').strip()
+    
+    query = Announcement.query.filter_by(provider_id=current_user.id)
+    
+    if search_q:
+        query = query.filter(Announcement.title.like(f"%{search_q}%"))
+        
+    # Latest 10
+    announcements = query.order_by(Announcement.created_at.desc()).limit(10).all()
+    
+    def format_time(dt):
+        now = datetime.utcnow()
+        diff = now - dt
+        s = int(diff.total_seconds())
+        if s < 60: return "Just now"
+        if s < 3600: return f"{s//60}m ago"
+        if s < 86400: return f"{s//3600}h ago"
+        return dt.strftime('%b %d, %Y')
+    
+    data = []
+    for ann in announcements:
+        data.append({
+            'id': ann.id,
+            'title': ann.title,
+            'type': ann.type,
+            'recipient_filter': ann.recipient_filter,
+            'message': ann.message,
+            'count': ann.recipient_count,
+            'created_at': format_time(ann.created_at),
+            'created_at_full': ann.created_at.strftime('%Y-%m-%d %I:%M %p')
+        })
+        
+    return jsonify({'success': True, 'announcements': data})
 
 @provider_bp.route('/api/scholarship/<int:id>/publish', methods=['POST'])
 @login_required
@@ -738,11 +918,19 @@ def api_application_detail(id):
         
     student = User.query.get(application.user_id)
     
+    # Get current scholarship requirements
+    req_str = scholarship.requirements or ''
+    current_requirements = [r.strip() for r in req_str.split(',') if r.strip()]
+    
     # Fetch only the files linked to this specific application
     application_files = ScholarshipApplicationFile.query.filter_by(application_id=application.id).all()
     
     cred_list = []
     for app_file in application_files:
+        # Only show files for current requirements
+        if app_file.requirement_type not in current_requirements:
+            continue
+            
         cred = app_file.credential
         if cred:
             cred_list.append({

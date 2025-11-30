@@ -466,6 +466,15 @@ function openAppDetails(appId){
       const a=d.application;
       const docs = a.documents.length ? a.documents.map(x=> {
           const label = REQUIREMENT_MAPPINGS[x.requirement_type] || x.requirement_type;
+          
+          if (x.status === 'missing') {
+              return `
+                <li style="margin-bottom:0.5rem; color:#d39e00;">
+                    <strong>${label}:</strong> <span style="font-style:italic;">Missing (New Requirement)</span>
+                    <button onclick="triggerReplace(${a.id}, '${x.requirement_type}')" class="btn-sm" style="margin-left:0.5rem; font-size:0.8rem; background:#ffc107; color:#212529; border:none; padding:0.2rem 0.5rem; border-radius:4px; cursor:pointer;">Upload</button>
+                </li>`;
+          }
+          
           if (!x.is_active) {
               return `
                 <li style="margin-bottom:0.5rem; color:#dc3545;">
@@ -473,8 +482,10 @@ function openAppDetails(appId){
                     <button onclick="triggerReplace(${a.id}, '${x.requirement_type}')" class="btn-sm" style="margin-left:0.5rem; font-size:0.8rem; background:#007bff; color:white; border:none; padding:0.2rem 0.5rem; border-radius:4px; cursor:pointer;">Upload New</button>
                 </li>`;
           }
+          
+          const extraLabel = x.status === 'extra' ? ' <span style="color:#6c757d; font-size:0.8rem;">(No longer required)</span>' : '';
           const verifiedBadge = x.is_verified ? '<span style="color:#28a745; font-size:0.8rem; margin-left:0.5rem;"><i class="fas fa-check-circle"></i> Verified</span>' : '';
-          return `<li><strong>${label}:</strong> <a href="/students/view-credential/${x.id}" target="_blank">${x.file_name}</a>${verifiedBadge}</li>`;
+          return `<li><strong>${label}:</strong> <a href="/students/view-credential/${x.id}" target="_blank">${x.file_name}</a>${verifiedBadge}${extraLabel}</li>`;
       }).join('') : '<li>No documents linked.</li>';
       
       const html = `
@@ -486,6 +497,25 @@ function openAppDetails(appId){
               <div><strong>Date Applied:</strong> ${a.date_applied}</div>
               <div><strong>Deadline:</strong> ${a.deadline}</div>
               <div><strong>Status:</strong> ${a.status}</div>
+              
+              <div style="margin-top:0.5rem; padding:0.5rem; background:#f8f9fa; border-radius:5px; display:grid; grid-template-columns: 1fr 1fr; gap:0.5rem; font-size:0.9rem;">
+                <div><strong>Type:</strong> ${a.scholarship_type}</div>
+                <div><strong>Level:</strong> ${a.scholarship_level}</div>
+                <div><strong>Slots:</strong> ${a.slots}</div>
+              </div>
+              
+              ${a.eligibility && a.eligibility !== 'No specific eligibility criteria' ? `
+              <div style="margin-top:0.5rem;">
+                <strong>Eligibility:</strong>
+                <div style="font-size:0.9rem; color:#555;">${a.eligibility}</div>
+              </div>` : ''}
+              
+              ${(a.contact_name || a.contact_email || a.contact_phone) ? `
+              <div style="margin-top:0.5rem; font-size:0.85rem; color:#666; border-top:1px dashed #eee; padding-top:0.5rem;">
+                <strong>Contact:</strong> ${a.contact_name} 
+                ${a.contact_email ? `| ${a.contact_email}` : ''} 
+                ${a.contact_phone ? `| ${a.contact_phone}` : ''}
+              </div>` : ''}
             </div>
           </section>
           <section>
