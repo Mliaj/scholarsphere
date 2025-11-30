@@ -18,10 +18,26 @@
     .top-bar { display:flex; justify-content:space-between; align-items:center; margin-bottom:2rem; padding:1rem 0; }
     .welcome-text h1 { font-size:2rem; color:#003366; margin-bottom:.5rem; }
     .welcome-text p { color:#666; }
-    .nav-item { padding: 1rem 2rem; cursor: pointer; transition: background 0.3s; border-left: 3px solid transparent; display:flex; align-items:center; gap:.75rem; }
-    .nav-item:hover { background: rgba(255,255,255,0.1); border-left-color: #ffc72c; }
-    .nav-item.active { background: rgba(255,255,255,0.15); border-left-color: #ffc72c; }
-    .nav-item i { width:20px; margin-right:1rem; }
+    .nav-item {
+        padding: 1rem 2rem;
+        cursor: pointer;
+        transition: background 0.3s;
+        border-left: 3px solid transparent;
+    }
+
+    .nav-item:hover, .nav-item.active {
+        background: rgba(255,255,255,0.1);
+        border-left-color: #ffc72c;
+    }
+
+    .nav-item.active {
+        background: rgba(255,255,255,0.15);
+    }
+
+    .nav-item i {
+        margin-right: 1rem;
+        width: 20px;
+    }
     .scholarships-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem; }
     .scholarship-card { 
         background: #fff; 
