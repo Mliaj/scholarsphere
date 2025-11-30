@@ -289,7 +289,8 @@ function viewApplication(applicationId) {
       if (data.success) {
         // Initialize verification state based on API data
         currentAppVerification.id = applicationId;
-        currentAppVerification.total = (data.credentials && data.credentials.length) ? data.credentials.length : 0;
+        // Only count active credentials towards the total required for approval
+        currentAppVerification.total = (data.credentials) ? data.credentials.filter(c => c.is_active).length : 0;
         currentAppVerification.verifiedCount = 0;
 
         const content = document.getElementById('applicationDetailsContent');
