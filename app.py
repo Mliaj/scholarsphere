@@ -273,6 +273,21 @@ def index():
     """Home page"""
     return render_template('index.html')
 
+@app.route('/about')
+def about():
+    """About page"""
+    return render_template('about.html')
+
+@app.route('/contact')
+def contact():
+    """Contact page"""
+    return render_template('contact.html')
+
+@app.route('/privacy-policy')
+def privacy_policy():
+    """Privacy Policy page"""
+    return render_template('privacy_policy.html')
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     """Login page"""

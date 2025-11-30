@@ -1,0 +1,426 @@
+{% extends "base.html" %}
+
+{% block title %}Contact Us - Scholarsphere | University of Cebu{% endblock %}
+
+{% block extra_css %}
+<style>
+    .contact-container {
+        min-height: 100vh;
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        padding: 3rem 1rem;
+    }
+    
+    .contact-header {
+        background: linear-gradient(135deg, #003366 0%, #0072ce 100%);
+        color: #fff;
+        padding: 4rem 1rem;
+        text-align: center;
+        border-radius: 0 0 30px 30px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.10);
+        margin-bottom: 3rem;
+    }
+    
+    .contact-header h1 {
+        font-size: 3rem;
+        font-weight: 700;
+        margin-bottom: 1rem;
+    }
+    
+    .contact-header p {
+        font-size: 1.2rem;
+        opacity: 0.95;
+        max-width: 700px;
+        margin: 0 auto;
+    }
+    
+    .contact-content {
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+    
+    .contact-section {
+        background: #fff;
+        border-radius: 20px;
+        padding: 3rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    }
+    
+    .contact-section h2 {
+        font-size: 2rem;
+        font-weight: 700;
+        color: #003366;
+        margin-bottom: 2rem;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        border-bottom: 3px solid #0072ce;
+        padding-bottom: 1rem;
+    }
+    
+    .contact-section h2 i {
+        color: #0072ce;
+        font-size: 1.8rem;
+    }
+    
+    /* Project Team Styles */
+    .team-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 2.5rem;
+        margin-top: 2rem;
+    }
+    
+    .team-member {
+        background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+        border-radius: 20px;
+        padding: 2rem;
+        text-align: center;
+        border: 2px solid #e9ecef;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+    }
+    
+    .team-member:hover {
+        transform: translateY(-8px);
+        box-shadow: 0 8px 30px rgba(0,0,0,0.15);
+        border-color: #0072ce;
+    }
+    
+    .team-photo {
+        width: 180px;
+        height: 180px;
+        border-radius: 50%;
+        margin: 0 auto 1.5rem auto;
+        object-fit: cover;
+        border: 5px solid #0072ce;
+        box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+        display: block;
+    }
+    
+    .team-member h3 {
+        font-size: 1.4rem;
+        font-weight: 600;
+        color: #003366;
+        margin-bottom: 0.75rem;
+    }
+    
+    .team-member .team-roles {
+        font-size: 1rem;
+        color: #0072ce;
+        font-weight: 500;
+        line-height: 1.6;
+    }
+    
+    /* Contact Information Styles */
+    .contact-info-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 2rem;
+        margin-top: 2rem;
+    }
+    
+    .contact-card {
+        background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+        border-radius: 15px;
+        padding: 2rem;
+        border-left: 5px solid #0072ce;
+        transition: all 0.3s ease;
+    }
+    
+    .contact-card:hover {
+        transform: translateX(5px);
+        box-shadow: 0 6px 25px rgba(0,0,0,0.1);
+    }
+    
+    .contact-card h3 {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #003366;
+        margin-bottom: 1.5rem;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+    
+    .contact-card h3 i {
+        color: #0072ce;
+        font-size: 1.3rem;
+    }
+    
+    .contact-card .info-item {
+        margin-bottom: 1.25rem;
+        padding-bottom: 1.25rem;
+        border-bottom: 1px solid #e9ecef;
+    }
+    
+    .contact-card .info-item:last-child {
+        border-bottom: none;
+        margin-bottom: 0;
+        padding-bottom: 0;
+    }
+    
+    .contact-card .info-label {
+        font-weight: 600;
+        color: #555;
+        font-size: 0.95rem;
+        margin-bottom: 0.5rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .contact-card .info-label i {
+        color: #0072ce;
+        font-size: 0.9rem;
+    }
+    
+    .contact-card .info-value {
+        font-size: 1.05rem;
+        color: #333;
+        line-height: 1.6;
+    }
+    
+    .contact-card .info-value a {
+        color: #0072ce;
+        text-decoration: none;
+        transition: color 0.3s ease;
+    }
+    
+    .contact-card .info-value a:hover {
+        color: #003366;
+        text-decoration: underline;
+    }
+    
+    .email-list {
+        list-style: none;
+        padding: 0;
+        margin: 1rem 0 0 0;
+    }
+    
+    .email-list li {
+        padding: 0.75rem 0;
+        border-bottom: 1px solid #e9ecef;
+    }
+    
+    .email-list li:last-child {
+        border-bottom: none;
+    }
+    
+    .email-list .email-name {
+        font-weight: 600;
+        color: #003366;
+        display: block;
+        margin-bottom: 0.25rem;
+    }
+    
+    .email-list .email-address {
+        color: #0072ce;
+        text-decoration: none;
+        word-break: break-all;
+    }
+    
+    .email-list .email-address:hover {
+        text-decoration: underline;
+    }
+    
+    .back-link {
+        display: inline-block;
+        margin-top: 2rem;
+        padding: 0.75rem 2rem;
+        background: #0072ce;
+        color: #fff;
+        text-decoration: none;
+        border-radius: 10px;
+        font-weight: 600;
+        transition: all 0.3s ease;
+    }
+    
+    .back-link:hover {
+        background: #003366;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    }
+    
+    @media (max-width: 768px) {
+        .contact-header h1 {
+            font-size: 2rem;
+        }
+        
+        .contact-header p {
+            font-size: 1rem;
+        }
+        
+        .contact-section {
+            padding: 2rem 1.5rem;
+        }
+        
+        .contact-section h2 {
+            font-size: 1.5rem;
+        }
+        
+        .team-grid,
+        .contact-info-grid {
+            grid-template-columns: 1fr;
+        }
+        
+        .team-photo {
+            width: 150px;
+            height: 150px;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="contact-container">
+    <div class="contact-header">
+        <h1>Contact Us</h1>
+        <p>Get in touch with the Scholarsphere team or reach out to University of Cebu for inquiries and support.</p>
+    </div>
+    
+    <div class="contact-content">
+        <!-- Project Team Section -->
+        <div class="contact-section">
+            <h2><i class="fas fa-users"></i> Project Team</h2>
+            <div class="team-grid">
+                <div class="team-member">
+                    <img src="{{ url_for('static', filename='images/james_sinning.jpg') }}" alt="James Andre D. Sinning" class="team-photo" data-fallback="{{ url_for('static', filename='images/uc-logo.png') }}">
+                    <h3>James Andre D. Sinning</h3>
+                    <div class="team-roles">Programmer | QA Tester</div>
+                </div>
+                
+                <div class="team-member">
+                    <img src="{{ url_for('static', filename='images/louise_pareja.jpg') }}" alt="Louise Clark Pareja" class="team-photo" data-fallback="{{ url_for('static', filename='images/uc-logo.png') }}">
+                    <h3>Louise Clark Pareja</h3>
+                    <div class="team-roles">Project Manager | UI/UX Designer | Technical Writer</div>
+                </div>
+                
+                <div class="team-member">
+                    <img src="{{ url_for('static', filename='images/kyle_mercado.jpg') }}" alt="Kyle Korkie Mercado" class="team-photo" data-fallback="{{ url_for('static', filename='images/uc-logo.png') }}">
+                    <h3>Kyle Korkie Mercado</h3>
+                    <div class="team-roles">Database Designer | QA Tester | Programmer</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Contact Information Section -->
+        <div class="contact-section">
+            <h2><i class="fas fa-map-marker-alt"></i> UC Main Campus</h2>
+            <div class="contact-info-grid">
+                <div class="contact-card">
+                    <h3><i class="fas fa-building"></i> Main Office</h3>
+                    <div class="info-item">
+                        <div class="info-label">
+                            <i class="fas fa-map-pin"></i>
+                            Address
+                        </div>
+                        <div class="info-value">
+                            Sanciangko St., Cebu City<br>
+                            Philippines 6000
+                        </div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">
+                            <i class="fas fa-phone"></i>
+                            Phone
+                        </div>
+                        <div class="info-value">
+                            <a href="tel:+63322557777">(032) 255-7777</a>
+                        </div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">
+                            <i class="fas fa-envelope"></i>
+                            Email
+                        </div>
+                        <div class="info-value">
+                            <a href="mailto:info@uc.edu.ph">info@uc.edu.ph</a>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="contact-card">
+                    <h3><i class="fas fa-clipboard-list"></i> Registrar</h3>
+                    <div class="info-item">
+                        <div class="info-label">
+                            <i class="fas fa-phone"></i>
+                            Phone
+                        </div>
+                        <div class="info-value">
+                            <a href="tel:+632532539434">(032) 253-9434</a><br>
+                            <a href="tel:+632532557777">255-7777</a> local: 4167
+                        </div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">
+                            <i class="fas fa-envelope"></i>
+                            Email
+                        </div>
+                        <div class="info-value">
+                            <a href="mailto:main.collegeregistrar@uc.edu.ph">main.collegeregistrar@uc.edu.ph</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Email Contacts Section -->
+        <div class="contact-section">
+            <h2><i class="fas fa-envelope-open-text"></i> Email Contacts</h2>
+            <p style="font-size: 1.1rem; color: #555; margin-bottom: 2rem; line-height: 1.8;">
+                You can email us at:
+            </p>
+            
+            <div class="contact-info-grid">
+                <div class="contact-card">
+                    <h3><i class="fas fa-university"></i> MAIN CAMPUS</h3>
+                    <ul class="email-list">
+                        <li>
+                            <span class="email-name">Registrar (Marian Fjardo)</span>
+                            <a href="mailto:marian.fajardo@uc.edu.ph" class="email-address">marian.fajardo@uc.edu.ph</a>
+                        </li>
+                        <li>
+                            <span class="email-name">SOLAS (Bembie Monruid)</span>
+                            <a href="mailto:bembie.monruid@uc.edu.ph" class="email-address">bembie.monruid@uc.edu.ph</a>
+                        </li>
+                        <li>
+                            <span class="email-name">Cashier (Angel Sanchez)</span>
+                            <a href="mailto:angel.sanchez@uc.edu.ph" class="email-address">angel.sanchez@uc.edu.ph</a>
+                        </li>
+                        <li>
+                            <span class="email-name">Accounting (Edith Gonsalve)</span>
+                            <a href="mailto:edith.gonzalve@uc.edu.ph" class="email-address">edith.gonzalve@uc.edu.ph</a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Back Link -->
+        <div style="text-align: center; margin-top: 3rem;">
+            <a href="{{ url_for('index') }}" class="back-link">
+                <i class="fas fa-arrow-left"></i> Back to Home
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Handle image fallback for team photos
+    var teamPhotos = document.querySelectorAll('.team-photo[data-fallback]');
+    teamPhotos.forEach(function(img) {
+        img.addEventListener('error', function() {
+            var fallback = this.getAttribute('data-fallback');
+            if (fallback && this.src !== fallback) {
+                this.src = fallback;
+            }
+        });
+    });
+});
+</script>
+{% endblock %}
+
