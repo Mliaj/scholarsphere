@@ -449,6 +449,7 @@ def review_application(application_id):
                             other_scholarship.disapproved_count = (other_scholarship.disapproved_count or 0) + 1
                         
                         # Notify student about rejection
+                        student = User.query.get(other_app.user_id)
                         if student:
                             try:
                                 send_email(
@@ -491,6 +492,10 @@ def review_application(application_id):
             scholarship.disapproved_count = (scholarship.disapproved_count or 0) + 1
             if application.status == 'pending':
                 scholarship.pending_count = max(0, (scholarship.pending_count or 0) - 1)
+            
+            # Set reviewed information for rejection
+            application.reviewed_at = datetime.utcnow()
+            application.reviewed_by = current_user.id
 
         application.status = new_status
         db.session.commit()
@@ -505,6 +510,23 @@ def review_application(application_id):
                 scholarship_name=scholarship.title,
                 new_status=new_status
             )
+            
+            # Create in-app notification for rejection
+            if new_status == 'rejected':
+                try:
+                    notification = Notification(
+                        user_id=student.id,
+                        type='application',
+                        title=f'Application Rejected: {scholarship.title}',
+                        message=f'Your application for {scholarship.title} has been rejected.',
+                        created_at=datetime.utcnow(),
+                        is_active=True
+                    )
+                    db.session.add(notification)
+                    db.session.commit()
+                except:
+                    pass  # Continue even if notification creation fails
+        
         return jsonify({'success': True})
     return jsonify({'success': False, 'error': 'Invalid action'}), 400
 

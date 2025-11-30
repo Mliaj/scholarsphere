@@ -674,13 +674,13 @@ function closeAppModal(){ document.getElementById('appDetailsModal').style.displ
                     <span class="stat-number">{{ applications|selectattr('status', 'equalto', 'Approved')|list|length }}</span>
                     <div class="stat-label">Approved</div>
                 </div>
-                <div class="stat-card" onclick="filterByStatus('under review')" style="cursor: pointer; transition: all 0.2s;">
-                    <span class="stat-number">{{ applications|selectattr('status', 'equalto', 'Under Review')|list|length }}</span>
-                    <div class="stat-label">Under Review</div>
-                </div>
                 <div class="stat-card" onclick="filterByStatus('pending')" style="cursor: pointer; transition: all 0.2s;">
                     <span class="stat-number">{{ applications|selectattr('status', 'equalto', 'Pending')|list|length }}</span>
                     <div class="stat-label">Pending</div>
+                </div>
+                <div class="stat-card" onclick="filterByStatus('rejected')" style="cursor: pointer; transition: all 0.2s;">
+                    <span class="stat-number">{{ applications|selectattr('status', 'equalto', 'Rejected')|list|length }}</span>
+                    <div class="stat-label">Rejected</div>
                 </div>
             </div>
         </div>
