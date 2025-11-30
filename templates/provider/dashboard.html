@@ -355,12 +355,12 @@
         </div>
 
         <!-- Send Announcements Section -->
-        <div class="dashboard-card" style="margin-top: 2rem;">
+        <div class="dashboard-card" style="margin-top: 2rem; overflow: visible;">
             <div class="card-header">
                 <i class="fas fa-bullhorn"></i>
                 <h3>Send Announcements</h3>
             </div>
-            <div class="card-content">
+            <div class="card-content" style="overflow: visible;">
                 <p>Send announcements to students - all applicants or specific individuals</p>
                 
                 <!-- Tabs for announcement types -->
@@ -407,10 +407,12 @@
 
                 <!-- Announce to Specific Form -->
                 <div id="announceToSpecificForm" class="announcement-form" style="display: none; margin-top: 1.5rem;">
-                    <div class="form-group" style="position: relative;">
+                    <div class="form-group" style="position: relative; z-index: 1;">
                         <label>Recipient (Name, ID, or Email) *</label>
                         <input type="text" id="studentInput" class="form-control" placeholder="Start typing to search..." autocomplete="off">
-                        <div id="studentAutocompleteList" class="autocomplete-items"></div>
+                        <input type="hidden" id="selectedStudentId">
+                        <input type="hidden" id="selectedStudentEmail">
+                        <div id="studentAutocompleteList" class="autocomplete-items" style="display: none;"></div>
                     </div>
                     <div class="form-group">
                         <label>Title *</label>
@@ -485,7 +487,7 @@
     color: #0072ce; 
     border-bottom-color: #0072ce;
 }
-.announcement-form { padding: 1rem 0; }
+.announcement-form { padding: 1rem 0; overflow: visible; }
 .form-group { margin-bottom: 1.5rem; }
 .form-group label { display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333; }
 .form-control { 
@@ -525,31 +527,40 @@
 
 /* Autocomplete styles */
 .autocomplete-items {
-  position: absolute;
-  border: 1px solid #d4d4d4;
-  border-bottom: none;
-  border-top: none;
-  z-index: 99;
-  top: 100%;
-  left: 0;
-  right: 0;
-  border-radius: 0 0 8px 8px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-  max-height: 200px;
-  overflow-y: auto;
+  position: absolute !important;
+  top: 100% !important;
+  left: 0 !important;
+  background: #fff !important;
+  border: 1px solid #ddd !important;
+  border-top: none !important;
+  border-radius: 0 0 8px 8px !important;
+  max-height: 300px !important;
+  overflow-y: auto !important;
+  z-index: 9999 !important;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1) !important;
+  box-sizing: border-box !important;
+  margin-top: 0 !important;
 }
-.autocomplete-items div {
-  padding: 10px;
-  cursor: pointer;
-  background-color: #fff; 
-  border-bottom: 1px solid #d4d4d4; 
+.autocomplete-items div,
+.autocomplete-items .autocomplete-suggestion {
+  padding: 0.75rem !important;
+  cursor: pointer !important;
+  border-bottom: 1px solid #f0f0f0 !important;
+  transition: background 0.2s;
+  background-color: #fff !important;
+  color: #333 !important;
 }
-.autocomplete-items div:hover {
-  background-color: #e9e9e9; 
+.autocomplete-items div:last-child,
+.autocomplete-items .autocomplete-suggestion:last-child {
+  border-bottom: none !important;
 }
-.autocomplete-active {
-  background-color: #0072ce !important; 
-  color: #ffffff; 
+.autocomplete-items div:hover,
+.autocomplete-items .autocomplete-suggestion:hover {
+  background: #f8f9fa !important;
+}
+.autocomplete-active,
+.autocomplete-suggestion.active {
+  background: #e3f2fd !important;
 }
 </style>
 
@@ -561,7 +572,8 @@ let announcementsCache = [];
 document.addEventListener('DOMContentLoaded', function() {
     loadScholarships();
     loadAnnouncementHistory();
-    setupAutocomplete(document.getElementById("studentInput"));
+    // Initialize student autocomplete
+    initializeStudentAutocomplete();
 });
 
 function loadScholarships() {
@@ -591,6 +603,11 @@ function switchAnnouncementTab(type) {
     } else {
         document.getElementById('announceToAllForm').style.display = 'none';
         document.getElementById('announceToSpecificForm').style.display = 'block';
+        
+        // Initialize autocomplete when switching to specific student tab
+        setTimeout(function() {
+            initializeStudentAutocomplete();
+        }, 100);
     }
 }
 
@@ -658,11 +675,11 @@ function sendAnnouncementToAll() {
 }
 
 function sendAnnouncementToSpecific() {
-    const recipient = document.getElementById('studentInput').value.trim();
+    const recipientInput = document.getElementById('studentInput').value.trim();
     const title = document.getElementById('announceSpecificTitle').value.trim();
     const message = document.getElementById('announceSpecificMessage').value.trim();
     
-    if (!recipient) {
+    if (!recipientInput) {
         showNotification('Please enter a recipient (Name, ID, or Email)', 'error');
         return;
     }
@@ -670,6 +687,9 @@ function sendAnnouncementToSpecific() {
         showNotification('Please fill in both title and message', 'error');
         return;
     }
+    
+    // Use the input value which should be in format "Name (ID)" if selected from autocomplete
+    const recipient = recipientInput;
     
     const btn = document.querySelector('#announceToSpecificForm .btn-announce-submit');
     const originalText = btn.innerHTML;
@@ -714,63 +734,385 @@ function sendAnnouncementToSpecific() {
     });
 }
 
-// Server-side Autocomplete (Students)
-function setupAutocomplete(inp) {
-    let currentFocus;
-    inp.addEventListener("input", function(e) {
-        let val = this.value;
-        closeAllLists();
-        if (!val || val.length < 2) return false;
-        currentFocus = -1;
-        
-        const listDiv = document.createElement("DIV");
-        listDiv.setAttribute("id", this.id + "autocomplete-list");
-        listDiv.setAttribute("class", "autocomplete-items");
-        this.parentNode.appendChild(listDiv);
-        
-        fetch(`/provider/api/students/search?q=${encodeURIComponent(val)}`)
-            .then(r => r.json())
-            .then(matches => {
-                listDiv.innerHTML = '';
-                matches.forEach(match => {
-                    const item = document.createElement("DIV");
-                    const regex = new RegExp(`(${val})`, "gi");
-                    item.innerHTML = match.replace(regex, "<strong>$1</strong>");
-                    item.innerHTML += `<input type='hidden' value='${match}'>`;
-                    item.addEventListener("click", function(e) {
-                        inp.value = this.getElementsByTagName("input")[0].value;
-                        closeAllLists();
-                    });
-                    listDiv.appendChild(item);
-                });
-            });
-    });
+// Student Autocomplete - Initialize function
+let studentAutocompleteInitialized = false;
+let studentAutocompleteDebounceTimer = null;
+let studentAutocompleteSelectedIndex = -1;
+let studentAutocompleteSuggestions = [];
+
+function initializeStudentAutocomplete() {
+    const input = document.getElementById('studentInput');
+    const suggestions = document.getElementById('studentAutocompleteList');
     
-    inp.addEventListener("keydown", function(e) {
-        let x = document.getElementById(this.id + "autocomplete-list");
-        if (x) x = x.getElementsByTagName("div");
-        if (e.keyCode == 40) { currentFocus++; addActive(x); }
-        else if (e.keyCode == 38) { currentFocus--; addActive(x); }
-        else if (e.keyCode == 13) { e.preventDefault(); if (currentFocus > -1 && x) x[currentFocus].click(); }
-    });
+    if (!input || !suggestions) {
+        console.log('Student autocomplete elements not found yet');
+        return;
+    }
     
-    function addActive(x) {
-        if (!x) return false;
-        removeActive(x);
-        if (currentFocus >= x.length) currentFocus = 0;
-        if (currentFocus < 0) currentFocus = (x.length - 1);
-        x[currentFocus].classList.add("autocomplete-active");
+    // Skip if already initialized
+    if (input.hasAttribute('data-autocomplete-initialized')) {
+        return;
     }
-    function removeActive(x) {
-        for (let i = 0; i < x.length; i++) x[i].classList.remove("autocomplete-active");
-    }
-    function closeAllLists(elmnt) {
-        const x = document.getElementsByClassName("autocomplete-items");
-        for (let i = 0; i < x.length; i++) {
-            if (elmnt != x[i] && elmnt != inp) x[i].parentNode.removeChild(x[i]);
+    
+    input.setAttribute('data-autocomplete-initialized', 'true');
+    
+    input.addEventListener('input', function() {
+        const query = this.value.trim();
+        clearTimeout(studentAutocompleteDebounceTimer);
+        studentAutocompleteSelectedIndex = -1;
+        
+        // Clear selected student when input changes
+        const selectedStudentIdEl = document.getElementById('selectedStudentId');
+        const selectedStudentEmailEl = document.getElementById('selectedStudentEmail');
+        if (selectedStudentIdEl) selectedStudentIdEl.value = '';
+        if (selectedStudentEmailEl) selectedStudentEmailEl.value = '';
+        
+        if (query.length < 2) {
+            const suggestionsEl = document.getElementById('studentAutocompleteList');
+            if (suggestionsEl) {
+                suggestionsEl.style.display = 'none';
+                suggestionsEl.innerHTML = '';
+            }
+            return;
         }
+        
+        studentAutocompleteDebounceTimer = setTimeout(() => {
+            // Re-query the element to ensure we have a fresh reference
+            // Make sure the form is visible first
+            const form = document.getElementById('announceToSpecificForm');
+            if (!form || window.getComputedStyle(form).display === 'none') {
+                console.log('Form is hidden, skipping autocomplete');
+                return;
+            }
+            
+            let suggestionsEl = document.getElementById('studentAutocompleteList');
+            if (!suggestionsEl) {
+                console.error('Suggestions element not found - creating it');
+                // Create the element if it doesn't exist
+                const formGroup = input.parentElement;
+                if (formGroup) {
+                    suggestionsEl = document.createElement('div');
+                    suggestionsEl.id = 'studentAutocompleteList';
+                    suggestionsEl.className = 'autocomplete-items';
+                    suggestionsEl.style.display = 'none';
+                    formGroup.appendChild(suggestionsEl);
+                    console.log('Created suggestions element');
+                } else {
+                    console.error('Cannot find form-group parent');
+                    return;
+                }
+            }
+            
+            // Ensure element is connected
+            if (!suggestionsEl.isConnected) {
+                console.warn('Suggestions element not connected - reconnecting');
+                const formGroup = input.parentElement;
+                if (formGroup) {
+                    formGroup.appendChild(suggestionsEl);
+                    console.log('Reconnected suggestions element');
+                }
+            }
+            
+            fetch(`/provider/api/students/search?q=${encodeURIComponent(query)}`)
+                .then(response => response.json())
+                .then(data => {
+                    studentAutocompleteSuggestions = data || [];
+                    
+                    if (!data || data.length === 0) {
+                        suggestionsEl.style.display = 'none';
+                        suggestionsEl.innerHTML = '';
+                        return;
+                    }
+                    
+                    // Generate HTML for all suggestions at once (like applications.html)
+                    suggestionsEl.innerHTML = data.map((item, index) => {
+                        const displayText = item.display || `${item.name} (${item.student_id})`;
+                        // Highlight matching text
+                        const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                        const regex = new RegExp(`(${escapedQuery})`, "gi");
+                        const highlighted = displayText.replace(regex, "<strong>$1</strong>");
+                        return `<div class="autocomplete-suggestion" data-index="${index}" data-id="${item.id}" data-email="${item.email || ''}" data-student-id="${item.student_id || ''}">${highlighted}</div>`;
+                    }).join('');
+                    
+                    // Attach click handlers to the newly created items
+                    const suggestionItems = suggestionsEl.querySelectorAll('.autocomplete-suggestion');
+                    suggestionItems.forEach((suggestionItem, index) => {
+                        suggestionItem.addEventListener('click', function(e) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            console.log('Clicked suggestion at index:', index);
+                            if (studentAutocompleteSuggestions[index]) {
+                                selectStudentFromAutocomplete(studentAutocompleteSuggestions[index], input, suggestionsEl);
+                            }
+                        });
+                        // Make sure it's clickable
+                        suggestionItem.style.cursor = 'pointer';
+                    });
+                    
+                    console.log('Attached click handlers to', suggestionItems.length, 'suggestions');
+                    
+                    // Force visibility with inline styles and match input width exactly
+                    const inputRect = input.getBoundingClientRect();
+                    const inputWidth = inputRect.width || input.offsetWidth || input.clientWidth;
+                    suggestionsEl.style.cssText = `display: block !important; visibility: visible !important; opacity: 1 !important; position: absolute !important; z-index: 9999 !important; background: #fff !important; border: 1px solid #ddd !important; width: ${inputWidth}px !important; left: 0 !important; right: auto !important; min-width: ${inputWidth}px !important; max-width: ${inputWidth}px !important;`;
+                    suggestionsEl.style.display = 'block';
+                    suggestionsEl.style.visibility = 'visible';
+                    suggestionsEl.style.opacity = '1';
+                    suggestionsEl.style.width = inputWidth + 'px';
+                    suggestionsEl.style.minWidth = inputWidth + 'px';
+                    suggestionsEl.style.maxWidth = inputWidth + 'px';
+                    suggestionsEl.style.right = 'auto';
+                    console.log('Set dropdown width to match input:', inputWidth + 'px (input rect width: ' + inputRect.width + 'px)');
+                    
+                    console.log('Autocomplete suggestions displayed:', data.length);
+                    console.log('Suggestions HTML length:', suggestionsEl.innerHTML.length);
+                    console.log('Element in DOM:', suggestionsEl.isConnected);
+                    console.log('Element parent:', suggestionsEl.parentElement ? suggestionsEl.parentElement.tagName : 'none');
+                    
+                    // Check visibility after a brief delay
+                    setTimeout(() => {
+                        try {
+                            // Re-query again to ensure we have the latest reference
+                            const currentSuggestions = document.getElementById('studentAutocompleteList');
+                            if (!currentSuggestions) {
+                                console.error('Suggestions element disappeared from DOM');
+                                return;
+                            }
+                            
+                            if (!currentSuggestions.isConnected) {
+                                console.error('Suggestions element is not connected to DOM - attempting to reconnect');
+                                // Try to find the parent and re-append if needed
+                                const formGroup = input.parentElement;
+                                if (formGroup && formGroup.querySelector('#studentAutocompleteList') === null) {
+                                    console.log('Re-appending suggestions element to form-group');
+                                    formGroup.appendChild(currentSuggestions);
+                                }
+                                return;
+                            }
+                            
+                            const computed = window.getComputedStyle(currentSuggestions);
+                            const rect = currentSuggestions.getBoundingClientRect();
+                            
+                            console.log('Suggestions visibility check:', {
+                                display: computed.display,
+                                visibility: computed.visibility,
+                                opacity: computed.opacity,
+                                zIndex: computed.zIndex,
+                                position: computed.position,
+                                top: computed.top,
+                                left: computed.left,
+                                width: computed.width,
+                                height: computed.height,
+                                backgroundColor: computed.backgroundColor,
+                                border: computed.border,
+                                boundingRect: {
+                                    top: rect.top,
+                                    left: rect.left,
+                                    width: rect.width,
+                                    height: rect.height,
+                                    visible: rect.height > 0 && rect.width > 0,
+                                    bottom: rect.bottom,
+                                    right: rect.right
+                                },
+                                offsetParent: currentSuggestions.offsetParent !== null,
+                                innerHTMLLength: currentSuggestions.innerHTML.length
+                            });
+                            
+                            // Log the actual visible dimensions
+                            console.log('Dropdown dimensions:', {
+                                width: rect.width + 'px',
+                                height: rect.height + 'px',
+                                top: rect.top + 'px',
+                                left: rect.left + 'px',
+                                isVisible: rect.height > 0 && rect.width > 0,
+                                childrenCount: currentSuggestions.children.length
+                            });
+                            
+                            if (rect.height === 0 || rect.width === 0 || rect.top === 0 && rect.left === 0 && rect.width === 0) {
+                                console.error('Dropdown has zero dimensions or is off-screen');
+                                
+                                // Check parent containers
+                                let parent = currentSuggestions.parentElement;
+                                let level = 0;
+                                while (parent && parent instanceof Element && level < 5) {
+                                    try {
+                                        const parentStyle = window.getComputedStyle(parent);
+                                        const parentRect = parent.getBoundingClientRect();
+                                        console.log(`Parent level ${level} (${parent.tagName}):`, {
+                                            overflow: parentStyle.overflow,
+                                            display: parentStyle.display,
+                                            visibility: parentStyle.visibility,
+                                            position: parentStyle.position,
+                                            zIndex: parentStyle.zIndex,
+                                            dimensions: {
+                                                width: parentRect.width,
+                                                height: parentRect.height
+                                            }
+                                        });
+                                    } catch (e) {
+                                        console.error(`Error getting style for parent level ${level}:`, e);
+                                        break;
+                                    }
+                                    const nextParent = parent.parentElement;
+                                    if (!nextParent || !(nextParent instanceof Element)) {
+                                        break;
+                                    }
+                                    parent = nextParent;
+                                    level++;
+                                }
+                            } else {
+                                // Check if dropdown is actually visible on screen
+                                const viewportHeight = window.innerHeight;
+                                const viewportWidth = window.innerWidth;
+                                const isOnScreen = rect.top >= 0 && rect.left >= 0 && 
+                                                   rect.bottom <= viewportHeight && 
+                                                   rect.right <= viewportWidth;
+                                
+                                console.log('Dropdown visibility details:', {
+                                    dimensions: `${rect.width}x${rect.height}px`,
+                                    position: `top: ${rect.top}px, left: ${rect.left}px`,
+                                    visible: rect.height > 0 && rect.width > 0,
+                                    onScreen: isOnScreen,
+                                    viewport: `${viewportWidth}x${viewportHeight}px`,
+                                    children: currentSuggestions.children.length,
+                                    hasContent: currentSuggestions.innerHTML.length > 0,
+                                    computedDisplay: computed.display,
+                                    computedVisibility: computed.visibility,
+                                    computedOpacity: computed.opacity,
+                                    computedZIndex: computed.zIndex
+                                });
+                                
+                                // If it has dimensions but isn't visible, check what's wrong
+                                if (rect.height > 0 && rect.width > 0 && !isOnScreen) {
+                                    console.warn('Dropdown has dimensions but is off-screen!');
+                                }
+                                if (rect.height === 0 || rect.width === 0) {
+                                    console.error('Dropdown has zero dimensions despite being marked visible!');
+                                    console.log('Element styles:', currentSuggestions.style.cssText);
+                                    console.log('Element innerHTML length:', currentSuggestions.innerHTML.length);
+                                }
+                            }
+                        } catch (e) {
+                            console.error('Error checking visibility:', e);
+                        }
+                    }, 150);
+                })
+                .catch(error => {
+                    console.error('Error fetching students:', error);
+                    suggestions.style.display = 'none';
+                    suggestions.innerHTML = '';
+                });
+        }, 300);
+    });
+    
+    input.addEventListener('keydown', function(e) {
+        if (suggestions.style.display === 'none' || suggestions.style.display === '') return;
+        
+        const items = suggestions.querySelectorAll('.autocomplete-suggestion');
+        if (!items || items.length === 0) return;
+        
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            studentAutocompleteSelectedIndex = Math.min(studentAutocompleteSelectedIndex + 1, items.length - 1);
+            updateStudentSelection(items);
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            studentAutocompleteSelectedIndex = Math.max(studentAutocompleteSelectedIndex - 1, -1);
+            updateStudentSelection(items);
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (studentAutocompleteSelectedIndex >= 0 && studentAutocompleteSuggestions[studentAutocompleteSelectedIndex]) {
+                selectStudentFromAutocomplete(studentAutocompleteSuggestions[studentAutocompleteSelectedIndex], input, suggestions);
+            }
+        } else if (e.key === 'Escape') {
+            suggestions.style.display = 'none';
+            studentAutocompleteSelectedIndex = -1;
+        }
+    });
+    
+    // Handle clicks on suggestions (using event delegation)
+    // Note: We also attach handlers directly to items above, but this is a backup
+    document.addEventListener('click', function(e) {
+        const item = e.target.closest('.autocomplete-suggestion');
+        if (item && item.closest('#studentAutocompleteList')) {
+            const suggestionsEl = document.getElementById('studentAutocompleteList');
+            if (suggestionsEl && suggestionsEl.style.display !== 'none') {
+                const index = parseInt(item.dataset.index);
+                if (studentAutocompleteSuggestions[index]) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    selectStudentFromAutocomplete(studentAutocompleteSuggestions[index], input, suggestionsEl);
+                }
+            }
+        }
+    });
+    
+    function updateStudentSelection(items) {
+        items.forEach((item, index) => {
+            if (index === studentAutocompleteSelectedIndex) {
+                item.classList.add('autocomplete-active');
+                item.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            } else {
+                item.classList.remove('autocomplete-active');
+            }
+        });
     }
-    document.addEventListener("click", function (e) { closeAllLists(e.target); });
+    
+    function selectStudentFromAutocomplete(item, inputEl, suggestionsEl) {
+        console.log('selectStudentFromAutocomplete called with:', item);
+        const displayText = item.display || `${item.name} (${item.student_id})`;
+        
+        // Get fresh reference to input element
+        const currentInput = document.getElementById('studentInput');
+        if (currentInput) {
+            currentInput.value = displayText;
+            console.log('Set input value to:', displayText);
+        } else {
+            console.error('Input element not found');
+        }
+        
+        // Update hidden fields
+        const selectedStudentIdEl = document.getElementById('selectedStudentId');
+        const selectedStudentEmailEl = document.getElementById('selectedStudentEmail');
+        if (selectedStudentIdEl) {
+            selectedStudentIdEl.value = item.id || '';
+            console.log('Set selectedStudentId to:', item.id);
+        }
+        if (selectedStudentEmailEl) {
+            selectedStudentEmailEl.value = item.email || '';
+            console.log('Set selectedStudentEmail to:', item.email);
+        }
+        
+        // Hide suggestions
+        const currentSuggestions = document.getElementById('studentAutocompleteList');
+        if (currentSuggestions) {
+            currentSuggestions.style.display = 'none';
+            currentSuggestions.innerHTML = '';
+        }
+        if (suggestionsEl) {
+            suggestionsEl.style.display = 'none';
+            suggestionsEl.innerHTML = '';
+        }
+        
+        studentAutocompleteSelectedIndex = -1;
+        console.log('Student selection complete');
+    }
+    
+    // Close autocomplete when clicking outside
+    document.addEventListener('click', function(e) {
+        if (!input.parentNode.contains(e.target) && e.target !== input) {
+            suggestions.style.display = 'none';
+        }
+    });
+    
+    console.log('Student autocomplete initialized successfully');
+    
+    // Test if elements are accessible
+    if (input && suggestions) {
+        console.log('Input and suggestions elements found and ready');
+    } else {
+        console.error('Missing elements:', { input: !!input, suggestions: !!suggestions });
+    }
 }
 
 // Client-side Autocomplete (Scholarships)
