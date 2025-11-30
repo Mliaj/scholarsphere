@@ -3,7 +3,8 @@ from flask_login import login_required, current_user
 from app import db, User, Scholarship, ScholarshipApplication, Credential, Schedule, Notification, ScholarshipApplicationFile, Announcement
 from email_utils import send_email
 from datetime import datetime # Import datetime here
-from sqlalchemy import or_
+from sqlalchemy import or_, text
+from credential_matcher import CredentialMatcher
 
 provider_bp = Blueprint('provider', __name__)
 
@@ -922,20 +923,70 @@ def api_application_detail(id):
     req_str = scholarship.requirements or ''
     current_requirements = [r.strip() for r in req_str.split(',') if r.strip()]
     
-    # Fetch only the files linked to this specific application
-    application_files = ScholarshipApplicationFile.query.filter_by(application_id=application.id).all()
+    # Fetch files linked to this specific application
+    linked_files = ScholarshipApplicationFile.query.filter_by(application_id=application.id).all()
+    
+    # Fetch all active loose credentials for user
+    loose_creds_orm = Credential.query.filter_by(user_id=student.id, is_active=True).order_by(Credential.upload_date.desc()).all()
+    
+    # Convert to list of dicts for Matcher
+    loose_creds_list = []
+    for c in loose_creds_orm:
+        loose_creds_list.append({
+            'credential_type': c.credential_type,
+            'file_name': c.file_name,
+            'file_path': c.file_path,
+            'id': c.id,
+            'is_verified': c.is_verified,
+            'status': c.status,
+            'upload_date': c.upload_date
+        })
+        
+    # Find matches using advanced logic
+    matched_loose = CredentialMatcher.find_matching_credentials(current_requirements, loose_creds_list)
+    
+    # Map linked files by requirement type
+    linked_map = {f.requirement_type: f.credential for f in linked_files if f.credential}
     
     cred_list = []
-    for app_file in application_files:
-        # Only show files for current requirements
-        if app_file.requirement_type not in current_requirements:
-            continue
-            
-        cred = app_file.credential
+    
+    # Iterate requirements to build the list
+    for req in current_requirements:
+        cred = linked_map.get(req)
+        
         if cred:
+            # Linked file exists
             cred_list.append({
                 'id': cred.id,
-                'requirement_type': app_file.requirement_type,
+                'requirement_type': req,
+                'file_name': cred.file_name,
+                'file_path': cred.file_path,
+                'status': cred.status,
+                'is_verified': cred.is_verified,
+                'is_active': cred.is_active
+            })
+        else:
+            # Check for loose match
+            matches = matched_loose.get(req, [])
+            if matches:
+                # Use the best match (first one, as loose_creds is sorted DESC)
+                match = matches[0]
+                cred_list.append({
+                    'id': match['id'],
+                    'requirement_type': req,
+                    'file_name': match['file_name'],
+                    'file_path': match['file_path'],
+                    'status': match['status'],
+                    'is_verified': match['is_verified'],
+                    'is_active': True
+                })
+    
+    # Also include any linked files that are NOT in current requirements (extra/old requirements)
+    for req, cred in linked_map.items():
+        if req not in current_requirements:
+             cred_list.append({
+                'id': cred.id,
+                'requirement_type': req,
                 'file_name': cred.file_name,
                 'file_path': cred.file_path,
                 'status': cred.status,
