@@ -573,11 +573,11 @@
 
                     <div class="scholarship-req">
                         <strong>Requirements:</strong>
-                        {% if s.requirements and s.requirements != 'No specific requirements' %}
+                        {% if s.requirements and s.requirements|length > 0 %}
                             <div class="requirements-list">
-                                {% for req in s.requirements.split(',') %}
-                                    {% if req.strip() %}
-                                        <span class="requirement-tag">{{ req.strip() }}</span>
+                                {% for req in s.requirements %}
+                                    {% if req %}
+                                        <span class="requirement-tag">{{ req }}</span>
                                     {% endif %}
                                 {% endfor %}
                             </div>
