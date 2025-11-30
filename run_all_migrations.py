@@ -87,6 +87,12 @@ def main():
             'description': 'Create application_remarks table for provider reviews'
         },
         {
+            'name': 'Announcements Table',
+            'module': 'migrate_add_announcements_table',
+            'function': 'migrate',
+            'description': 'Create announcements table for provider sent messages'
+        },
+        {
             'name': 'Scholarships Table',
             'module': 'create_scholarships_table',
             'function': 'main',

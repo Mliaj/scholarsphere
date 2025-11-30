@@ -1106,6 +1106,56 @@ def get_application_detail(application_id):
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@students_bp.route('/api/announcements')
+@login_required
+def get_student_announcements():
+    """Get student announcements (notifications of type 'info' or 'announcement')"""
+    if current_user.role != 'student':
+        return jsonify({'error': 'Access denied'}), 403
+
+    search_q = request.args.get('search', '').strip()
+    
+    try:
+        from flask import current_app
+        db = current_app.extensions['sqlalchemy']
+        
+        query = text("""
+            SELECT id, title, message, created_at, type
+            FROM notifications
+            WHERE user_id = :uid AND is_active = 1 AND type IN ('info', 'announcement')
+            """ + (" AND title LIKE :search" if search_q else "") + """
+            ORDER BY created_at DESC
+            LIMIT 10
+        """)
+        
+        params = {"uid": current_user.id}
+        if search_q:
+            params["search"] = f"%{search_q}%"
+            
+        rows = db.session.execute(query, params).fetchall()
+
+        def humanize(dt):
+            from datetime import datetime
+            if not dt: return ''
+            if isinstance(dt, str):
+                try: dt = datetime.fromisoformat(dt.replace('Z','+00:00'))
+                except: return dt
+            return dt.strftime('%B %d, %Y')
+
+        announcements = []
+        for r in rows:
+            announcements.append({
+                'id': r[0],
+                'title': r[1],
+                'message': r[2],
+                'date': humanize(r[3]),
+                'type': r[4]
+            })
+
+        return jsonify({'success': True, 'announcements': announcements})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @students_bp.route('/api/notifications')
 @login_required
 def get_notifications():
