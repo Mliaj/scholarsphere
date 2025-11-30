@@ -788,7 +788,7 @@ document.getElementById('editScholarshipForm').addEventListener('submit', async 
     const ct = resp.headers.get('content-type') || '';
     const payload = ct.includes('application/json') ? await resp.json() : { success:false, error: await resp.text() };
     if (payload.success) {
-      showNotification('Scholarship updated successfully!', 'success');
+      sessionStorage.setItem('actionMessage', 'Scholarship updated successfully!');
       closeEditModal();
       location.reload();
     } else {
@@ -873,6 +873,15 @@ document.getElementById('editScholarshipType').addEventListener('change', functi
 document.getElementById('editEligProgramSelect').addEventListener('change', function(){
   const show = this.value === '__OTHER__';
   document.getElementById('editEligProgramOther').style.display = show ? '' : 'none';
+});
+
+// Check for session alerts on load
+document.addEventListener('DOMContentLoaded', function() {
+    const msg = sessionStorage.getItem('actionMessage');
+    if (msg) {
+        showNotification(msg, 'success');
+        sessionStorage.removeItem('actionMessage');
+    }
 });
 </script>
 {% endblock %}
