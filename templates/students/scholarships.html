@@ -479,6 +479,39 @@
         </div>
         </div>
         <div id="pageAlert" class="page-alert" role="alert" aria-live="polite" style="display:none;"></div>
+        
+        <!-- Filter Bar -->
+        <div class="filter-container" style="background: white; padding: 1.5rem; border-radius: 15px; margin-bottom: 2rem; box-shadow: 0 4px 20px rgba(0,0,0,0.08);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 1rem;">
+                <h3 style="margin:0; color: #003366; font-size: 1.1rem;"><i class="fas fa-filter"></i> Filter Scholarships</h3>
+                <button onclick="resetFilters()" style="background:none; border:none; color:#0072ce; cursor:pointer; font-size:0.9rem; font-weight:500;">Reset Filters</button>
+            </div>
+            <div class="filter-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+                <div class="form-group">
+                    <label style="font-size: 0.85rem; font-weight: 600; color: #666; margin-bottom: 0.4rem;">Search Title</label>
+                    <input type="text" id="searchTitle" class="form-control" placeholder="e.g. Academic" oninput="applyFilters()">
+                </div>
+                <div class="form-group">
+                    <label style="font-size: 0.85rem; font-weight: 600; color: #666; margin-bottom: 0.4rem;">Organization</label>
+                    <select id="filterOrg" class="form-control" onchange="applyFilters()">
+                        <option value="">All Organizations</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label style="font-size: 0.85rem; font-weight: 600; color: #666; margin-bottom: 0.4rem;">Type</label>
+                    <select id="filterType" class="form-control" onchange="applyFilters()">
+                        <option value="">All Types</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label style="font-size: 0.85rem; font-weight: 600; color: #666; margin-bottom: 0.4rem;">Level</label>
+                    <select id="filterLevel" class="form-control" onchange="applyFilters()">
+                        <option value="">All Levels</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
         {% if not scholarships or scholarships|length == 0 %}
             <div class="empty-state">
                 <div class="empty-box">
@@ -497,7 +530,11 @@
         {% else %}
             <div class="scholarships-grid">
                 {% for s in scholarships %}
-                <div class="scholarship-card" data-id="{{ s.scholarship_id }}">
+                <div class="scholarship-card" data-id="{{ s.scholarship_id }}" 
+                     data-title="{{ s.title|lower }}" 
+                     data-org="{{ s.provider|default('') }}" 
+                     data-type="{{ s.type|default('') }}" 
+                     data-level="{{ s.level|default('') }}">
                     <div class="scholarship-meta">
                         <span class="badge">{{ s.provider }}</span>
                         {% if s.type %}<span class="badge" style="background:#e9ecef; color:#495057; border-color:#ced4da;">{{ s.type }}</span>{% endif %}
@@ -559,6 +596,11 @@
                     </div>
                 </div>
                 {% endfor %}
+            </div>
+            <div id="noResultsMessage" style="display:none; text-align:center; padding:3rem; color:#666;">
+                <i class="fas fa-search" style="font-size:2.5rem; margin-bottom:1rem; color:#dee2e6;"></i>
+                <h3 style="font-size:1.2rem; margin-bottom:0.5rem;">No matches found</h3>
+                <p>Try adjusting your search or filters.</p>
             </div>
         {% endif %}
     </div>
@@ -880,6 +922,87 @@ function hidePageAlert(){
   if (el) { el.style.display='none'; }
 }
 });
+
+// Filter Logic
+document.addEventListener('DOMContentLoaded', function() {
+    populateFilters();
+});
+
+function populateFilters() {
+    const cards = document.querySelectorAll('.scholarship-card');
+    const orgs = new Set();
+    const types = new Set();
+    const levels = new Set();
+    
+    cards.forEach(card => {
+        if (card.dataset.org) orgs.add(card.dataset.org);
+        if (card.dataset.type) types.add(card.dataset.type);
+        if (card.dataset.level) levels.add(card.dataset.level);
+    });
+    
+    fillSelect('filterOrg', orgs);
+    fillSelect('filterType', types);
+    fillSelect('filterLevel', levels);
+}
+
+function fillSelect(id, set) {
+    const select = document.getElementById(id);
+    if (!select) return;
+    Array.from(set).sort().forEach(val => {
+        const option = document.createElement('option');
+        option.value = val;
+        option.textContent = val;
+        select.appendChild(option);
+    });
+}
+
+function applyFilters() {
+    const search = document.getElementById('searchTitle').value.toLowerCase().trim();
+    const org = document.getElementById('filterOrg').value;
+    const type = document.getElementById('filterType').value;
+    const level = document.getElementById('filterLevel').value;
+    
+    const cards = document.querySelectorAll('.scholarship-card');
+    let visibleCount = 0;
+    
+    cards.forEach(card => {
+        const cTitle = (card.dataset.title || '').toLowerCase();
+        const cOrg = card.dataset.org || '';
+        const cType = card.dataset.type || '';
+        const cLevel = card.dataset.level || '';
+        
+        const matchSearch = !search || cTitle.includes(search);
+        const matchOrg = !org || cOrg === org;
+        const matchType = !type || cType === type;
+        const matchLevel = !level || cLevel === level;
+        
+        if (matchSearch && matchOrg && matchType && matchLevel) {
+            card.style.display = 'flex';
+            visibleCount++;
+        } else {
+            card.style.display = 'none';
+        }
+    });
+    
+    const noResults = document.getElementById('noResultsMessage');
+    const grid = document.querySelector('.scholarships-grid');
+    
+    if (visibleCount === 0 && cards.length > 0) {
+        if(noResults) noResults.style.display = 'block';
+        if(grid) grid.style.display = 'none';
+    } else {
+        if(noResults) noResults.style.display = 'none';
+        if(grid) grid.style.display = 'grid';
+    }
+}
+
+function resetFilters() {
+    document.getElementById('searchTitle').value = '';
+    document.getElementById('filterOrg').value = '';
+    document.getElementById('filterType').value = '';
+    document.getElementById('filterLevel').value = '';
+    applyFilters();
+}
 </script>
 
 <!-- Apply Modal -->

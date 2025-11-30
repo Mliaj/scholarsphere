@@ -550,6 +550,47 @@
             grid-template-columns: 1fr;
         }
     }
+
+    /* Password Strength Meter */
+    .password-strength-meter {
+        width: 100%;
+        height: 8px;
+        background: #e9ecef;
+        border-radius: 4px;
+        margin-top: 0.5rem;
+        overflow: hidden;
+    }
+
+    .strength-bar {
+        height: 100%;
+        width: 0%;
+        transition: all 0.3s;
+        border-radius: 4px;
+    }
+
+    .strength-weak { background: #dc3545; width: 25%; }
+    .strength-fair { background: #fd7e14; width: 50%; }
+    .strength-good { background: #ffc107; width: 75%; }
+    .strength-strong { background: #28a745; width: 100%; }
+
+    .strength-text {
+        font-size: 0.8rem;
+        margin-top: 0.25rem;
+        font-weight: 600;
+    }
+
+    .strength-text.weak { color: #dc3545; }
+    .strength-text.fair { color: #fd7e14; }
+    .strength-text.good { color: #ffc107; }
+    .strength-text.strong { color: #28a745; }
+
+    .password-match {
+        font-size: 0.8rem;
+        margin-top: 0.25rem;
+        font-weight: 600;
+    }
+    .password-match.match { color: #28a745; }
+    .password-match.no-match { color: #dc3545; }
 </style>
 {% endblock %}
 
@@ -685,7 +726,7 @@
     <div class="modal-content">
         <div class="modal-header">
             <h2>Provider Details</h2>
-            <span class="close" onclick="closeModal()">&times;</span>
+            <span class="close" onclick="closeProviderDetailsModal()">&times;</span>
         </div>
         <div id="providerModalContent">
             <!-- Provider details will be loaded here -->
@@ -723,11 +764,26 @@
             <div class="form-row">
                 <div class="form-group">
                     <label for="password">Password *</label>
-                    <input type="password" id="password" name="password" required>
+                    <div class="password-input-container">
+                        <input type="password" id="password" name="password" required>
+                        <span class="password-toggle">
+                            <i class="fas fa-eye"></i>
+                        </span>
+                    </div>
+                    <div class="password-strength-meter">
+                        <div class="strength-bar" id="strengthBar"></div>
+                    </div>
+                    <div class="strength-text" id="strengthText">Enter a password</div>
                 </div>
                 <div class="form-group">
                     <label for="confirmPassword">Confirm Password *</label>
-                    <input type="password" id="confirmPassword" name="confirmPassword" required>
+                    <div class="password-input-container">
+                        <input type="password" id="confirmPassword" name="confirmPassword" required>
+                        <span class="password-toggle">
+                            <i class="fas fa-eye"></i>
+                        </span>
+                    </div>
+                    <div class="password-match" id="passwordMatch"></div>
                 </div>
             </div>
             <div class="modal-actions">
@@ -769,7 +825,7 @@ function filterProviders() {
 }
 
 // Modal functions
-function closeModal() {
+function closeProviderDetailsModal() {
     document.getElementById('providerModal').style.display = 'none';
 }
 
@@ -816,7 +872,7 @@ function showProviderDetails(provider) {
             </div>
         </div>
         <div class="modal-actions">
-            <button class="btn-secondary" onclick="closeModal()">Close</button>
+            <button class="btn-secondary" onclick="closeProviderDetailsModal()">Close</button>
         </div>
     `;
     document.getElementById('providerModal').style.display = 'block';
@@ -824,7 +880,7 @@ function showProviderDetails(provider) {
 
 function editProvider(providerId) {
     // Close modal if open
-    closeModal();
+    closeProviderDetailsModal();
     // Redirect to edit page or show edit modal
     alert('Edit provider functionality coming soon!');
 }
@@ -933,12 +989,69 @@ document.getElementById('addProviderForm').addEventListener('submit', function(e
     });
 });
 
-// Close modal when clicking outside (only Add Provider remains)
+// Close modal when clicking outside
 window.onclick = function(event) {
     const addProviderModal = document.getElementById('addProviderModal');
+    const providerModal = document.getElementById('providerModal');
+    
     if (event.target == addProviderModal) {
         closeAddProviderModal();
     }
+    if (event.target == providerModal) {
+        closeProviderDetailsModal();
+    }
+}
+
+// Password Strength Logic for Add Provider
+document.addEventListener('DOMContentLoaded', function() {
+    const pwd = document.getElementById('password');
+    const confirmPwd = document.getElementById('confirmPassword');
+    if(pwd) pwd.addEventListener('input', validateProviderPassword);
+    if(confirmPwd) confirmPwd.addEventListener('input', validateProviderPassword);
+});
+
+function validateProviderPassword() {
+    const password = document.getElementById('password').value;
+    const confirmPassword = document.getElementById('confirmPassword').value;
+    const strengthBar = document.getElementById('strengthBar');
+    const strengthText = document.getElementById('strengthText');
+    const passwordMatch = document.getElementById('passwordMatch');
+    
+    // Strength
+    const strength = checkPasswordStrength(password);
+    strengthBar.className = 'strength-bar strength-' + strength.class;
+    strengthText.textContent = strength.text;
+    strengthText.className = 'strength-text ' + strength.class;
+    
+    // Match
+    if (confirmPassword) {
+        if (password === confirmPassword) {
+            passwordMatch.textContent = '✓ Passwords match';
+            passwordMatch.className = 'password-match match';
+        } else {
+            passwordMatch.textContent = '✗ Passwords do not match';
+            passwordMatch.className = 'password-match no-match';
+        }
+    } else {
+        passwordMatch.textContent = '';
+        passwordMatch.className = 'password-match';
+    }
+}
+
+function checkPasswordStrength(password) {
+    let score = 0;
+    let feedback = [];
+    if (password.length < 8) feedback.push('8+ chars'); else score++;
+    if (!/[a-z]/.test(password)) feedback.push('lowercase'); else score++;
+    if (!/[A-Z]/.test(password)) feedback.push('uppercase'); else score++;
+    if (!/\d/.test(password)) feedback.push('number'); else score++;
+    if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) feedback.push('special char'); else score++;
+    
+    if (password.length === 0) return { class: '', text: 'Enter a password', score: 0 };
+    if (score < 2) return { class: 'weak', text: 'Weak', score: 1 };
+    if (score < 3) return { class: 'fair', text: 'Fair', score: 2 };
+    if (score < 4) return { class: 'good', text: 'Good', score: 3 };
+    return { class: 'strong', text: 'Strong', score: 4 };
 }
 </script>
 {% endblock %}

@@ -924,6 +924,7 @@ def get_application_detail(application_id):
     try:
         from flask import current_app
         from datetime import datetime
+        from credential_matcher import CredentialMatcher
         db = current_app.extensions['sqlalchemy']
         # Verify ownership and fetch
         app_row = db.session.execute(
@@ -943,7 +944,7 @@ def get_application_detail(application_id):
         req_str = app_row[13] or ''
         current_requirements = [r.strip() for r in req_str.split(',') if r.strip()]
         
-        # Existing Documents
+        # Existing Linked Documents
         docs = db.session.execute(
             text("""
                 SELECT saf.requirement_type, c.file_name, c.file_path, c.credential_type, c.id, c.is_active, c.is_verified
@@ -966,23 +967,69 @@ def get_application_detail(application_id):
                 "is_verified": d[6],
                 "status": "submitted"
             }
+
+        # Fetch all active loose credentials for user (ordered by date desc to get latest)
+        loose_creds = db.session.execute(
+            text("""
+                SELECT credential_type, file_name, file_path, id, is_verified, status, upload_date
+                FROM credentials 
+                WHERE user_id = :uid AND is_active = 1
+                ORDER BY upload_date DESC
+            """), {"uid": current_user.id}
+        ).fetchall()
+        
+        # Convert to list of dicts for Matcher
+        loose_creds_list = []
+        for c in loose_creds:
+            loose_creds_list.append({
+                'credential_type': c[0],
+                'file_name': c[1],
+                'file_path': c[2],
+                'id': c[3],
+                'is_verified': c[4],
+                'status': c[5],
+                'upload_date': c[6]
+            })
+            
+        # Find matches
+        matched_loose = CredentialMatcher.find_matching_credentials(current_requirements, loose_creds_list)
             
         # Merge: Create final list
         documents = []
         
-        # 1. Add all current requirements (finding existing files if they exist)
+        # 1. Add all current requirements
         for req in current_requirements:
             if req in existing_docs_map:
                 documents.append(existing_docs_map[req])
                 del existing_docs_map[req] # Mark as handled
             else:
-                # Missing requirement
-                documents.append({
-                    "requirement_type": req,
-                    "file_name": None,
-                    "status": "missing",
-                    "is_active": True # technically the 'slot' is active
-                })
+                # Check for loose match
+                matches = matched_loose.get(req, [])
+                if matches:
+                    # Pick the first one (CredentialMatcher preserves input order? No, it appends. 
+                    # But loose_creds_list is sorted by date DESC.
+                    # CredentialMatcher logic: iterates requirements, then iterates available_credentials.
+                    # So matches list order depends on available_credentials order.
+                    # Since loose_creds_list is sorted DESC, matches[0] is the latest.)
+                    match = matches[0]
+                    documents.append({
+                        "requirement_type": req,
+                        "file_name": match['file_name'],
+                        "file_path": f"static/uploads/credentials/{match['file_path']}",
+                        "credential_type": match['credential_type'],
+                        "id": match['id'],
+                        "is_active": True,
+                        "is_verified": match['is_verified'],
+                        "status": "matched" # matched from profile
+                    })
+                else:
+                    # Missing requirement
+                    documents.append({
+                        "requirement_type": req,
+                        "file_name": None,
+                        "status": "missing",
+                        "is_active": True 
+                    })
             
         # Documents
         try:
