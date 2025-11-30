@@ -84,6 +84,19 @@
     .form-control { width:100%; padding:.75rem; border:1px solid #ddd; border-radius:8px; font-size:1rem; box-sizing:border-box; }
     .form-control:focus { outline:none; border-color:#007bff; }
     
+    /* Autocomplete styles */
+    .autocomplete-suggestions { position:absolute; top:100%; left:0; right:0; background:#fff; border:1px solid #ddd; border-top:none; border-radius:0 0 8px 8px; max-height:300px; overflow-y:auto; z-index:1000; box-shadow:0 4px 6px rgba(0,0,0,0.1); }
+    .autocomplete-suggestion { padding:0.75rem; cursor:pointer; border-bottom:1px solid #f0f0f0; transition:background 0.2s; }
+    .autocomplete-suggestion:hover { background:#f8f9fa; }
+    .autocomplete-suggestion:last-child { border-bottom:none; }
+    .autocomplete-suggestion.active { background:#e3f2fd; }
+    
+    /* Animation for highlighting unverified documents */
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.7; }
+    }
+    
     @media (max-width:1024px){ .sidebar{width:250px;} .main-content{margin-left:250px;} }
     @media (max-width:768px){ .sidebar{transform:translateX(-100%); transition:transform .3s;} .sidebar.open{transform:translateX(0);} .main-content{margin-left:0;} .stats-bar{flex-direction:column;} }
 </style>
@@ -134,23 +147,47 @@
     </div>
 
     <!-- Applications by Scholarship -->
-    <div class="filter-bar" style="margin-bottom:1rem; display:flex; justify-content:flex-end; gap:0.75rem; align-items:center;">
-      <label for="statusFilter" style="font-size:0.9rem; color:#555;">
-        Filter by status:
-      </label>
-      <select id="statusFilter" class="form-control" style="max-width: 180px;">
-        <option value="all">All statuses</option>
-        <option value="pending">Pending</option>
-        <option value="approved">Approved</option>
-        <option value="rejected">Rejected</option>
-        <option value="withdrawn">Withdrawn</option>
-      </select>
+    <div class="filter-bar" style="margin-bottom:1rem; display:flex; justify-content:space-between; gap:0.75rem; align-items:center; flex-wrap:wrap;">
+      <div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap; flex:1;">
+        <div style="position:relative; flex:1; min-width:250px; max-width:350px;">
+          <label for="scholarshipSearch" style="font-size:0.9rem; color:#555; display:block; margin-bottom:0.25rem;">
+            Search Scholarship:
+          </label>
+          <div style="position:relative;">
+            <input type="text" id="scholarshipSearch" class="form-control" placeholder="Type to search scholarships..." autocomplete="off" style="width:100%; padding-right:35px;">
+            <button type="button" id="clearScholarshipSearch" style="position:absolute; right:8px; top:50%; transform:translateY(-50%); background:none; border:none; color:#999; cursor:pointer; display:none; font-size:1.2rem; padding:0; width:24px; height:24px;" title="Clear">×</button>
+          </div>
+          <div id="scholarshipSuggestions" class="autocomplete-suggestions" style="display:none;"></div>
+        </div>
+        <div style="position:relative; flex:1; min-width:250px; max-width:350px;">
+          <label for="studentSearch" style="font-size:0.9rem; color:#555; display:block; margin-bottom:0.25rem;">
+            Search Student:
+          </label>
+          <div style="position:relative;">
+            <input type="text" id="studentSearch" class="form-control" placeholder="Type to search students..." autocomplete="off" style="width:100%; padding-right:35px;">
+            <button type="button" id="clearStudentSearch" style="position:absolute; right:8px; top:50%; transform:translateY(-50%); background:none; border:none; color:#999; cursor:pointer; display:none; font-size:1.2rem; padding:0; width:24px; height:24px;" title="Clear">×</button>
+          </div>
+          <div id="studentSuggestions" class="autocomplete-suggestions" style="display:none;"></div>
+        </div>
+      </div>
+      <div style="display:flex; gap:0.75rem; align-items:center;">
+        <label for="statusFilter" style="font-size:0.9rem; color:#555;">
+          Filter by status:
+        </label>
+        <select id="statusFilter" class="form-control" style="max-width: 180px;">
+          <option value="all">All statuses</option>
+          <option value="pending">Pending</option>
+          <option value="approved">Approved</option>
+          <option value="rejected">Rejected</option>
+          <option value="withdrawn">Withdrawn</option>
+        </select>
+      </div>
     </div>
 
     <div class="applications-container">
       {% if scholarships %}
         {% for scholarship in scholarships %}
-        <div class="scholarship-section">
+        <div class="scholarship-section" data-scholarship-id="{{ scholarship.id }}" data-scholarship-title="{{ scholarship.title|lower }}" data-scholarship-code="{{ scholarship.code|lower }}">
           <div class="scholarship-header">
             <div class="scholarship-info">
               <h3>{{ scholarship.title }}</h3>
@@ -167,7 +204,7 @@
           {% if scholarship.display_applications %}
           <div class="applications-list">
             {% for app in scholarship.display_applications %}
-            <div class="application-item" data-status="{{ app.status.lower() }}">
+            <div class="application-item" data-status="{{ app.status.lower() }}" data-student-name="{{ app.student_name|lower }}" data-student-email="{{ app.student_email|lower }}" data-student-id="{{ app.student_id|lower if app.student_id else '' }}" data-user-id="{{ app.user_id }}" data-scholarship-id="{{ scholarship.id }}">
               <div class="application-header">
                 <div class="student-info">
                   <h4>{{ app.student_name }}</h4>
@@ -405,13 +442,33 @@ function verifyDocument(credentialId, btnId) {
         btn.innerHTML = '<i class="fas fa-check-circle"></i> Verified';
         btn.style.opacity = '0.6';
         btn.style.cursor = 'not-allowed';
+        btn.disabled = true;
+        // Remove highlight from verified button
+        btn.style.animation = '';
+        btn.style.border = '';
+        btn.style.boxShadow = '';
         
         currentAppVerification.verifiedCount++;
         const statusEl = document.getElementById('docsStatus');
         if (statusEl) {
             statusEl.innerHTML = `Documents verified: <strong>${currentAppVerification.verifiedCount} of ${currentAppVerification.total}</strong>`;
+            // Update status color based on verification count
+            if (currentAppVerification.verifiedCount >= currentAppVerification.total) {
+                statusEl.style.color = '#28a745';
+                statusEl.style.fontWeight = 'bold';
+                statusEl.style.animation = '';
+            } else {
+                statusEl.style.color = '#dc3545';
+                statusEl.style.fontWeight = 'bold';
+            }
         }
         showNotification('Document verified successfully.', 'success');
+        
+        // Check if all documents are now verified and remove remaining highlights
+        if (currentAppVerification.verifiedCount >= currentAppVerification.total) {
+            // All verified - remove any remaining highlights
+            highlightUnverifiedDocuments();
+        }
     } else {
         btn.innerHTML = originalContent;
         btn.disabled = false;
@@ -428,16 +485,40 @@ function verifyDocument(credentialId, btnId) {
 
 function reviewApplication(applicationId, action) {
   if (action === 'approve') {
+    // Check if documents are verified
+    let needsVerification = false;
+    
     // If modal is open for this app, use live count
     if (currentAppVerification.id === applicationId) {
         if (currentAppVerification.total > 0 && currentAppVerification.verifiedCount < currentAppVerification.total) {
-            showNotification('Please verify all documents before approving.', 'warning');
-            return;
+            needsVerification = true;
         }
     } else {
-        // Force provider to view details first
+        // Modal not open - open it first and check verification status
         viewApplication(applicationId);
-        showNotification('Please review details and verify documents first.', 'info');
+        // Wait for modal to load, then check and highlight
+        setTimeout(() => {
+            if (currentAppVerification.total > 0 && currentAppVerification.verifiedCount < currentAppVerification.total) {
+                highlightUnverifiedDocuments();
+                showNotification('Please verify all documents before approving. Unverified documents are highlighted below.', 'warning');
+            }
+        }, 500);
+        return;
+    }
+    
+    // If documents need verification, ensure modal is displayed and highlighted
+    if (needsVerification) {
+        // Ensure modal is open (should already be open, but just in case)
+        const modal = document.getElementById('applicationDetailsModal');
+        if (modal && modal.style.display === 'none') {
+            viewApplication(applicationId);
+            setTimeout(() => {
+                highlightUnverifiedDocuments();
+            }, 300);
+        } else {
+            highlightUnverifiedDocuments();
+        }
+        showNotification('Please verify all documents before approving. Unverified documents are highlighted below.', 'warning');
         return;
     }
   }
@@ -445,6 +526,50 @@ function reviewApplication(applicationId, action) {
   const actionText = action === 'approve' ? 'approve' : 'reject';
   if (confirm(`Are you sure you want to ${actionText} this application? This action cannot be undone.`)) {
     proceedWithReview(applicationId, action);
+  }
+}
+
+function highlightUnverifiedDocuments() {
+  // Highlight unverified document buttons in the modal
+  const modalContent = document.getElementById('applicationDetailsContent');
+  if (!modalContent) return;
+  
+  // First, remove any existing highlights
+  const allButtons = modalContent.querySelectorAll('button[id^="verifyBtn-"]');
+  allButtons.forEach(btn => {
+    btn.style.animation = '';
+    btn.style.border = '';
+    btn.style.boxShadow = '';
+  });
+  
+  // Find all verify buttons that are not disabled (i.e., not verified)
+  const verifyButtons = modalContent.querySelectorAll('button[id^="verifyBtn-"]:not([disabled])');
+  verifyButtons.forEach(btn => {
+    // Add a pulsing highlight effect
+    btn.style.animation = 'pulse 2s infinite';
+    btn.style.border = '2px solid #ffc107';
+    btn.style.boxShadow = '0 0 10px rgba(255, 193, 7, 0.5)';
+  });
+  
+  // Also highlight the documents status message
+  const docsStatus = document.getElementById('docsStatus');
+  if (docsStatus) {
+    const originalColor = docsStatus.style.color || '';
+    if (currentAppVerification.verifiedCount < currentAppVerification.total) {
+      docsStatus.style.color = '#dc3545';
+      docsStatus.style.fontWeight = 'bold';
+      docsStatus.style.animation = 'pulse 2s infinite';
+    } else {
+      docsStatus.style.color = originalColor || '#555';
+      docsStatus.style.fontWeight = '';
+      docsStatus.style.animation = '';
+    }
+  }
+  
+  // Scroll to the documents section if needed
+  const docsSection = modalContent.querySelector('h3');
+  if (docsSection && verifyButtons.length > 0) {
+    docsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 }
 
@@ -474,22 +599,312 @@ function proceedWithReview(applicationId, action) {
     });
 }
 
-// Client-side filter
-document.addEventListener('DOMContentLoaded', function() {
-  const filter = document.getElementById('statusFilter');
-  if (!filter) return;
-  filter.addEventListener('change', function() {
-    const value = this.value;
-    const items = document.querySelectorAll('.application-item');
+// Search state
+let selectedScholarshipId = null;
+let selectedStudentId = null;
+
+// Autocomplete functionality for scholarships
+function setupScholarshipAutocomplete() {
+  const input = document.getElementById('scholarshipSearch');
+  const suggestions = document.getElementById('scholarshipSuggestions');
+  let debounceTimer;
+  let selectedIndex = -1;
+  let currentSuggestions = [];
+
+  if (!input || !suggestions) return;
+
+  input.addEventListener('input', function() {
+    const query = this.value.trim();
+    clearTimeout(debounceTimer);
+    selectedIndex = -1;
+
+    if (query.length < 2) {
+      suggestions.style.display = 'none';
+      selectedScholarshipId = null;
+      applyFilters();
+      return;
+    }
+
+    debounceTimer = setTimeout(() => {
+      fetch(`/provider/api/scholarships/search?q=${encodeURIComponent(query)}`)
+        .then(response => response.json())
+        .then(data => {
+          currentSuggestions = data;
+          if (data.length === 0) {
+            suggestions.style.display = 'none';
+            return;
+          }
+
+          suggestions.innerHTML = data.map((item, index) => 
+            `<div class="autocomplete-suggestion" data-index="${index}" data-id="${item.id}">${item.display}</div>`
+          ).join('');
+          suggestions.style.display = 'block';
+        })
+        .catch(error => {
+          console.error('Error fetching scholarships:', error);
+          suggestions.style.display = 'none';
+        });
+    }, 300);
+  });
+
+  input.addEventListener('keydown', function(e) {
+    if (suggestions.style.display === 'none') return;
+
+    const items = suggestions.querySelectorAll('.autocomplete-suggestion');
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
+      updateSelection(items);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      selectedIndex = Math.max(selectedIndex - 1, -1);
+      updateSelection(items);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (selectedIndex >= 0 && currentSuggestions[selectedIndex]) {
+        selectScholarship(currentSuggestions[selectedIndex]);
+      }
+    } else if (e.key === 'Escape') {
+      suggestions.style.display = 'none';
+    }
+  });
+
+  suggestions.addEventListener('click', function(e) {
+    const item = e.target.closest('.autocomplete-suggestion');
+    if (item) {
+      const index = parseInt(item.dataset.index);
+      selectScholarship(currentSuggestions[index]);
+    }
+  });
+
+  function updateSelection(items) {
+    items.forEach((item, index) => {
+      item.classList.toggle('active', index === selectedIndex);
+    });
+  }
+
+  function selectScholarship(item) {
+    input.value = item.display;
+    selectedScholarshipId = item.id;
+    suggestions.style.display = 'none';
+    document.getElementById('clearScholarshipSearch').style.display = 'block';
+    applyFilters();
+  }
+
+  // Clear button
+  const clearBtn = document.getElementById('clearScholarshipSearch');
+  if (clearBtn) {
+    clearBtn.addEventListener('click', function() {
+      input.value = '';
+      selectedScholarshipId = null;
+      suggestions.style.display = 'none';
+      this.style.display = 'none';
+      applyFilters();
+    });
+  }
+
+  // Show/hide clear button
+  input.addEventListener('input', function() {
+    if (this.value.trim()) {
+      clearBtn.style.display = 'block';
+    } else {
+      clearBtn.style.display = 'none';
+    }
+  });
+
+  // Clear selection when input is cleared
+  input.addEventListener('blur', function() {
+    setTimeout(() => {
+      if (!this.value.trim()) {
+        selectedScholarshipId = null;
+        clearBtn.style.display = 'none';
+        applyFilters();
+      }
+    }, 200);
+  });
+}
+
+// Autocomplete functionality for students
+function setupStudentAutocomplete() {
+  const input = document.getElementById('studentSearch');
+  const suggestions = document.getElementById('studentSuggestions');
+  let debounceTimer;
+  let selectedIndex = -1;
+  let currentSuggestions = [];
+
+  if (!input || !suggestions) return;
+
+  input.addEventListener('input', function() {
+    const query = this.value.trim();
+    clearTimeout(debounceTimer);
+    selectedIndex = -1;
+
+    if (query.length < 2) {
+      suggestions.style.display = 'none';
+      selectedStudentId = null;
+      applyFilters();
+      return;
+    }
+
+    debounceTimer = setTimeout(() => {
+      fetch(`/provider/api/students/search?q=${encodeURIComponent(query)}`)
+        .then(response => response.json())
+        .then(data => {
+          currentSuggestions = data;
+          if (data.length === 0) {
+            suggestions.style.display = 'none';
+            return;
+          }
+
+          suggestions.innerHTML = data.map((item, index) => 
+            `<div class="autocomplete-suggestion" data-index="${index}" data-id="${item.id}">${item.display}</div>`
+          ).join('');
+          suggestions.style.display = 'block';
+        })
+        .catch(error => {
+          console.error('Error fetching students:', error);
+          suggestions.style.display = 'none';
+        });
+    }, 300);
+  });
+
+  input.addEventListener('keydown', function(e) {
+    if (suggestions.style.display === 'none') return;
+
+    const items = suggestions.querySelectorAll('.autocomplete-suggestion');
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
+      updateSelection(items);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      selectedIndex = Math.max(selectedIndex - 1, -1);
+      updateSelection(items);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (selectedIndex >= 0 && currentSuggestions[selectedIndex]) {
+        selectStudent(currentSuggestions[selectedIndex]);
+      }
+    } else if (e.key === 'Escape') {
+      suggestions.style.display = 'none';
+    }
+  });
+
+  suggestions.addEventListener('click', function(e) {
+    const item = e.target.closest('.autocomplete-suggestion');
+    if (item) {
+      const index = parseInt(item.dataset.index);
+      selectStudent(currentSuggestions[index]);
+    }
+  });
+
+  function updateSelection(items) {
+    items.forEach((item, index) => {
+      item.classList.toggle('active', index === selectedIndex);
+    });
+  }
+
+  function selectStudent(item) {
+    input.value = item.display;
+    selectedStudentId = item.id;
+    suggestions.style.display = 'none';
+    document.getElementById('clearStudentSearch').style.display = 'block';
+    applyFilters();
+  }
+
+  // Clear button
+  const clearBtn = document.getElementById('clearStudentSearch');
+  if (clearBtn) {
+    clearBtn.addEventListener('click', function() {
+      input.value = '';
+      selectedStudentId = null;
+      suggestions.style.display = 'none';
+      this.style.display = 'none';
+      applyFilters();
+    });
+  }
+
+  // Show/hide clear button
+  input.addEventListener('input', function() {
+    if (this.value.trim()) {
+      clearBtn.style.display = 'block';
+    } else {
+      clearBtn.style.display = 'none';
+    }
+  });
+
+  // Clear selection when input is cleared
+  input.addEventListener('blur', function() {
+    setTimeout(() => {
+      if (!this.value.trim()) {
+        selectedStudentId = null;
+        clearBtn.style.display = 'none';
+        applyFilters();
+      }
+    }, 200);
+  });
+}
+
+// Apply filters based on search and status
+function applyFilters() {
+  const statusFilter = document.getElementById('statusFilter');
+  const statusValue = statusFilter ? statusFilter.value : 'all';
+  
+  const scholarshipSections = document.querySelectorAll('.scholarship-section');
+  const applicationItems = document.querySelectorAll('.application-item');
+
+  scholarshipSections.forEach(section => {
+    let sectionVisible = false;
+    const scholarshipId = parseInt(section.dataset.scholarshipId);
+
+    // Filter by scholarship
+    if (selectedScholarshipId && scholarshipId !== selectedScholarshipId) {
+      section.style.display = 'none';
+      return;
+    }
+
+    // Check if any applications in this section match
+    const items = section.querySelectorAll('.application-item');
     items.forEach(item => {
-      const st = (item.getAttribute('data-status') || '').toLowerCase();
-      if (value === 'all' || st === value) {
+      let visible = true;
+
+      // Filter by status
+      const status = (item.getAttribute('data-status') || '').toLowerCase();
+      if (statusValue !== 'all' && status !== statusValue) {
+        visible = false;
+      }
+
+      // Filter by student
+      if (selectedStudentId) {
+        const itemUserId = parseInt(item.dataset.userId);
+        if (itemUserId !== selectedStudentId) {
+          visible = false;
+        }
+      }
+
+      if (visible) {
         item.style.display = '';
+        sectionVisible = true;
       } else {
         item.style.display = 'none';
       }
     });
+
+    section.style.display = sectionVisible ? '' : 'none';
   });
+}
+
+// Client-side filter
+document.addEventListener('DOMContentLoaded', function() {
+  setupScholarshipAutocomplete();
+  setupStudentAutocomplete();
+  
+  const filter = document.getElementById('statusFilter');
+  if (filter) {
+    filter.addEventListener('change', function() {
+      applyFilters();
+    });
+  }
 });
 
 // Auto-refresh
