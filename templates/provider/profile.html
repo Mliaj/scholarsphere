@@ -9,7 +9,7 @@
   .sidebar { width:280px; background: linear-gradient(135deg, #003366 0%, #0072ce 100%); color:#fff; padding:2rem 0; position:fixed; height:100vh; overflow-y:auto; }
   .sidebar-header { text-align:center; padding:0 2rem 2rem 2rem; border-bottom:1px solid rgba(255,255,255,0.1); }
   .sidebar-logo { width:60px; height:60px; background:#fff; border-radius:50%; margin:0 auto 1rem; display:flex; align-items:center; justify-content:center; overflow:hidden; }
-  .sidebar-logo img { width:50px; height:50px; object-fit:cover; border-radius:50%; }
+  .sidebar-logo img { width:100%; height:100%; object-fit:cover; border-radius:50%; }
   .sidebar-brand { font-size:1.2rem; font-weight:700; margin-bottom:.5rem; }
   .sidebar-subtitle { font-size:.9rem; opacity:.8; }
   .sidebar-nav { padding:2rem 0; }
@@ -17,36 +17,416 @@
   .nav-item:hover, .nav-item.active { background:rgba(255,255,255,0.1); border-left-color:#ffc72c; }
   .nav-item i { margin-right:1rem; width:20px; }
 
-  .main-content { flex:1; margin-left:280px; padding:2rem; }
+  .main-content { flex:1; margin-left:280px; padding:2rem; background:#f8f9fa; }
   .top-bar { display:flex; justify-content:space-between; align-items:center; margin-bottom:2rem; padding:1rem 0; }
-  .welcome-text h1 { font-size:2rem; color:#003366; margin-bottom:.5rem; }
-  .welcome-text p { color:#666; }
+  .welcome-text h1 { font-size:2rem; color:#003366; margin-bottom:.5rem; font-weight:700; }
+  .welcome-text p { color:#666; font-size:1rem; }
   
-  /* Alignment improvements */
-  .profile-card { background:#fff; border-radius:15px; box-shadow:0 4px 20px rgba(0,0,0,0.08); padding:1.5rem; max-width: 960px; margin: 0 auto; }
-  .profile-header { display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #e9ecef; padding-bottom:1rem; margin-bottom:1.5rem; gap:1rem; }
-  .profile-header > div:first-child { min-width: 0; }
-  .profile-header h2 { margin:0; color:#003366; font-weight:700; }
-  .status-badge { padding:.35rem .75rem; border-radius:20px; font-weight:700; font-size:.85rem; white-space:nowrap; }
-  .status-active { background:#d4edda; color:#155724; }
-  .status-inactive { background:#f8d7da; color:#721c24; }
-  .info-grid { display:grid; grid-template-columns: repeat(2, minmax(280px, 1fr)); gap:1rem; align-items:start; }
-  .info-item { background:#f8f9fa; border:1px solid #e9ecef; border-radius:10px; padding:1rem; }
-  .info-item label { display:block; font-weight:600; color:#333; margin-bottom:.35rem; }
-  .info-item div { word-break: break-word; }
+  /* Profile Card Styles */
+  .profile-card { 
+    background:#fff; 
+    border-radius:20px; 
+    box-shadow:0 8px 30px rgba(0,0,0,0.12); 
+    padding:2.5rem; 
+    max-width: 1000px; 
+    margin: 0 auto;
+    overflow: hidden;
+  }
   
-  @media (max-width:1024px){ .sidebar{width:250px;} .main-content{margin-left:250px;} }
-  @media (max-width:768px){ .sidebar{transform:translateX(-100%);} .main-content{margin-left:0;} .info-grid{grid-template-columns:1fr;} }
+  .profile-header { 
+    display:flex; 
+    justify-content:space-between; 
+    align-items:flex-start; 
+    border-bottom:2px solid #e9ecef; 
+    padding-bottom:2rem; 
+    margin-bottom:2rem; 
+    gap:2rem;
+    flex-wrap: wrap;
+  }
+  
+  .profile-header-left {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    flex: 1;
+    min-width: 0;
+  }
+  
+  .profile-avatar {
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    overflow: hidden;
+    border: 4px solid #e9ecef;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    flex-shrink: 0;
+    background: linear-gradient(135deg, #0072ce 0%, #003366 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 2rem;
+    font-weight: 700;
+  }
+  
+  .profile-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  
+  .profile-header-info h2 { 
+    margin:0 0 0.5rem 0; 
+    color:#003366; 
+    font-weight:700; 
+    font-size:1.75rem;
+    word-break: break-word;
+  }
+  
+  .profile-header-info .provider-name { 
+    color:#666; 
+    font-size:1rem;
+    margin-bottom: 0.5rem;
+  }
+  
+  .profile-header-info .provider-email {
+    color: #0072ce;
+    font-size: 0.95rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  
+  .status-badge { 
+    padding:.5rem 1rem; 
+    border-radius:25px; 
+    font-weight:600; 
+    font-size:.9rem; 
+    white-space:nowrap;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  }
+  
+  .status-active { background:linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%); color:#155724; }
+  .status-inactive { background:linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%); color:#721c24; }
+  
+  .info-grid { 
+    display:grid; 
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); 
+    gap:1.5rem; 
+    margin-bottom: 2rem;
+  }
+  
+  .info-item { 
+    background:linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%); 
+    border:1px solid #e9ecef; 
+    border-radius:12px; 
+    padding:1.25rem; 
+    transition: all 0.3s ease;
+  }
+  
+  .info-item:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    transform: translateY(-2px);
+  }
+  
+  .info-item label { 
+    display:block; 
+    font-weight:600; 
+    color:#003366; 
+    margin-bottom:.5rem; 
+    font-size:0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  
+  .info-item .value { 
+    color:#333; 
+    font-size:1rem;
+    word-break: break-word;
+    font-weight: 500;
+  }
+  
+  .info-item.readonly {
+    background: #f8f9fa;
+    opacity: 0.8;
+  }
+  
+  .info-item.readonly label {
+    color: #6c757d;
+  }
+  
+  .info-item.readonly .value {
+    color: #6c757d;
+  }
+  
+  .action-buttons {
+    display: flex;
+    gap: 1rem;
+    justify-content: flex-end;
+    margin-top: 2rem;
+    padding-top: 2rem;
+    border-top: 2px solid #e9ecef;
+  }
+  
+  .btn-edit {
+    background: linear-gradient(135deg, #0072ce 0%, #0056a3 100%);
+    color: white;
+    border: none;
+    padding: 0.75rem 2rem;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    box-shadow: 0 4px 15px rgba(0, 114, 206, 0.3);
+    pointer-events: auto;
+    position: relative;
+    z-index: 10;
+  }
+  
+  .btn-edit:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 114, 206, 0.4);
+  }
+  
+  .btn-edit:active {
+    transform: translateY(0);
+  }
+  
+  /* Modal Styles */
+  .modal {
+    display: none;
+    position: fixed;
+    z-index: 10000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.5);
+    backdrop-filter: blur(4px);
+  }
+  
+  .modal.show,
+  .modal[style*="block"] {
+    display: block !important;
+  }
+  
+  .modal-content {
+    background-color: #fff;
+    margin: 3% auto;
+    padding: 0;
+    border-radius: 20px;
+    width: 90%;
+    max-width: 700px;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+  }
+  
+  .modal-header {
+    padding: 2rem;
+    border-bottom: 2px solid #e9ecef;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: linear-gradient(135deg, #003366 0%, #0072ce 100%);
+    color: white;
+    border-radius: 20px 20px 0 0;
+  }
+  
+  .modal-header h2 {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 700;
+  }
+  
+  .close {
+    color: white;
+    font-size: 2rem;
+    font-weight: bold;
+    cursor: pointer;
+    line-height: 1;
+    transition: transform 0.3s;
+  }
+  
+  .close:hover {
+    transform: rotate(90deg);
+  }
+  
+  .modal-body {
+    padding: 2rem;
+  }
+  
+  .form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.5rem;
+  }
+  
+  .form-field {
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .form-field label {
+    font-weight: 600;
+    color: #003366;
+    margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+  }
+  
+  .form-field input,
+  .form-field textarea {
+    padding: 0.75rem;
+    border: 2px solid #e9ecef;
+    border-radius: 8px;
+    font-size: 1rem;
+    transition: all 0.3s;
+  }
+  
+  .form-field input:focus,
+  .form-field textarea:focus {
+    outline: none;
+    border-color: #0072ce;
+    box-shadow: 0 0 0 3px rgba(0, 114, 206, 0.1);
+  }
+  
+  .form-field input[readonly] {
+    background: #f8f9fa;
+    color: #6c757d;
+    cursor: not-allowed;
+  }
+  
+  .photo-upload-section {
+    grid-column: 1 / -1;
+    padding: 1.5rem;
+    background: #f8f9fa;
+    border-radius: 12px;
+    border: 2px dashed #e9ecef;
+  }
+  
+  .photo-preview {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+  }
+  
+  .photo-preview img {
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 4px solid #e9ecef;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+  }
+  
+  .modal-footer {
+    padding: 1.5rem 2rem;
+    border-top: 2px solid #e9ecef;
+    display: flex;
+    justify-content: flex-end;
+    gap: 1rem;
+    background: #f8f9fa;
+    border-radius: 0 0 20px 20px;
+  }
+  
+  .btn {
+    padding: 0.75rem 2rem;
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  
+  .btn-primary {
+    background: linear-gradient(135deg, #0072ce 0%, #0056a3 100%);
+    color: white;
+    box-shadow: 0 4px 15px rgba(0, 114, 206, 0.3);
+  }
+  
+  .btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 114, 206, 0.4);
+  }
+  
+  .btn-secondary {
+    background: #6c757d;
+    color: white;
+  }
+  
+  .btn-secondary:hover {
+    background: #5a6268;
+  }
+  
+  @media (max-width:1024px){ 
+    .sidebar{width:250px;} 
+    .main-content{margin-left:250px;} 
+  }
+  
+  @media (max-width:768px){ 
+    .sidebar{transform:translateX(-100%);} 
+    .main-content{margin-left:0;} 
+    .info-grid{grid-template-columns:1fr;} 
+    .profile-header { flex-direction: column; }
+    .action-buttons { flex-direction: column; }
+  }
 </style>
 {% endblock %}
 
 {% block content %}
+<script>
+// Define functions IMMEDIATELY before content renders
+window.openEditModal = function() {
+  console.log('openEditModal function called');
+  var modal = document.getElementById('editProfileModal');
+  if (!modal) {
+    console.error('Modal not found');
+    alert('Modal not found. Please refresh the page.');
+    return false;
+  }
+  console.log('Setting modal display to block');
+  modal.classList.add('show');
+  modal.style.display = 'block';
+  return false;
+};
+
+window.closeEditModal = function() {
+  var modal = document.getElementById('editProfileModal');
+  if (modal) {
+    modal.classList.remove('show');
+    modal.style.display = 'none';
+  }
+};
+
+window.previewPhoto = function(input) {
+  if (input.files && input.files[0]) {
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      var preview = document.getElementById('photoPreview');
+      if (preview) {
+        preview.src = e.target.result;
+      }
+    };
+    reader.readAsDataURL(input.files[0]);
+  }
+};
+</script>
 <div class="dashboard-container">
   <!-- Sidebar -->
   <div class="sidebar">
     <div class="sidebar-header">
       <div class="sidebar-logo">
-        <img src="{{ url_for('static', filename='images/uc-logo.png') }}" alt="UC Logo">
+        {% if profile.profile_picture %}
+          <img id="sidebarProfilePicture" src="{{ url_for('static', filename='uploads/profile_pictures/' + profile.profile_picture) }}" alt="Profile Picture">
+        {% else %}
+          <img id="sidebarProfilePicture" src="{{ url_for('static', filename='images/uc-logo.png') }}" alt="UC Logo">
+        {% endif %}
       </div>
       <div class="sidebar-brand">Scholarsphere</div>
       <div class="sidebar-subtitle">Provider Portal</div>
@@ -63,22 +443,84 @@
   </div>
 
   <!-- Main Content -->
+  <script>
+// Define functions IMMEDIATELY so they're available when button renders
+if (typeof window.openEditModal === 'undefined') {
+  window.openEditModal = function() {
+    console.log('openEditModal function called');
+    var modal = document.getElementById('editProfileModal');
+    if (!modal) {
+      console.error('Modal not found');
+      alert('Modal not found. Please refresh the page.');
+      return false;
+    }
+    console.log('Setting modal display to block');
+    modal.classList.add('show');
+    modal.style.display = 'block';
+    
+    // Ensure form submission handler is attached
+    var profileForm = document.getElementById('profileForm');
+    if (profileForm && !profileForm.hasAttribute('data-handler-attached')) {
+      profileForm.addEventListener('submit', window.handleFormSubmit);
+      profileForm.setAttribute('data-handler-attached', 'true');
+      console.log('Form submission handler attached on modal open');
+    }
+    
+    return false;
+  };
+
+  window.closeEditModal = function() {
+    var modal = document.getElementById('editProfileModal');
+    if (modal) {
+      modal.classList.remove('show');
+      modal.style.display = 'none';
+    }
+  };
+
+  window.previewPhoto = function(input) {
+    if (input.files && input.files[0]) {
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        var preview = document.getElementById('photoPreview');
+        if (preview) {
+          preview.src = e.target.result;
+        }
+      };
+      reader.readAsDataURL(input.files[0]);
+    }
+  };
+}
+</script>
   <div class="main-content">
     <div class="top-bar">
       <div class="welcome-text">
         <h1>Organization Profile</h1>
-        <p>Manage your provider information</p>
+        <p>Manage your organization information and settings</p>
       </div>
     </div>
 
     <div class="profile-card">
       <div class="profile-header">
-        <div>
-          <h2 style="margin:0; color:#003366;">{{ profile.organization }}</h2>
-          <div style="color:#666; margin-top:.25rem;">Provider: {{ profile.first_name }} {{ profile.last_name }}</div>
+        <div class="profile-header-left">
+          <div class="profile-avatar">
+            {% if profile.profile_picture %}
+              <img id="mainProfilePicture" src="{{ url_for('static', filename='uploads/profile_pictures/' + profile.profile_picture) }}" alt="Profile Picture">
+            {% else %}
+              <div id="mainProfileInitial">{{ profile.organization[0] if profile.organization else profile.first_name[0] }}</div>
+            {% endif %}
+          </div>
+          <div class="profile-header-info">
+            <h2>{{ profile.organization or 'Organization Name' }}</h2>
+            <div class="provider-name">Provider: {{ profile.first_name }} {{ profile.last_name }}</div>
+            <div class="provider-email">
+              <i class="fas fa-envelope"></i>
+              {{ profile.email }}
+            </div>
+          </div>
         </div>
         <div style="display:flex; gap:0.5rem; align-items:center;">
           <span class="status-badge {{ 'status-active' if profile.is_active else 'status-inactive' }}">
+            <i class="fas fa-circle" style="font-size: 0.6rem; margin-right: 0.5rem;"></i>
             {{ 'Active' if profile.is_active else 'Inactive' }}
           </span>
         </div>
@@ -86,31 +528,421 @@
 
       <div class="info-grid">
         <div class="info-item">
-          <label>Organization</label>
-          <div>{{ profile.organization }}</div>
+          <label><i class="fas fa-building" style="margin-right: 0.5rem;"></i> Organization Name</label>
+          <div class="value" id="orgName">{{ profile.organization or 'Not set' }}</div>
         </div>
         <div class="info-item">
-          <label>Email</label>
-          <div>{{ profile.email }}</div>
+          <label><i class="fas fa-envelope" style="margin-right: 0.5rem;"></i> Email Address</label>
+          <div class="value" id="email">{{ profile.email }}</div>
         </div>
         <div class="info-item">
-          <label>Provider ID</label>
-          <div>{{ profile.id }}</div>
+          <label><i class="fas fa-user" style="margin-right: 0.5rem;"></i> First Name</label>
+          <div class="value" id="firstName">{{ profile.first_name }}</div>
         </div>
         <div class="info-item">
-          <label>Registered</label>
-          <div>{{ profile.created_at | safe_strftime('%b %d, %Y') }}</div>
+          <label><i class="fas fa-user" style="margin-right: 0.5rem;"></i> Last Name</label>
+          <div class="value" id="lastName">{{ profile.last_name }}</div>
         </div>
-        <div class="info-item">
-          <label>Submitted Documents</label>
-          <div>{{ profile.documents_submitted }}</div>
+        <div class="info-item readonly">
+          <label><i class="fas fa-id-card" style="margin-right: 0.5rem;"></i> Provider ID</label>
+          <div class="value">{{ profile.id }}</div>
         </div>
-        <div class="info-item">
-          <label>Status</label>
-          <div>{{ 'Active' if profile.is_active else 'Inactive' }}</div>
+        <div class="info-item readonly">
+          <label><i class="fas fa-calendar" style="margin-right: 0.5rem;"></i> Registered</label>
+          <div class="value">{{ profile.created_at | safe_strftime('%B %d, %Y') }}</div>
         </div>
+        <div class="info-item readonly">
+          <label><i class="fas fa-info-circle" style="margin-right: 0.5rem;"></i> Status</label>
+          <div class="value">{{ 'Active' if profile.is_active else 'Inactive' }}</div>
+        </div>
+      </div>
+
+      <div class="action-buttons">
+        <button type="button" class="btn-edit" id="editProfileBtn" onclick="return window.openEditModal();" style="cursor: pointer !important; pointer-events: auto !important;">
+          <i class="fas fa-edit"></i> Edit Profile
+        </button>
       </div>
     </div>
   </div>
 </div>
+
+<!-- Edit Profile Modal -->
+<div id="editProfileModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>Edit Organization Profile</h2>
+      <span class="close" onclick="window.closeEditModal()">&times;</span>
+    </div>
+    <form id="profileForm" enctype="multipart/form-data">
+      <div class="modal-body">
+        <div class="photo-upload-section">
+          <label style="display: block; margin-bottom: 1rem; font-weight: 600; color: #003366;">Profile Photo</label>
+          <div class="photo-preview">
+            <div>
+              {% if profile.profile_picture %}
+                <img id="photoPreview" src="{{ url_for('static', filename='uploads/profile_pictures/' + profile.profile_picture) }}" alt="Profile Preview">
+              {% else %}
+                <img id="photoPreview" src="https://via.placeholder.com/100/0072ce/ffffff?text={{ profile.organization[0] if profile.organization else profile.first_name[0] }}" alt="Profile Preview">
+              {% endif %}
+            </div>
+            <div style="flex: 1;">
+              <input type="file" id="photoInput" name="photo" accept="image/*" onchange="previewPhoto(this)" style="margin-bottom: 0.5rem; width: 100%; padding: 0.5rem; border: 2px solid #e9ecef; border-radius: 8px;">
+              <div style="font-size: 0.85rem; color: #666;">Select a new photo (max 5MB, JPG/PNG/GIF)</div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="form-grid">
+          <div class="form-field">
+            <label>Organization Name <span style="color: #dc3545;">*</span></label>
+            <input type="text" name="organization" value="{{ profile.organization or '' }}" required>
+          </div>
+          <div class="form-field">
+            <label>Email Address <span style="color: #dc3545;">*</span></label>
+            <input type="email" name="email" value="{{ profile.email }}" required>
+          </div>
+          <div class="form-field">
+            <label>First Name <span style="color: #dc3545;">*</span></label>
+            <input type="text" name="first_name" value="{{ profile.first_name }}" required>
+          </div>
+          <div class="form-field">
+            <label>Last Name <span style="color: #dc3545;">*</span></label>
+            <input type="text" name="last_name" value="{{ profile.last_name }}" required>
+          </div>
+          <div class="form-field" style="grid-column: 1 / -1;">
+            <label>Provider ID</label>
+            <input type="text" value="{{ profile.id }}" readonly style="background: #f8f9fa; color: #6c757d;">
+            <small style="color: #6c757d; font-size: 0.85rem; margin-top: 0.25rem; display: block;">Provider ID cannot be changed</small>
+          </div>
+          <div class="form-field" style="grid-column: 1 / -1;">
+            <label>Status</label>
+            <input type="text" value="{{ 'Active' if profile.is_active else 'Inactive' }}" readonly style="background: #f8f9fa; color: #6c757d;">
+            <small style="color: #6c757d; font-size: 0.85rem; margin-top: 0.25rem; display: block;">Status can only be changed by administrator</small>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="window.closeEditModal()">
+          <i class="fas fa-times"></i> Cancel
+        </button>
+        <button type="submit" class="btn btn-primary">
+          <i class="fas fa-save"></i> Save Changes
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Form submission handler - define FIRST so it's available
+window.handleFormSubmit = function(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  
+  console.log('Form submission started');
+  
+  var form = e.target;
+  var formData = new FormData(form);
+  
+  // Show loading state
+  var submitBtn = form.querySelector('button[type="submit"]');
+  if (!submitBtn) {
+    console.error('Submit button not found');
+    return false;
+  }
+  
+  var originalText = submitBtn.innerHTML;
+  submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+  submitBtn.disabled = true;
+  
+  console.log('Sending request to /provider/update-profile');
+  
+  fetch('/provider/update-profile', {
+    method: 'POST',
+    body: formData
+  })
+  .then(function(response) {
+    console.log('Response received:', response.status);
+    if (!response.ok) {
+      return response.json().then(function(err) {
+        throw new Error(err.message || 'Network response was not ok');
+      });
+    }
+    return response.json();
+  })
+  .then(function(data) {
+    console.log('Response data:', data);
+    if (data.success) {
+      // Update profile pictures immediately if new picture was uploaded
+      if (data.profile_picture_url) {
+        window.updateProfilePictures(data.profile_picture_url);
+      }
+      
+      showNotification('Profile updated successfully!', 'success');
+      window.closeEditModal();
+      
+      // Update displayed values in the profile card
+      window.updateProfileDisplay();
+      
+      // Reload the page after a delay to show all updated information
+      setTimeout(function() {
+        window.location.reload();
+      }, 1500);
+    } else {
+      showNotification(data.message || 'Failed to update profile.', 'error');
+      submitBtn.innerHTML = originalText;
+      submitBtn.disabled = false;
+    }
+  })
+  .catch(function(error) {
+    console.error('Error:', error);
+    showNotification('Failed to update profile: ' + (error.message || 'Unknown error'), 'error');
+    submitBtn.innerHTML = originalText;
+    submitBtn.disabled = false;
+  });
+  
+  return false;
+};
+
+// Define functions globally IMMEDIATELY (before DOM is ready)
+window.openEditModal = function() {
+  console.log('openEditModal function called');
+  var modal = document.getElementById('editProfileModal');
+  if (!modal) {
+    console.error('Modal not found');
+    alert('Modal not found. Please refresh the page.');
+    return false;
+  }
+  console.log('Setting modal display to block');
+  modal.classList.add('show');
+  modal.style.display = 'block';
+  
+  // Ensure form submission handler is attached
+  var profileForm = document.getElementById('profileForm');
+  if (profileForm && !profileForm.hasAttribute('data-handler-attached')) {
+    profileForm.addEventListener('submit', window.handleFormSubmit);
+    profileForm.setAttribute('data-handler-attached', 'true');
+    console.log('Form submission handler attached on modal open');
+  }
+  
+  return false;
+};
+
+window.closeEditModal = function() {
+  var modal = document.getElementById('editProfileModal');
+  if (modal) {
+    modal.classList.remove('show');
+    modal.style.display = 'none';
+  }
+};
+
+window.previewPhoto = function(input) {
+  if (input.files && input.files[0]) {
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      var preview = document.getElementById('photoPreview');
+      if (preview) {
+        preview.src = e.target.result;
+      }
+    };
+    reader.readAsDataURL(input.files[0]);
+  }
+};
+
+// Also set up event listener as backup when DOM is ready
+document.addEventListener('DOMContentLoaded', function() {
+  console.log('DOM loaded');
+  
+  var editBtn = document.getElementById('editProfileBtn');
+  if (editBtn) {
+    console.log('Edit button found');
+    // Add additional event listener as backup
+    editBtn.addEventListener('click', function(e) {
+      console.log('Button clicked via event listener');
+      e.preventDefault();
+      e.stopPropagation();
+      window.openEditModal();
+      return false;
+    });
+  }
+  
+  // Close modal when clicking outside
+  var modal = document.getElementById('editProfileModal');
+  if (modal) {
+    modal.addEventListener('click', function(e) {
+      if (e.target === modal) {
+        window.closeEditModal();
+      }
+    });
+  }
+});
+
+// Set up form submission when DOM is ready (backup)
+document.addEventListener('DOMContentLoaded', function() {
+  var profileForm = document.getElementById('profileForm');
+  if (profileForm) {
+    // Remove any existing listeners by cloning
+    profileForm.onsubmit = null;
+    profileForm.addEventListener('submit', window.handleFormSubmit);
+    console.log('Form submission handler attached');
+  } else {
+    console.error('Profile form not found on DOMContentLoaded');
+    // Try again after a short delay
+    setTimeout(function() {
+      var form = document.getElementById('profileForm');
+      if (form) {
+        form.addEventListener('submit', window.handleFormSubmit);
+        console.log('Form submission handler attached (delayed)');
+      }
+    }, 500);
+  }
+});
+
+function showNotification(message, type) {
+  // Create notification element
+  var notification = document.createElement('div');
+  notification.style.cssText = `
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 1rem 1.5rem;
+    background: ${type === 'success' ? '#28a745' : '#dc3545'};
+    color: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    z-index: 10000;
+    font-weight: 500;
+    animation: slideIn 0.3s ease;
+  `;
+  notification.textContent = message;
+  
+  document.body.appendChild(notification);
+  
+  setTimeout(function() {
+    notification.style.animation = 'slideOut 0.3s ease';
+    setTimeout(function() {
+      if (document.body.contains(notification)) {
+        document.body.removeChild(notification);
+      }
+    }, 300);
+  }, 3000);
+}
+
+// Function to update profile pictures after upload - make globally available
+window.updateProfilePictures = function(imageUrl) {
+  console.log('Updating profile pictures with:', imageUrl);
+  
+  // Add cache busting parameter to force image reload
+  var imageUrlWithCache = imageUrl + '?t=' + new Date().getTime();
+  
+  // Update ALL sidebar profile pictures across provider portal (using same ID)
+  var sidebarImgs = document.querySelectorAll('#sidebarProfilePicture');
+  sidebarImgs.forEach(function(sidebarImg) {
+    sidebarImg.src = imageUrlWithCache;
+    sidebarImg.onerror = function() {
+      // Fallback to original URL if cache-busted version fails
+      this.src = imageUrl;
+    };
+  });
+  console.log('Sidebar profile pictures updated (found ' + sidebarImgs.length + ' images)');
+  
+  // Update main profile avatar
+  var mainImg = document.getElementById('mainProfilePicture');
+  var mainInitial = document.getElementById('mainProfileInitial');
+  
+  if (mainImg) {
+    mainImg.src = imageUrlWithCache;
+    mainImg.onerror = function() {
+      // Fallback to original URL if cache-busted version fails
+      this.src = imageUrl;
+    };
+    console.log('Main profile picture updated');
+  } else if (mainInitial) {
+    // If there was no image before, create an img element
+    var avatar = mainInitial.parentElement;
+    avatar.innerHTML = '<img id="mainProfilePicture" src="' + imageUrlWithCache + '" alt="Profile Picture">';
+    console.log('Main profile picture created from initial');
+  }
+  
+  // Store in localStorage to sync across tabs/pages
+  localStorage.setItem('provider_profile_picture_url', imageUrlWithCache);
+  localStorage.setItem('provider_profile_picture_updated', new Date().getTime().toString());
+  
+  // Dispatch custom event for same-tab updates
+  window.dispatchEvent(new CustomEvent('profilePictureUpdated', { detail: { imageUrl: imageUrlWithCache } }));
+}
+
+// Function to update profile display values - make globally available
+window.updateProfileDisplay = function() {
+  var form = document.getElementById('profileForm');
+  if (!form) return;
+  
+  // Get form values
+  var organization = form.querySelector('input[name="organization"]').value;
+  var email = form.querySelector('input[name="email"]').value;
+  var firstName = form.querySelector('input[name="first_name"]').value;
+  var lastName = form.querySelector('input[name="last_name"]').value;
+  
+  // Update organization name display
+  var orgNameEl = document.getElementById('orgName');
+  if (orgNameEl) orgNameEl.textContent = organization || 'Not set';
+  
+  // Update email display
+  var emailEl = document.getElementById('email');
+  if (emailEl) emailEl.textContent = email;
+  
+  // Update name displays
+  var firstNameEl = document.getElementById('firstName');
+  if (firstNameEl) firstNameEl.textContent = firstName;
+  
+  var lastNameEl = document.getElementById('lastName');
+  if (lastNameEl) lastNameEl.textContent = lastName;
+  
+  // Update header info
+  var headerOrg = document.querySelector('.profile-header-info h2');
+  if (headerOrg) headerOrg.textContent = organization || 'Organization Name';
+  
+  var headerName = document.querySelector('.provider-name');
+  if (headerName) headerName.textContent = 'Provider: ' + firstName + ' ' + lastName;
+  
+  var headerEmail = document.querySelector('.provider-email');
+  if (headerEmail) {
+    var emailIcon = headerEmail.querySelector('i');
+    headerEmail.innerHTML = '';
+    if (emailIcon) headerEmail.appendChild(emailIcon);
+    headerEmail.appendChild(document.createTextNode(' ' + email));
+  }
+}
+
+// Add animation styles
+(function() {
+  var animationStyle = document.createElement('style');
+  animationStyle.textContent = `
+    @keyframes slideIn {
+      from {
+        transform: translateX(100%);
+        opacity: 0;
+      }
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+    @keyframes slideOut {
+      from {
+        transform: translateX(0);
+        opacity: 1;
+      }
+      to {
+        transform: translateX(100%);
+        opacity: 0;
+      }
+    }
+  `;
+  document.head.appendChild(animationStyle);
+})();
+</script>
 {% endblock %}

@@ -20,8 +20,11 @@
   .top-bar { display:flex; justify-content:space-between; align-items:center; margin-bottom:2rem; padding:1rem 0; }
   .welcome-text h1 { font-size:2rem; color:#1a1a1a; margin-bottom:.5rem; }
   .welcome-text p { color:#666; }
+  .user-menu { display:flex; align-items:center; gap:1rem; }
+  .user-avatar { width:50px; height:50px; border-radius:50%; background:#1a1a1a; display:flex; align-items:center; justify-content:center; color:#fff; font-weight:600; font-size:1.2rem; }
   .card { background:#fff; border-radius:15px; box-shadow:0 4px 20px rgba(0,0,0,0.08); overflow:hidden; margin-bottom:1.5rem; }
   .card-header { display:flex; justify-content:space-between; align-items:center; padding:1.25rem 1.5rem; border-bottom:1px solid #e9ecef; background:#f8f9fa; }
+  .card-header h3 { margin:0; font-size:1.1rem; color:#1a1a1a; font-weight:600; }
   .grid { display:grid; grid-template-columns: 1fr 1fr; gap:1.5rem; }
   .chart-wrap { position:relative; width:100%; height:360px; padding:0 .25rem 1rem; }
   @media (max-width: 1024px){ .grid { grid-template-columns: 1fr; } }
@@ -80,9 +83,11 @@
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-  const totals = {{ data.totals|tojson }};
-  const statusCounts = {{ data.status_counts|tojson }};
-  const topProviders = {{ data.top_providers|tojson }};
+document.addEventListener('DOMContentLoaded', function() {
+  // Safely get data with fallbacks
+  const totals = {{ data.totals|tojson|safe }} || { total_students: 0, total_applications: 0, applied_percent: 0 };
+  const statusCounts = {{ data.status_counts|tojson|safe }} || { pending: 0, approved: 0, disapproved: 0 };
+  const topProviders = {{ data.top_providers|tojson|safe }} || [];
 
   // Utility number formatter
   const fmt = new Intl.NumberFormat('en-US');
@@ -91,62 +96,122 @@
   const centerText = {
     id: 'centerText',
     afterDraw(chart, args, opts){
-      const {ctx, chartArea: {width, height}} = chart;
+      const {ctx, chartArea} = chart;
+      if (!chartArea) return;
+      const {width, height} = chartArea;
       ctx.save();
       ctx.font = '700 28px Poppins, sans-serif';
       ctx.fillStyle = '#0f2a43';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(opts.text || '', width/2, height/2);
+      ctx.fillText(opts.text || '', width/2 + chartArea.left, height/2 + chartArea.top);
       ctx.restore();
     }
   };
 
-  // Pie: percentage of students who applied online
-  // Convert status counts to percentages of total applications
+  // Pie: Application Status Breakdown
   const totalApps = Math.max(1, (statusCounts.pending || 0) + (statusCounts.approved || 0) + (statusCounts.disapproved || 0));
-  const statusLabels = ['Pending', 'Approved', 'Disapproved'];
+  const statusLabels = ['Pending', 'Approved', 'Rejected'];
   const statusValues = [
     ((statusCounts.pending||0) / totalApps) * 100,
     ((statusCounts.approved||0) / totalApps) * 100,
     ((statusCounts.disapproved||0) / totalApps) * 100
   ];
-  new Chart(document.getElementById('applicationsPie'), {
-    type: 'doughnut',
-    data: {
-      labels: statusLabels,
-      datasets: [{ data: statusValues, backgroundColor: ['#ffc72c', '#28a745', '#dc3545'] }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      layout: { padding: 10 },
-      plugins: {
-        legend: { position: 'bottom', labels: { boxWidth: 12, color: '#233046' } },
-        tooltip: { callbacks: { label: c => `${c.label}: ${c.parsed.toFixed(1)}%` } },
-        centerText: { text: `${totals.applied_percent.toFixed(1)}%` }
+  
+  const pieCtx = document.getElementById('applicationsPie');
+  if (pieCtx) {
+    new Chart(pieCtx, {
+      type: 'doughnut',
+      data: {
+        labels: statusLabels,
+        datasets: [{ 
+          data: statusValues, 
+          backgroundColor: ['#ffc72c', '#28a745', '#dc3545'],
+          borderWidth: 0
+        }]
       },
-      cutout: '68%'
-    },
-    plugins: [centerText]
-  });
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        layout: { padding: 10 },
+        plugins: {
+          legend: { 
+            position: 'bottom', 
+            labels: { 
+              boxWidth: 12, 
+              color: '#233046',
+              padding: 15,
+              font: { size: 12 }
+            } 
+          },
+          tooltip: { 
+            callbacks: { 
+              label: function(context) {
+                const label = context.label || '';
+                const value = context.parsed || 0;
+                const count = Math.round((value / 100) * totalApps);
+                return `${label}: ${value.toFixed(1)}% (${count} applications)`;
+              }
+            } 
+          },
+          centerText: { text: `${totals.applied_percent.toFixed(1)}%` }
+        },
+        cutout: '68%'
+      },
+      plugins: [centerText]
+    });
+  }
 
-  // Bar: top providers by applications
-  const labels = topProviders.map(p => p.name);
-  const apps = topProviders.map(p => p.applications);
-  new Chart(document.getElementById('topProvidersBar'), {
-    type: 'bar',
-    data: { labels, datasets: [{ label: 'Applications', data: apps, backgroundColor: '#ffc72c', borderRadius: 6, maxBarThickness: 42 }] },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      scales: {
-        x: { grid: { display:false }, ticks: { color:'#586174' } },
-        y: { beginAtZero: true, grid: { color:'#f0f3f7' }, ticks: { color:'#586174', callback: v => fmt.format(v) } }
+  // Bar: Top Providers by Applications
+  const labels = topProviders.length > 0 ? topProviders.map(p => p.name || 'Unknown') : ['No providers yet'];
+  const apps = topProviders.length > 0 ? topProviders.map(p => p.applications || 0) : [0];
+  
+  const barCtx = document.getElementById('topProvidersBar');
+  if (barCtx) {
+    new Chart(barCtx, {
+      type: 'bar',
+      data: { 
+        labels: labels, 
+        datasets: [{ 
+          label: 'Applications', 
+          data: apps, 
+          backgroundColor: '#ffc72c', 
+          borderRadius: 6, 
+          maxBarThickness: 42 
+        }] 
       },
-      plugins: { legend: { display:false }, tooltip: { callbacks: { label: c => `Applications: ${fmt.format(c.parsed.y)}` } } }
-    }
-  });
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: { 
+            grid: { display: false }, 
+            ticks: { color: '#586174', font: { size: 11 } } 
+          },
+          y: { 
+            beginAtZero: true, 
+            grid: { color: '#f0f3f7' }, 
+            ticks: { 
+              color: '#586174', 
+              callback: function(v) { return fmt.format(v); },
+              font: { size: 11 }
+            } 
+          }
+        },
+        plugins: { 
+          legend: { display: false }, 
+          tooltip: { 
+            callbacks: { 
+              label: function(context) {
+                return `Applications: ${fmt.format(context.parsed.y)}`;
+              }
+            } 
+          } 
+        }
+      }
+    });
+  }
+});
 </script>
 {% endblock %}
 

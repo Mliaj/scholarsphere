@@ -27,6 +27,46 @@
     .table-container { background:#fff; border-radius:15px; box-shadow:0 4px 20px rgba(0,0,0,0.08); overflow:hidden; }
     .table-header { padding:1.5rem; border-bottom:1px solid #e9ecef; background:#f8f9fa; display:flex; justify-content:space-between; align-items:center; }
     .export-btn { background:#2d2f36; color:#fff; border:none; padding:.6rem .9rem; border-radius:10px; font-weight:600; cursor:pointer; }
+    
+    /* Search bar styles */
+    .search-bar-container { margin-bottom: 1.5rem; }
+    .search-bar-container input { 
+        width: 100%; 
+        max-width: 500px; 
+        padding: 0.8rem 1.2rem; 
+        border-radius: 10px; 
+        border: 2px solid #ddd; 
+        font-size: 1rem;
+        transition: all 0.3s ease;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    }
+    .search-bar-container input:focus { 
+        outline: none; 
+        border-color: #1a1a1a; 
+        box-shadow: 0 4px 20px rgba(26, 26, 26, 0.15);
+    }
+    .search-bar-container input::placeholder {
+        color: #999;
+    }
+    
+    /* Modal styles for edit */
+    .modal { display:none; position:fixed; z-index:1000; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.5); }
+    .modal-content { background:#fff; margin:2% auto; padding:0; border-radius:15px; width:90%; max-width:800px; max-height:90vh; overflow-y:auto; box-shadow:0 10px 30px rgba(0,0,0,0.3); }
+    .modal-header { padding:1.5rem; border-bottom:1px solid #e9ecef; background:#f8f9fa; border-radius:15px 15px 0 0; display:flex; justify-content:space-between; align-items:center; }
+    .modal-title { font-size:1.5rem; font-weight:700; color:#1a1a1a; margin:0; }
+    .close { background:none; border:none; font-size:2rem; color:#666; cursor:pointer; padding:0; width:30px; height:30px; display:flex; align-items:center; justify-content:center; }
+    .close:hover { color:#000; }
+    .modal-body { padding:2rem; }
+    .form-group { margin-bottom:1.5rem; }
+    .form-label { display:block; margin-bottom:0.5rem; font-weight:600; color:#333; }
+    .form-control { width:100%; padding:0.75rem; border:1px solid #ddd; border-radius:8px; font-size:1rem; transition:border-color 0.3s; }
+    .form-control:focus { outline:none; border-color:#1a1a1a; box-shadow:0 0 0 2px rgba(26,26,26,0.25); }
+    .modal-footer { padding:1.5rem; border-top:1px solid #e9ecef; background:#f8f9fa; border-radius:0 0 15px 15px; display:flex; justify-content:flex-end; gap:1rem; }
+    .btn-modal { padding:0.75rem 1.5rem; border:none; border-radius:8px; font-weight:600; cursor:pointer; transition:all 0.3s; }
+    .btn-modal.primary { background:#1a1a1a; color:#fff; }
+    .btn-modal.primary:hover { background:#2d2d2d; }
+    .btn-modal.secondary { background:#6c757d; color:#fff; }
+    .btn-modal.secondary:hover { background:#545b62; }
     .scholarships-table { width:100%; border-collapse:collapse; }
     .scholarships-table th { background:#f8f9fa; padding:1rem; text-align:left; font-weight:600; color:#1a1a1a; border-bottom:2px solid #e9ecef; }
     .scholarships-table td { padding:1rem; border-bottom:1px solid #e9ecef; vertical-align:middle; }
@@ -75,19 +115,24 @@
       </div>
       <div class="user-menu"><div class="user-avatar">A</div></div>
     </div>
+    
+    <!-- Search Bar -->
+    <div class="search-bar-container">
+      <input type="text" id="scholarshipSearch" placeholder="Search by scholarship code or title..." autocomplete="off">
+    </div>
+    
     <div class="table-container">
       <div class="table-header">
         <h3>Scholarships</h3>
         <div style="display:flex; gap:.5rem;">
           <button class="export-btn" onclick="exportData()"><i class="fas fa-download"></i> Export Data</button>
-          <button class="export-btn" style="background:#d32f2f;" onclick="cleanupMock()"><i class="fas fa-broom"></i> Remove Mock Data</button>
         </div>
       </div>
       {% if scholarships and scholarships|length > 0 %}
       <table class="scholarships-table">
           <thead>
             <tr>
-              <th>Scholarship ID</th>
+              <th>Scholarship Code</th>
               <th>Title</th>
               <th>Deadline</th>
               <th>Create Date</th>
@@ -96,9 +141,9 @@
               <th>Actions</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody id="scholarshipsBody">
             {% for s in scholarships %}
-            <tr>
+            <tr class="scholarship-row" data-scholarship-code="{{ (s.id or '')|lower }}" data-scholarship-title="{{ (s.title or '')|lower }}">
               <td>{{ s.id }}</td>
               <td>{{ s.title }}</td>
               <td>{{ s.deadline }}</td>
@@ -111,12 +156,7 @@
               <td>
                 <div class="actions">
                   <button class="action-btn btn-edit" onclick="editScholarship({{ s.pk }})" title="Edit"><i class="fas fa-edit"></i></button>
-                  {% if s.status|lower != 'suspended' %}
-                  <button class="action-btn btn-suspend" onclick="setStatus({{ s.pk }}, 'suspended')" title="Suspend"><i class="fas fa-pause"></i></button>
-                  {% else %}
-                  <button class="action-btn btn-suspend" onclick="setStatus({{ s.pk }}, 'approved')" title="Unsuspend"><i class="fas fa-play"></i></button>
-                  {% endif %}
-                  <button class="action-btn btn-archive" onclick="setStatus({{ s.pk }}, 'archived')" title="Archive"><i class="fas fa-archive"></i></button>
+                  <button class="action-btn btn-archive" onclick="archiveScholarship({{ s.pk }})" title="Archive"><i class="fas fa-archive"></i></button>
                 </div>
               </td>
             </tr>
@@ -124,7 +164,7 @@
           </tbody>
       </table>
       {% else %}
-      <div style="padding: 3rem; text-align: center; color: #666;">
+      <div id="noScholarshipsMessage" style="padding: 3rem; text-align: center; color: #666;">
         <div style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.3;">
           <i class="fas fa-graduation-cap"></i>
         </div>
@@ -140,8 +180,56 @@
         </div>
       </div>
       {% endif %}
+      <div id="noResultsMessage" style="display:none; padding: 3rem; text-align: center; color: #666;">
+        <i class="fas fa-search" style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.3;"></i>
+        <h3 style="color: #333; margin-bottom: 0.5rem;">No Matching Scholarships Found</h3>
+        <p>Try adjusting your search terms.</p>
+      </div>
     </div>
     </div>
+  </div>
+</div>
+
+<!-- Edit Scholarship Modal -->
+<div id="editScholarshipModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2 class="modal-title">Edit Scholarship</h2>
+      <button class="close" onclick="closeEditModal()">&times;</button>
+    </div>
+    <form id="editScholarshipForm">
+      <div class="modal-body">
+        <input type="hidden" id="editScholarshipId" name="id">
+        <div class="form-group">
+          <label class="form-label">Scholarship Code</label>
+          <div class="form-control" id="editScholarshipCodeDisplay" style="background:#f8f9fa;"></div>
+        </div>
+        <div class="form-group">
+          <label for="editScholarshipTitle" class="form-label">Title *</label>
+          <input type="text" id="editScholarshipTitle" name="title" class="form-control" required>
+        </div>
+        <div class="form-group">
+          <label for="editScholarshipDescription" class="form-label">Description</label>
+          <textarea id="editScholarshipDescription" name="description" class="form-control" rows="3"></textarea>
+        </div>
+        <div class="form-group">
+          <label for="editScholarshipDeadline" class="form-label">Deadline *</label>
+          <input type="date" id="editScholarshipDeadline" name="deadline" class="form-control" required>
+        </div>
+        <div class="form-group">
+          <label for="editScholarshipStatus" class="form-label">Status</label>
+          <select id="editScholarshipStatus" name="status" class="form-control">
+            <option value="draft">Draft</option>
+            <option value="approved">Approved</option>
+            <option value="archived">Archived</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-modal secondary" onclick="closeEditModal()">Cancel</button>
+        <button type="submit" class="btn-modal primary">Update Scholarship</button>
+      </div>
+    </form>
   </div>
 </div>
 
@@ -150,19 +238,134 @@ function exportData(){
   fetch('/admin/api/export-data', {method:'POST', body: new URLSearchParams({type:'scholarships'})})
     .then(r=>r.json()).then(d=>{ alert(d.message || 'Exported'); });
 }
-function setStatus(id, status){
-  if(!confirm('Are you sure to set status to ' + status + '?')) return;
-  fetch('/admin/api/scholarships/' + id + '/status', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({status})})
-    .then(r=>r.json()).then(d=>{ if(d.success){ location.reload(); } else { alert(d.error||'Failed'); } });
+
+function archiveScholarship(id){
+  if(!confirm('Are you sure you want to archive this scholarship?')) return;
+  fetch('/admin/api/scholarships/' + id + '/status', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({status: 'archived'})})
+    .then(r=>r.json()).then(d=>{ 
+      if(d.success){ 
+        showNotification('Scholarship archived successfully', 'success');
+        location.reload(); 
+      } else { 
+        showNotification(d.error || 'Failed to archive scholarship', 'error'); 
+      } 
+    });
 }
-function editScholarship(id){ alert('Edit UI coming soon (ID: '+id+')'); }
-function cleanupMock(){
-  if(!confirm('Remove mock/seed scholarships (e.g., SCH-001 Academic Excellence)?')) return;
-  fetch('/admin/api/cleanup-mock', {method:'POST'})
-    .then(r=>r.json())
-    .then(d=>{ if(d.success){ alert(`Removed ${d.removed_scholarships} scholarship(s) and ${d.removed_applications||0} application(s).`); location.reload(); } else { alert(d.error||'Failed'); } })
-    .catch(e=>alert('Failed: '+e.message));
+
+function editScholarship(id){
+  fetch('/admin/api/scholarships/' + id)
+    .then(response => response.json())
+    .then(data => {
+      if (data.success) {
+        document.getElementById('editScholarshipId').value = data.scholarship.id;
+        document.getElementById('editScholarshipCodeDisplay').textContent = data.scholarship.code;
+        document.getElementById('editScholarshipTitle').value = data.scholarship.title;
+        document.getElementById('editScholarshipDescription').value = data.scholarship.description || '';
+        document.getElementById('editScholarshipDeadline').value = data.scholarship.deadline || '';
+        document.getElementById('editScholarshipStatus').value = data.scholarship.status || 'draft';
+        document.getElementById('editScholarshipModal').style.display = 'block';
+      } else {
+        showNotification('Error loading scholarship: ' + (data.error || 'Unknown error'), 'error');
+      }
+    })
+    .catch(error => {
+      console.error('Error:', error);
+      showNotification('Error loading scholarship details', 'error');
+    });
 }
+
+function closeEditModal(){
+  document.getElementById('editScholarshipModal').style.display = 'none';
+}
+
+// Close modal when clicking outside
+window.onclick = function(event) {
+  const modal = document.getElementById('editScholarshipModal');
+  if (event.target === modal) {
+    closeEditModal();
+  }
+}
+
+// Edit form submission
+document.getElementById('editScholarshipForm').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  
+  const formData = new FormData(this);
+  const data = Object.fromEntries(formData);
+  const id = data.id;
+  
+  const btns = document.querySelectorAll('#editScholarshipForm .btn-modal.primary');
+  btns.forEach(b=>{ b.disabled=true; b.textContent='Saving…'; });
+  
+  try {
+    const resp = await fetch(`/admin/api/scholarships/${id}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    const payload = await resp.json();
+    if (payload.success) {
+      showNotification('Scholarship updated successfully!', 'success');
+      closeEditModal();
+      location.reload();
+    } else {
+      showNotification('Error updating scholarship: ' + (payload.error || 'Unknown error'), 'error');
+    }
+  } catch (err) {
+    console.error('Update scholarship failed:', err);
+    showNotification('Error updating scholarship. Please try again.', 'error');
+  } finally {
+    btns.forEach(b=>{ b.disabled=false; b.textContent='Update Scholarship'; });
+  }
+});
+
+// Search functionality
+document.addEventListener('DOMContentLoaded', function() {
+  const searchInput = document.getElementById('scholarshipSearch');
+  const scholarshipRows = document.querySelectorAll('.scholarship-row');
+  const noScholarshipsMessage = document.getElementById('noScholarshipsMessage');
+  const noResultsMessage = document.getElementById('noResultsMessage');
+  const tableContainer = document.querySelector('.table-container');
+  
+  function performSearch() {
+    const query = searchInput.value.toLowerCase().trim();
+    let visibleCount = 0;
+    
+    scholarshipRows.forEach(row => {
+      const code = row.getAttribute('data-scholarship-code') || '';
+      const title = row.getAttribute('data-scholarship-title') || '';
+      
+      if (query === '' || code.includes(query) || title.includes(query)) {
+        row.style.display = '';
+        if (query !== '') {
+          visibleCount++;
+        }
+      } else {
+        row.style.display = 'none';
+      }
+    });
+    
+    // Show/hide messages
+    if (query !== '') {
+      if (visibleCount === 0) {
+        if (tableContainer) tableContainer.style.display = 'none';
+        if (noScholarshipsMessage) noScholarshipsMessage.style.display = 'none';
+        if (noResultsMessage) noResultsMessage.style.display = 'block';
+      } else {
+        if (tableContainer) tableContainer.style.display = 'block';
+        if (noScholarshipsMessage) noScholarshipsMessage.style.display = 'none';
+        if (noResultsMessage) noResultsMessage.style.display = 'none';
+      }
+    } else {
+      if (tableContainer) tableContainer.style.display = 'block';
+      if (noScholarshipsMessage) noScholarshipsMessage.style.display = scholarshipRows.length === 0 ? 'block' : 'none';
+      if (noResultsMessage) noResultsMessage.style.display = 'none';
+    }
+  }
+  
+  searchInput.addEventListener('input', performSearch);
+  searchInput.addEventListener('keyup', performSearch);
+});
 </script>
 {% endblock %}
 

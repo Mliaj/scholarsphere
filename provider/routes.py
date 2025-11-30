@@ -59,6 +59,19 @@ def scholarships():
 
     all_scholarships = Scholarship.query.filter_by(provider_id=current_user.id).all()
     
+    # Calculate application counts for each scholarship (only active applications)
+    for s in all_scholarships:
+        # Count only active applications for this scholarship
+        # Use actual count from database for accuracy (only active applications)
+        active_app_count = ScholarshipApplication.query.filter_by(
+            scholarship_id=s.id,
+            is_active=True
+        ).count()
+        # Set application count attribute for template display
+        s.display_app_count = active_app_count
+        # Also update the stored applications_count for consistency (optional)
+        # s.applications_count = active_app_count
+    
     active_scholarships = [s for s in all_scholarships if s.status != 'archived']
     archived_scholarships = [s for s in all_scholarships if s.status == 'archived']
 
@@ -215,7 +228,123 @@ def profile():
         
     return render_template('provider/profile.html', user=current_user, profile=current_user)
 
-from datetime import datetime
+@provider_bp.route('/update-profile', methods=['POST'])
+@login_required
+def update_profile():
+    """Update provider profile information"""
+    if current_user.role != 'provider':
+        return jsonify({'success': False, 'message': 'Access denied'}), 403
+    
+    try:
+        from flask import current_app
+        from werkzeug.utils import secure_filename
+        import os
+        import uuid
+        
+        # Get form data
+        organization = request.form.get('organization', '').strip()
+        first_name = request.form.get('first_name', '').strip()
+        last_name = request.form.get('last_name', '').strip()
+        email = request.form.get('email', '').strip()
+        
+        # Validation
+        if not all([organization, first_name, last_name, email]):
+            return jsonify({'success': False, 'message': 'Please complete all required fields'}), 400
+        
+        # Email validation
+        import re
+        if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
+            return jsonify({'success': False, 'message': 'Invalid email address'}), 400
+        
+        # Check if email is already taken by another user
+        existing_user = User.query.filter(
+            User.email == email.lower(),
+            User.id != current_user.id
+        ).first()
+        
+        if existing_user:
+            return jsonify({'success': False, 'message': 'Email already taken by another user'}), 400
+        
+        # Handle photo upload
+        new_profile_pic = None
+        if 'photo' in request.files:
+            file = request.files['photo']
+            if file.filename != '':
+                # Check allowed extensions
+                ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'jfif'}
+                if '.' in file.filename and file.filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS:
+                    # Generate unique filename
+                    filename = secure_filename(file.filename)
+                    file_extension = filename.rsplit('.', 1)[1].lower()
+                    unique_filename = f"{uuid.uuid4()}_{current_user.id}.{file_extension}"
+                    
+                    # Create upload directory if it doesn't exist
+                    UPLOAD_FOLDER = 'static/uploads/profile_pictures'
+                    base_dir = os.path.join(current_app.root_path, UPLOAD_FOLDER)
+                    os.makedirs(base_dir, exist_ok=True)
+                    
+                    # Save file
+                    file_path = os.path.join(base_dir, unique_filename)
+                    file.save(file_path)
+                    
+                    # Delete old profile picture if exists
+                    if current_user.profile_picture:
+                        old_file_path = os.path.join(base_dir, current_user.profile_picture)
+                        if os.path.exists(old_file_path):
+                            os.remove(old_file_path)
+                    
+                    new_profile_pic = unique_filename
+        
+        # Update user information using ORM (like admin routes)
+        user = User.query.get(current_user.id)
+        if not user:
+            return jsonify({'success': False, 'message': 'User not found'}), 404
+        
+        user.organization = organization
+        user.first_name = first_name
+        user.last_name = last_name
+        user.email = email.lower()
+        if new_profile_pic:
+            user.profile_picture = new_profile_pic
+        user.updated_at = datetime.utcnow()
+        
+        db.session.commit()
+        
+        # Create notification
+        try:
+            notification = Notification(
+                user_id=current_user.id,
+                type='profile',
+                title='Profile Updated',
+                message='Your organization profile has been updated successfully.',
+                created_at=datetime.utcnow(),
+                is_active=True
+            )
+            db.session.add(notification)
+            db.session.commit()
+        except Exception as notif_error:
+            print(f"Failed to create notification: {notif_error}")
+            pass  # Continue even if notification fails
+        
+        # Prepare response with updated profile picture URL if changed
+        response_data = {
+            'success': True,
+            'message': 'Profile updated successfully'
+        }
+        
+        if new_profile_pic:
+            response_data['profile_picture'] = new_profile_pic
+            response_data['profile_picture_url'] = f"/static/uploads/profile_pictures/{new_profile_pic}"
+        
+        return jsonify(response_data)
+        
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        print(f"Error updating profile: {str(e)}")
+        print(traceback.format_exc())
+        return jsonify({'success': False, 'message': f'Failed to update profile: {str(e)}'}), 500
+
 import io
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
@@ -285,6 +414,66 @@ def review_application(application_id):
         
         # Logic for approval with slots
         if new_status == 'approved' and application.status != 'approved':
+            # CRITICAL: Only one scholarship can be approved per student at a time
+            # Find and reject/withdraw all other applications for this student
+            from sqlalchemy import text as sql_text
+            
+            # Get all other applications for this student (excluding current one)
+            other_applications = ScholarshipApplication.query.filter(
+                ScholarshipApplication.user_id == application.user_id,
+                ScholarshipApplication.id != application_id,
+                ScholarshipApplication.is_active == True
+            ).all()
+            
+            for other_app in other_applications:
+                old_status = other_app.status
+                # Reject other approved or pending applications
+                if old_status in ['approved', 'pending']:
+                    other_app.status = 'rejected'
+                    other_app.reviewed_at = datetime.utcnow()
+                    other_app.reviewed_by = current_user.id
+                    
+                    # Update scholarship counts for rejected applications
+                    other_scholarship = Scholarship.query.get(other_app.scholarship_id)
+                    if other_scholarship:
+                        if old_status == 'approved':
+                            # Decrease approved count and increase rejected count
+                            other_scholarship.approved_count = max(0, (other_scholarship.approved_count or 0) - 1)
+                            other_scholarship.disapproved_count = (other_scholarship.disapproved_count or 0) + 1
+                            # Return slot if applicable
+                            if other_scholarship.slots is not None:
+                                other_scholarship.slots += 1
+                        elif old_status == 'pending':
+                            # Decrease pending count and increase rejected count
+                            other_scholarship.pending_count = max(0, (other_scholarship.pending_count or 0) - 1)
+                            other_scholarship.disapproved_count = (other_scholarship.disapproved_count or 0) + 1
+                        
+                        # Notify student about rejection
+                        if student:
+                            try:
+                                send_email(
+                                    student.email,
+                                    f'Your Application for {other_scholarship.title} has been rejected',
+                                    'email/application_status.html',
+                                    student_name=student.get_full_name(),
+                                    scholarship_name=other_scholarship.title,
+                                    new_status='rejected'
+                                )
+                                
+                                # Create in-app notification
+                                notification = Notification(
+                                    user_id=student.id,
+                                    type='application',
+                                    title=f'Application Rejected: {other_scholarship.title}',
+                                    message=f'Your application for {other_scholarship.title} has been rejected because another application was approved.',
+                                    created_at=datetime.utcnow(),
+                                    is_active=True
+                                )
+                                db.session.add(notification)
+                            except:
+                                pass  # Continue even if email fails
+            
+            # Now proceed with approving the current application
             if scholarship.slots is not None:
                 if scholarship.slots <= 0:
                     return jsonify({'success': False, 'error': 'No slots available for this scholarship.'}), 400
@@ -292,6 +481,10 @@ def review_application(application_id):
             scholarship.approved_count = (scholarship.approved_count or 0) + 1
             if application.status == 'pending':
                 scholarship.pending_count = max(0, (scholarship.pending_count or 0) - 1)
+            
+            # Set reviewed information
+            application.reviewed_at = datetime.utcnow()
+            application.reviewed_by = current_user.id
         
         # Logic for rejection
         elif new_status == 'rejected' and application.status != 'rejected':
@@ -888,8 +1081,48 @@ def api_scholarship_detail(id):
 
     elif request.method == 'DELETE':
         try:
+            # Get all active applications for this scholarship before archiving
+            applications = ScholarshipApplication.query.filter_by(
+                scholarship_id=id,
+                is_active=True
+            ).all()
+            
+            # Archive the scholarship
             scholarship.status = 'archived'
             db.session.commit()
+            
+            # Send notifications and emails to students who have applications
+            for app in applications:
+                student = User.query.get(app.user_id)
+                if student:
+                    # Create in-app notification
+                    notification = Notification(
+                        user_id=student.id,
+                        type='application',
+                        title=f'Scholarship Archived: {scholarship.title}',
+                        message=f'Your applied scholarship "{scholarship.title}" has been archived by the provider. Your application status may be affected.',
+                        created_at=datetime.utcnow(),
+                        is_active=True
+                    )
+                    db.session.add(notification)
+                    
+                    # Send email notification
+                    try:
+                        send_email(
+                            student.email,
+                            f'Your Applied Scholarship Has Been Archived',
+                            'email/application_status.html',
+                            student_name=student.get_full_name(),
+                            scholarship_name=scholarship.title,
+                            new_status='archived'
+                        )
+                    except Exception as e:
+                        print(f"Failed to send email to {student.email}: {e}")
+            
+            # Commit notifications
+            if applications:
+                db.session.commit()
+            
             return jsonify({'success': True})
         except Exception as e:
             db.session.rollback()
@@ -898,7 +1131,7 @@ def api_scholarship_detail(id):
 @provider_bp.route('/api/scholarship/<int:id>/restore', methods=['POST'])
 @login_required
 def api_scholarship_restore(id):
-    """Restore an archived scholarship"""
+    """Restore an archived scholarship and remove all student applications"""
     if current_user.role != 'provider':
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     
@@ -908,9 +1141,98 @@ def api_scholarship_restore(id):
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
         
     try:
+        from sqlalchemy import text as sql_text
+        
+        # Get all active applications for this scholarship before removing
+        applications = ScholarshipApplication.query.filter_by(
+            scholarship_id=id,
+            is_active=True
+        ).all()
+        
+        # Track counts before removal
+        pending_before = sum(1 for app in applications if app.status == 'pending')
+        approved_before = sum(1 for app in applications if app.status == 'approved')
+        rejected_before = sum(1 for app in applications if app.status == 'rejected')
+        total_before = len(applications)
+        
+        # Store student information before removing applications (for notifications)
+        students_to_notify = []
+        for app in applications:
+            student = User.query.get(app.user_id)
+            if student:
+                students_to_notify.append({
+                    'student': student,
+                    'app_status': app.status
+                })
+        
+        # Remove all student applications for this scholarship
+        for app in applications:
+            app.is_active = False
+            app.status = 'withdrawn'  # Mark as withdrawn since scholarship was restored
+        
+        # Recalculate and update scholarship application counts from database
+        # This ensures counts are accurate based on active applications only
+        counts = db.session.execute(
+            sql_text("""
+                SELECT 
+                    COUNT(*) as total,
+                    SUM(CASE WHEN status = 'pending' AND is_active = 1 THEN 1 ELSE 0 END) as pending,
+                    SUM(CASE WHEN status = 'approved' AND is_active = 1 THEN 1 ELSE 0 END) as approved,
+                    SUM(CASE WHEN status = 'rejected' AND is_active = 1 THEN 1 ELSE 0 END) as rejected
+                FROM scholarship_applications
+                WHERE scholarship_id = :scholarship_id AND is_active = 1
+            """),
+            {"scholarship_id": id}
+        ).fetchone()
+        
+        # Update counts (should all be 0 after deactivation, but recalculate to be sure)
+        scholarship.applications_count = counts[0] or 0
+        scholarship.pending_count = counts[1] or 0
+        scholarship.approved_count = counts[2] or 0
+        scholarship.disapproved_count = counts[3] or 0
+        
+        # Restore scholarship status to draft
         scholarship.status = 'draft'
+        
         db.session.commit()
-        return jsonify({'success': True})
+        
+        # Send notifications and emails to students who had applications
+        for student_info in students_to_notify:
+            student = student_info['student']
+            app_status = student_info['app_status']
+            
+            # Create in-app notification
+            notification = Notification(
+                user_id=student.id,
+                type='application',
+                title=f'Scholarship Restored: {scholarship.title}',
+                message=f'Your previous applied scholarship "{scholarship.title}" has been restored. Your previous application has been removed and you will need to apply again if you are still interested.',
+                created_at=datetime.utcnow(),
+                is_active=True
+            )
+            db.session.add(notification)
+            
+            # Send email notification
+            try:
+                send_email(
+                    student.email,
+                    f'Your Previous Applied Scholarship Has Been Restored',
+                    'email/application_status.html',
+                    student_name=student.get_full_name(),
+                    scholarship_name=scholarship.title,
+                    new_status='restored'
+                )
+            except Exception as e:
+                print(f"Failed to send email to {student.email}: {e}")
+        
+        # Commit notifications
+        if students_to_notify:
+            db.session.commit()
+        
+        return jsonify({
+            'success': True, 
+            'message': f'Scholarship restored. {total_before} application(s) were removed. Application counts have been reset to zero.'
+        })
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -1054,7 +1376,7 @@ def api_application_detail(id):
 @provider_bp.route('/api/scholarship/<int:id>/report-pdf')
 @login_required
 def api_scholarship_report_pdf(id):
-    """Download PDF report for a specific scholarship"""
+    """Download PDF report for a specific scholarship (works for both active and archived)"""
     if current_user.role != 'provider':
         return redirect(url_for('index'))
 
@@ -1066,35 +1388,123 @@ def api_scholarship_report_pdf(id):
     buffer = io.BytesIO()
     p = canvas.Canvas(buffer, pagesize=letter)
     
-    p.drawString(100, 750, f"Scholarship Report: {scholarship.title}")
-    p.drawString(100, 730, f"Code: {scholarship.code}")
-    p.drawString(100, 710, f"Generated: {datetime.now().strftime('%Y-%m-%d')}")
-    p.drawString(100, 690, "-" * 50)
-    
-    y = 660
-    p.drawString(100, y, f"Status: {scholarship.status}")
+    # Header
+    y = 750
+    p.drawString(100, y, f"Scholarship Report: {scholarship.title}")
     y -= 20
-    p.drawString(100, y, f"Applicants: {scholarship.applications.count()}")
+    p.drawString(100, y, f"Code: {scholarship.code}")
+    y -= 20
+    p.drawString(100, y, f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    y -= 20
+    p.drawString(100, y, "-" * 60)
     
-    # List applicants
-    y -= 40
-    p.drawString(100, y, "Applicant List:")
+    # Scholarship Details
+    y -= 30
+    p.drawString(100, y, "SCHOLARSHIP DETAILS:")
     y -= 20
     
-    for app in scholarship.applications:
-        student = User.query.get(app.user_id)
-        name = student.get_full_name() if student else "Unknown"
-        p.drawString(120, y, f"- {name} ({app.status})")
+    status_display = scholarship.status.upper()
+    if scholarship.status == 'archived':
+        status_display = "ARCHIVED"
+    
+    p.drawString(120, y, f"Status: {status_display}")
+    y -= 20
+    
+    if scholarship.description:
+        # Handle long descriptions with word wrapping
+        desc_lines = []
+        words = scholarship.description.split()
+        current_line = ""
+        for word in words:
+            if len(current_line + word) < 60:
+                current_line += word + " "
+            else:
+                if current_line:
+                    desc_lines.append(current_line.strip())
+                current_line = word + " "
+        if current_line:
+            desc_lines.append(current_line.strip())
+        
+        p.drawString(120, y, "Description:")
+        y -= 15
+        for line in desc_lines[:5]:  # Limit to 5 lines
+            p.drawString(140, y, line)
+            y -= 15
+        if len(desc_lines) > 5:
+            p.drawString(140, y, "...")
+            y -= 15
+    
+    if scholarship.amount:
+        p.drawString(120, y, f"Amount: {scholarship.amount}")
         y -= 20
-        if y < 50: # New page if needed
+    
+    if scholarship.deadline:
+        p.drawString(120, y, f"Deadline: {scholarship.deadline.strftime('%Y-%m-%d')}")
+        y -= 20
+    
+    if scholarship.type:
+        p.drawString(120, y, f"Type: {scholarship.type}")
+        y -= 20
+    
+    if scholarship.level:
+        p.drawString(120, y, f"Level: {scholarship.level}")
+        y -= 20
+    
+    if scholarship.slots is not None:
+        p.drawString(120, y, f"Slots: {scholarship.slots}")
+        y -= 20
+    
+    # Application Statistics
+    y -= 30
+    p.drawString(100, y, "APPLICATION STATISTICS:")
+    y -= 20
+    p.drawString(120, y, f"Total Applications: {scholarship.applications_count or 0}")
+    y -= 20
+    p.drawString(120, y, f"Pending: {scholarship.pending_count or 0}")
+    y -= 20
+    p.drawString(120, y, f"Approved: {scholarship.approved_count or 0}")
+    y -= 20
+    p.drawString(120, y, f"Rejected: {scholarship.disapproved_count or 0}")
+    
+    # List applicants (only active applications)
+    active_apps = [app for app in scholarship.applications if app.is_active]
+    if active_apps:
+        y -= 40
+        if y < 100:  # Check if we need a new page
             p.showPage()
             y = 750
+        
+        p.drawString(100, y, "APPLICANT LIST:")
+        y -= 20
+        
+        for app in active_apps[:30]:  # Limit to 30 applicants per page
+            student = User.query.get(app.user_id)
+            name = student.get_full_name() if student else "Unknown"
+            student_id = student.student_id if student and hasattr(student, 'student_id') else "N/A"
+            p.drawString(120, y, f"- {name} (ID: {student_id}) - Status: {app.status.upper()}")
+            y -= 20
+            if y < 50:  # New page if needed
+                p.showPage()
+                y = 750
+        
+        if len(active_apps) > 30:
+            p.drawString(120, y, f"... and {len(active_apps) - 30} more applicants")
+            y -= 20
+    else:
+        y -= 40
+        if y < 100:
+            p.showPage()
+            y = 750
+        p.drawString(100, y, "APPLICANT LIST:")
+        y -= 20
+        p.drawString(120, y, "No active applications")
 
     p.showPage()
     p.save()
     
     buffer.seek(0)
+    filename = f"scholarship_report_{scholarship.code}_{'archived' if scholarship.status == 'archived' else 'active'}.pdf"
     response = make_response(buffer.getvalue())
     response.headers['Content-Type'] = 'application/pdf'
-    response.headers['Content-Disposition'] = f'attachment; filename=report_{scholarship.code}.pdf'
+    response.headers['Content-Disposition'] = f'attachment; filename={filename}'
     return response
