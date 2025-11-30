@@ -228,7 +228,123 @@ def profile():
         
     return render_template('provider/profile.html', user=current_user, profile=current_user)
 
-from datetime import datetime
+@provider_bp.route('/update-profile', methods=['POST'])
+@login_required
+def update_profile():
+    """Update provider profile information"""
+    if current_user.role != 'provider':
+        return jsonify({'success': False, 'message': 'Access denied'}), 403
+    
+    try:
+        from flask import current_app
+        from werkzeug.utils import secure_filename
+        import os
+        import uuid
+        
+        # Get form data
+        organization = request.form.get('organization', '').strip()
+        first_name = request.form.get('first_name', '').strip()
+        last_name = request.form.get('last_name', '').strip()
+        email = request.form.get('email', '').strip()
+        
+        # Validation
+        if not all([organization, first_name, last_name, email]):
+            return jsonify({'success': False, 'message': 'Please complete all required fields'}), 400
+        
+        # Email validation
+        import re
+        if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
+            return jsonify({'success': False, 'message': 'Invalid email address'}), 400
+        
+        # Check if email is already taken by another user
+        existing_user = User.query.filter(
+            User.email == email.lower(),
+            User.id != current_user.id
+        ).first()
+        
+        if existing_user:
+            return jsonify({'success': False, 'message': 'Email already taken by another user'}), 400
+        
+        # Handle photo upload
+        new_profile_pic = None
+        if 'photo' in request.files:
+            file = request.files['photo']
+            if file.filename != '':
+                # Check allowed extensions
+                ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'jfif'}
+                if '.' in file.filename and file.filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS:
+                    # Generate unique filename
+                    filename = secure_filename(file.filename)
+                    file_extension = filename.rsplit('.', 1)[1].lower()
+                    unique_filename = f"{uuid.uuid4()}_{current_user.id}.{file_extension}"
+                    
+                    # Create upload directory if it doesn't exist
+                    UPLOAD_FOLDER = 'static/uploads/profile_pictures'
+                    base_dir = os.path.join(current_app.root_path, UPLOAD_FOLDER)
+                    os.makedirs(base_dir, exist_ok=True)
+                    
+                    # Save file
+                    file_path = os.path.join(base_dir, unique_filename)
+                    file.save(file_path)
+                    
+                    # Delete old profile picture if exists
+                    if current_user.profile_picture:
+                        old_file_path = os.path.join(base_dir, current_user.profile_picture)
+                        if os.path.exists(old_file_path):
+                            os.remove(old_file_path)
+                    
+                    new_profile_pic = unique_filename
+        
+        # Update user information using ORM (like admin routes)
+        user = User.query.get(current_user.id)
+        if not user:
+            return jsonify({'success': False, 'message': 'User not found'}), 404
+        
+        user.organization = organization
+        user.first_name = first_name
+        user.last_name = last_name
+        user.email = email.lower()
+        if new_profile_pic:
+            user.profile_picture = new_profile_pic
+        user.updated_at = datetime.utcnow()
+        
+        db.session.commit()
+        
+        # Create notification
+        try:
+            notification = Notification(
+                user_id=current_user.id,
+                type='profile',
+                title='Profile Updated',
+                message='Your organization profile has been updated successfully.',
+                created_at=datetime.utcnow(),
+                is_active=True
+            )
+            db.session.add(notification)
+            db.session.commit()
+        except Exception as notif_error:
+            print(f"Failed to create notification: {notif_error}")
+            pass  # Continue even if notification fails
+        
+        # Prepare response with updated profile picture URL if changed
+        response_data = {
+            'success': True,
+            'message': 'Profile updated successfully'
+        }
+        
+        if new_profile_pic:
+            response_data['profile_picture'] = new_profile_pic
+            response_data['profile_picture_url'] = f"/static/uploads/profile_pictures/{new_profile_pic}"
+        
+        return jsonify(response_data)
+        
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        print(f"Error updating profile: {str(e)}")
+        print(traceback.format_exc())
+        return jsonify({'success': False, 'message': f'Failed to update profile: {str(e)}'}), 500
+
 import io
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
