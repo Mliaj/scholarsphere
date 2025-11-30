@@ -653,22 +653,30 @@ function closeAppModal(){ document.getElementById('appDetailsModal').style.displ
             </div>
         </div>
 
+        <!-- Search Bar -->
+        <div class="search-container" style="margin-bottom: 2rem;">
+            <div style="position: relative;">
+                <i class="fas fa-search" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: #666;"></i>
+                <input type="text" id="appSearch" class="form-control" placeholder="Search by scholarship title or application ID..." style="padding-left: 2.5rem; width: 100%; border-radius: 10px; border: 1px solid #e1e5e9; padding-top: 0.8rem; padding-bottom: 0.8rem;" oninput="applyFilters()">
+            </div>
+        </div>
+
         <!-- Statistics Summary -->
         <div class="stats-summary">
             <div class="stats-grid">
-                <div class="stat-card">
+                <div class="stat-card active-filter" onclick="filterByStatus('all')" style="cursor: pointer; transition: all 0.2s;">
                     <span class="stat-number">{{ applications|length }}</span>
                     <div class="stat-label">Total Applications</div>
                 </div>
-                <div class="stat-card">
+                <div class="stat-card" onclick="filterByStatus('approved')" style="cursor: pointer; transition: all 0.2s;">
                     <span class="stat-number">{{ applications|selectattr('status', 'equalto', 'Approved')|list|length }}</span>
                     <div class="stat-label">Approved</div>
                 </div>
-                <div class="stat-card">
+                <div class="stat-card" onclick="filterByStatus('under review')" style="cursor: pointer; transition: all 0.2s;">
                     <span class="stat-number">{{ applications|selectattr('status', 'equalto', 'Under Review')|list|length }}</span>
                     <div class="stat-label">Under Review</div>
                 </div>
-                <div class="stat-card">
+                <div class="stat-card" onclick="filterByStatus('pending')" style="cursor: pointer; transition: all 0.2s;">
                     <span class="stat-number">{{ applications|selectattr('status', 'equalto', 'Pending')|list|length }}</span>
                     <div class="stat-label">Pending</div>
                 </div>
@@ -676,7 +684,7 @@ function closeAppModal(){ document.getElementById('appDetailsModal').style.displ
         </div>
 
         <!-- Applications Grid -->
-<div class="applications-grid">
+<div class="applications-grid" id="applicationsGrid">
 
 <!-- Application Details Modal -->
 <div id="appDetailsModal" class="modal" style="display:none; position:fixed; z-index:1000; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.5);">
@@ -694,7 +702,7 @@ function closeAppModal(){ document.getElementById('appDetailsModal').style.displ
 </div>
             {% if applications %}
                 {% for application in applications %}
-                <div class="application-card">
+                <div class="application-card" data-status="{{ application.status|lower }}" data-title="{{ application.scholarship|lower }}" data-id="{{ application.id|lower }}">
                     <div class="application-header">
                         <div class="application-id">{{ application.id }}</div>
                         <div class="application-status status-{{ application.status.lower().replace(' ', '-') }}">
@@ -725,6 +733,11 @@ function closeAppModal(){ document.getElementById('appDetailsModal').style.displ
                     </div>
                 </div>
                 {% endfor %}
+                <div id="noAppsMessage" style="display:none; text-align:center; padding:3rem; color:#666; grid-column: 1 / -1;">
+                    <i class="fas fa-search" style="font-size:2.5rem; margin-bottom:1rem; color:#dee2e6;"></i>
+                    <h3 style="font-size:1.2rem; margin-bottom:0.5rem;">No matches found</h3>
+                    <p>Try adjusting your search or filter.</p>
+                </div>
             {% else %}
                 <div class="empty-state">
                     <i class="fas fa-clipboard-list"></i>
@@ -774,5 +787,63 @@ function withdrawApplication(applicationId) {
         showNotification('Failed to withdraw application.', 'error');
     });
 }
+
+// Filtering Logic
+let currentStatusFilter = 'all';
+
+function filterByStatus(status) {
+    currentStatusFilter = status.toLowerCase();
+    
+    // Update visual state of stat cards
+    document.querySelectorAll('.stat-card').forEach(card => {
+        // Check if this card's onclick matches the current status
+        if (card.getAttribute('onclick').toLowerCase().includes(`'${status}'`)) {
+            card.style.borderColor = '#0072ce';
+            card.style.backgroundColor = '#e3f2fd';
+            card.style.transform = 'translateY(-2px)';
+            card.style.boxShadow = '0 4px 12px rgba(0,114,206,0.15)';
+        } else {
+            card.style.borderColor = '#e9ecef';
+            card.style.backgroundColor = '#f8f9fa';
+            card.style.transform = 'none';
+            card.style.boxShadow = 'none';
+        }
+    });
+    
+    applyFilters();
+}
+
+function applyFilters() {
+    const search = document.getElementById('appSearch').value.toLowerCase().trim();
+    const cards = document.querySelectorAll('.application-card');
+    let visibleCount = 0;
+    
+    cards.forEach(card => {
+        const status = card.dataset.status;
+        const title = card.dataset.title || '';
+        const id = card.dataset.id || '';
+        
+        const matchStatus = currentStatusFilter === 'all' || status === currentStatusFilter;
+        const matchSearch = !search || title.includes(search) || id.includes(search);
+        
+        if (matchStatus && matchSearch) {
+            card.style.display = ''; // Reset to default (block/flex)
+            visibleCount++;
+        } else {
+            card.style.display = 'none';
+        }
+    });
+    
+    const noMsg = document.getElementById('noAppsMessage');
+    if (noMsg) {
+        noMsg.style.display = visibleCount === 0 && cards.length > 0 ? 'block' : 'none';
+    }
+}
+
+// Init
+document.addEventListener('DOMContentLoaded', function() {
+    // Set initial active state for 'Total'
+    filterByStatus('all');
+});
 </script>
 {% endblock %}
