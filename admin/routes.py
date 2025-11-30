@@ -541,6 +541,63 @@ def export_data():
     flash(f'{data_type} data exported successfully!', 'success')
     return jsonify({'message': f'{data_type} data exported successfully'})
 
+@admin_bp.route('/api/scholarships/<int:scholarship_id>', methods=['GET', 'POST'])
+@login_required
+def admin_scholarship_detail(scholarship_id):
+    """Get or update scholarship details (admin)"""
+    if current_user.role != 'admin':
+        return jsonify({'error': 'Access denied'}), 403
+    
+    scholarship = Scholarship.query.get_or_404(scholarship_id)
+    
+    if request.method == 'GET':
+        return jsonify({
+            'success': True,
+            'scholarship': {
+                'id': scholarship.id,
+                'code': scholarship.code,
+                'title': scholarship.title,
+                'description': scholarship.description or '',
+                'amount': scholarship.amount or '',
+                'deadline': scholarship.deadline.strftime('%Y-%m-%d') if scholarship.deadline else '',
+                'created_date': scholarship.created_at.strftime('%Y-%m-%d') if scholarship.created_at else '',
+                'requirements': scholarship.requirements,
+                'status': scholarship.status,
+                'applications_count': scholarship.applications.count(),
+                'type': scholarship.type or '',
+                'level': scholarship.level or '',
+                'eligibility': scholarship.eligibility or '',
+                'slots': scholarship.slots or '',
+                'contact_name': scholarship.contact_name or '',
+                'contact_email': scholarship.contact_email or '',
+                'contact_phone': scholarship.contact_phone or ''
+            }
+        })
+        
+    elif request.method == 'POST':
+        data = request.get_json()
+        try:
+            if 'title' in data: scholarship.title = data['title']
+            if 'description' in data: scholarship.description = data['description']
+            if 'amount' in data: scholarship.amount = data['amount']
+            if 'requirements' in data: scholarship.requirements = data['requirements']
+            if 'deadline' in data and data['deadline']:
+                scholarship.deadline = datetime.strptime(data['deadline'], '%Y-%m-%d').date()
+            if 'status' in data: scholarship.status = data['status']
+            if 'type' in data: scholarship.type = data['type']
+            if 'level' in data: scholarship.level = data['level']
+            if 'eligibility' in data: scholarship.eligibility = data['eligibility']
+            if 'slots' in data: scholarship.slots = int(data['slots']) if data['slots'] else None
+            if 'contact_name' in data: scholarship.contact_name = data['contact_name']
+            if 'contact_email' in data: scholarship.contact_email = data['contact_email']
+            if 'contact_phone' in data: scholarship.contact_phone = data['contact_phone']
+            
+            db.session.commit()
+            return jsonify({'success': True})
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({'success': False, 'error': str(e)}), 500
+
 @admin_bp.route('/api/scholarships/<int:scholarship_id>/status', methods=['POST'])
 @login_required
 def update_scholarship_status(scholarship_id):
