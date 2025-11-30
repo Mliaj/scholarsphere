@@ -1,0 +1,345 @@
+{% extends "base.html" %}
+
+{% block title %}About Us - Scholarsphere | University of Cebu{% endblock %}
+
+{% block extra_css %}
+<style>
+    .about-container {
+        min-height: 100vh;
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        padding: 3rem 1rem;
+    }
+    
+    .about-header {
+        background: linear-gradient(135deg, #003366 0%, #0072ce 100%);
+        color: #fff;
+        padding: 4rem 1rem;
+        text-align: center;
+        border-radius: 0 0 30px 30px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.10);
+        margin-bottom: 3rem;
+    }
+    
+    .about-header .logo {
+        width: 120px;
+        height: 120px;
+        background: #fff;
+        border-radius: 50%;
+        margin: 0 auto 2rem auto;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+        overflow: hidden;
+    }
+    
+    .about-header .logo img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        border-radius: 50%;
+    }
+    
+    .about-header h1 {
+        font-size: 3rem;
+        font-weight: 700;
+        margin-bottom: 1rem;
+    }
+    
+    .about-header p {
+        font-size: 1.2rem;
+        opacity: 0.95;
+        max-width: 700px;
+        margin: 0 auto;
+    }
+    
+    .about-content {
+        max-width: 1000px;
+        margin: 0 auto;
+    }
+    
+    .about-section {
+        background: #fff;
+        border-radius: 20px;
+        padding: 3rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    }
+    
+    .about-section h2 {
+        font-size: 2rem;
+        font-weight: 700;
+        color: #003366;
+        margin-bottom: 1.5rem;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+    
+    .about-section h2 i {
+        color: #0072ce;
+        font-size: 1.8rem;
+    }
+    
+    .about-section p {
+        font-size: 1.1rem;
+        line-height: 1.8;
+        color: #555;
+        margin-bottom: 1.5rem;
+    }
+    
+    .features-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 2rem;
+        margin-top: 2rem;
+    }
+    
+    .feature-card {
+        background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+        border-radius: 15px;
+        padding: 2rem;
+        text-align: center;
+        border: 2px solid #e9ecef;
+        transition: all 0.3s ease;
+    }
+    
+    .feature-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.12);
+        border-color: #0072ce;
+    }
+    
+    .feature-card i {
+        font-size: 3rem;
+        color: #0072ce;
+        margin-bottom: 1rem;
+    }
+    
+    .feature-card h3 {
+        font-size: 1.3rem;
+        font-weight: 600;
+        color: #003366;
+        margin-bottom: 1rem;
+    }
+    
+    .feature-card p {
+        font-size: 1rem;
+        color: #666;
+        line-height: 1.6;
+    }
+    
+    .acknowledgment-section {
+        background: linear-gradient(135deg, #003366 0%, #0072ce 100%);
+        color: #fff;
+        border-radius: 20px;
+        padding: 3rem;
+        margin-top: 3rem;
+        text-align: center;
+    }
+    
+    .acknowledgment-section h2 {
+        color: #fff;
+        font-size: 2rem;
+        margin-bottom: 1.5rem;
+    }
+    
+    .acknowledgment-section h2 i {
+        color: #ffc72c;
+    }
+    
+    .acknowledgment-section p {
+        font-size: 1.1rem;
+        line-height: 1.8;
+        opacity: 0.95;
+        margin-bottom: 1rem;
+    }
+    
+    .thank-you-note {
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 15px;
+        padding: 2rem;
+        margin-top: 2rem;
+        backdrop-filter: blur(10px);
+    }
+    
+    .thank-you-note h3 {
+        font-size: 1.5rem;
+        margin-bottom: 1rem;
+        color: #ffc72c;
+    }
+    
+    .thank-you-note ul {
+        list-style: none;
+        padding: 0;
+        text-align: left;
+        max-width: 600px;
+        margin: 1.5rem auto 0 auto;
+    }
+    
+    .thank-you-note li {
+        padding: 0.75rem 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        font-size: 1rem;
+    }
+    
+    .thank-you-note li:last-child {
+        border-bottom: none;
+    }
+    
+    .thank-you-note li:before {
+        content: "✓ ";
+        color: #ffc72c;
+        font-weight: bold;
+        margin-right: 0.5rem;
+    }
+    
+    .back-link {
+        display: inline-block;
+        margin-top: 2rem;
+        padding: 0.75rem 2rem;
+        background: #fff;
+        color: #003366;
+        text-decoration: none;
+        border-radius: 10px;
+        font-weight: 600;
+        transition: all 0.3s ease;
+    }
+    
+    .back-link:hover {
+        background: #ffc72c;
+        color: #003366;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    }
+    
+    @media (max-width: 768px) {
+        .about-header h1 {
+            font-size: 2rem;
+        }
+        
+        .about-header p {
+            font-size: 1rem;
+        }
+        
+        .about-section {
+            padding: 2rem 1.5rem;
+        }
+        
+        .about-section h2 {
+            font-size: 1.5rem;
+        }
+        
+        .features-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="about-container">
+    <div class="about-header">
+        <div class="logo">
+            <img src="{{ url_for('static', filename='images/uc-logo.png') }}" alt="University of Cebu Logo">
+        </div>
+        <h1>About Scholarsphere</h1>
+        <p>Empowering University of Cebu students with streamlined scholarship opportunities and simplified application processes.</p>
+    </div>
+    
+    <div class="about-content">
+        <div class="about-section">
+            <h2><i class="fas fa-lightbulb"></i> Our Mission</h2>
+            <p>
+                Scholarsphere was created with a simple yet powerful goal: to make scholarship applications accessible, efficient, and stress-free for students at the University of Cebu. We understand that navigating scholarship opportunities can be overwhelming, with numerous requirements, deadlines, and paperwork to manage. Our platform eliminates these barriers, providing a centralized hub where students can discover, apply, and track scholarships with ease.
+            </p>
+            <p>
+                By digitalizing the entire scholarship application process, we've transformed what was once a complex and time-consuming task into a streamlined, user-friendly experience. Students can now focus on what truly matters—their academic achievements and future goals—while we handle the administrative burden.
+            </p>
+        </div>
+        
+        <div class="about-section">
+            <h2><i class="fas fa-users"></i> How We Help Students</h2>
+            <p>
+                Scholarsphere is designed to ease the scholarship application journey for every UC student. Here's how we make a difference:
+            </p>
+            
+            <div class="features-grid">
+                <div class="feature-card">
+                    <i class="fas fa-search"></i>
+                    <h3>Easy Discovery</h3>
+                    <p>Browse through all available scholarships in one place. Filter by course, year level, requirements, and more to find the perfect match for your academic journey.</p>
+                </div>
+                
+                <div class="feature-card">
+                    <i class="fas fa-clock"></i>
+                    <h3>Time-Saving Process</h3>
+                    <p>Apply for multiple scholarships with just a few clicks. No more filling out repetitive forms or tracking multiple deadlines manually.</p>
+                </div>
+                
+                <div class="feature-card">
+                    <i class="fas fa-folder-open"></i>
+                    <h3>Digital Credentials</h3>
+                    <p>Upload and manage all your documents in one secure location. Your credentials are stored safely and can be reused for multiple applications.</p>
+                </div>
+                
+                <div class="feature-card">
+                    <i class="fas fa-bell"></i>
+                    <h3>Real-Time Updates</h3>
+                    <p>Stay informed about your application status, deadlines, and important announcements through instant notifications and email alerts.</p>
+                </div>
+                
+                <div class="feature-card">
+                    <i class="fas fa-chart-line"></i>
+                    <h3>Track Progress</h3>
+                    <p>Monitor all your applications from submission to decision. See your scholarship history and achievements all in one dashboard.</p>
+                </div>
+                
+                <div class="feature-card">
+                    <i class="fas fa-shield-alt"></i>
+                    <h3>Secure & Reliable</h3>
+                    <p>Your personal information and documents are protected with industry-standard security measures, ensuring your data remains safe and confidential.</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="about-section">
+            <h2><i class="fas fa-bullseye"></i> Our Impact</h2>
+            <p>
+                Since our launch, Scholarsphere has helped countless UC students access educational opportunities that might have otherwise been out of reach. By simplifying the application process, we've removed barriers that often prevent talented students from applying for scholarships. Our platform ensures that every student has an equal opportunity to pursue financial aid and achieve their academic dreams.
+            </p>
+            <p>
+                We're committed to continuous improvement, regularly updating our platform based on student feedback and evolving needs. Our goal is not just to manage applications, but to empower students to reach their full potential.
+            </p>
+        </div>
+        
+        <div class="acknowledgment-section">
+            <h2><i class="fas fa-heart"></i> Acknowledgments</h2>
+            <p>
+                Scholarsphere would not have been possible without the support, guidance, and contributions of many dedicated individuals and organizations.
+            </p>
+            
+            <div class="thank-you-note">
+                <h3>We extend our heartfelt gratitude to:</h3>
+                <ul>
+                    <li>The University of Cebu administration for their vision and support in creating this digital transformation initiative</li>
+                    <li>Our development team members who worked tirelessly to bring this platform to life</li>
+                    <li>Faculty advisors and mentors who provided valuable guidance throughout the project</li>
+                    <li>Scholarship providers who collaborated with us to streamline their application processes</li>
+                    <li>Beta testing students who provided crucial feedback during the development phase</li>
+                    <li>IT department staff for their technical support and infrastructure assistance</li>
+                    <li>All UC students who have trusted us with their scholarship applications</li>
+                </ul>
+                <p style="margin-top: 2rem; font-style: italic;">
+                    This project represents a collaborative effort to make education more accessible. We are deeply grateful to everyone who has been part of this journey.
+                </p>
+            </div>
+            
+            <a href="{{ url_for('index') }}" class="back-link">
+                <i class="fas fa-arrow-left"></i> Back to Home
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

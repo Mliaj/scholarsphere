@@ -85,6 +85,8 @@ class User(UserMixin, db.Model):
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, onupdate=datetime.utcnow)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
+    reset_token = db.Column(db.String(100), nullable=True)
+    reset_token_expires = db.Column(db.DateTime, nullable=True)
     
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -270,6 +272,21 @@ def load_user(user_id):
 def index():
     """Home page"""
     return render_template('index.html')
+
+@app.route('/about')
+def about():
+    """About page"""
+    return render_template('about.html')
+
+@app.route('/contact')
+def contact():
+    """Contact page"""
+    return render_template('contact.html')
+
+@app.route('/privacy-policy')
+def privacy_policy():
+    """Privacy Policy page"""
+    return render_template('privacy_policy.html')
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
