@@ -160,6 +160,88 @@
     .modal-title { margin:0; font-size:1.25rem; color:#003366; font-weight:700; }
     .close { background:none; border:none; font-size:1.5rem; cursor:pointer; color:#666; }
     .modal-body { padding:1.25rem; }
+    
+    /* Profile Alert Modal */
+    .alert-modal { display:none; position:fixed; z-index:1001; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.6); animation:fadeIn 0.2s ease; }
+    .alert-modal-content { 
+        background:#fff; 
+        margin:10% auto; 
+        padding:0; 
+        border-radius:15px; 
+        width:90%; 
+        max-width:500px; 
+        box-shadow:0 10px 40px rgba(0,0,0,0.2);
+        animation:slideDown 0.3s ease;
+    }
+    @keyframes fadeIn {
+        from { opacity:0; }
+        to { opacity:1; }
+    }
+    @keyframes slideDown {
+        from { transform:translateY(-30px); opacity:0; }
+        to { transform:translateY(0); opacity:1; }
+    }
+    .alert-modal-header {
+        padding:1.5rem;
+        background:linear-gradient(135deg, #ffc107 0%, #ff9800 100%);
+        border-radius:15px 15px 0 0;
+        display:flex;
+        align-items:center;
+        gap:1rem;
+    }
+    .alert-modal-header i {
+        font-size:2rem;
+        color:#fff;
+    }
+    .alert-modal-title {
+        margin:0;
+        font-size:1.3rem;
+        color:#fff;
+        font-weight:700;
+    }
+    .alert-modal-body {
+        padding:2rem 1.5rem;
+    }
+    .alert-modal-message {
+        font-size:1rem;
+        line-height:1.6;
+        color:#333;
+        margin-bottom:0;
+    }
+    .alert-modal-message strong {
+        color:#003366;
+    }
+    .alert-modal-footer {
+        padding:1rem 1.5rem 1.5rem;
+        display:flex;
+        justify-content:flex-end;
+        gap:0.75rem;
+    }
+    .alert-btn {
+        padding:0.75rem 1.5rem;
+        border:none;
+        border-radius:8px;
+        cursor:pointer;
+        font-weight:600;
+        font-size:0.95rem;
+        transition:all 0.3s ease;
+    }
+    .alert-btn-cancel {
+        background:#e9ecef;
+        color:#495057;
+    }
+    .alert-btn-cancel:hover {
+        background:#dee2e6;
+    }
+    .alert-btn-primary {
+        background:linear-gradient(135deg, #0072ce 0%, #0056a3 100%);
+        color:#fff;
+        box-shadow:0 2px 8px rgba(0,114,206,0.3);
+    }
+    .alert-btn-primary:hover {
+        transform:translateY(-1px);
+        box-shadow:0 4px 12px rgba(0,114,206,0.4);
+    }
     .form-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: .75rem 1rem; }
     .form-group { display:flex; flex-direction:column; gap:.35rem; }
     .form-label { font-weight:600; color:#333; }
@@ -634,6 +716,18 @@ let selectedCredentials = {};
 let pageAlertTimer = null;
 
 function openApplication(id, title){
+    // Check if student has year_level and course set in profile
+    const yearLevel = {% if current_user.year_level %}'{{ current_user.year_level }}'{% else %}null{% endif %};
+    const course = {% if current_user.course %}'{{ current_user.course }}'{% else %}null{% endif %};
+    
+    // Check if year_level or course is missing or empty
+    if (!yearLevel || yearLevel === 'null' || yearLevel.trim() === '' || 
+        !course || course === 'null' || course.trim() === '') {
+        // Show custom alert modal
+        showProfileAlert();
+        return;
+    }
+    
     const modal = document.getElementById('applyModal');
     document.getElementById('applyTitle').textContent = title;
     document.getElementById('applyScholarshipId').value = id;
@@ -642,6 +736,24 @@ function openApplication(id, title){
     loadCredentialsData(id);
     
     modal.style.display = 'block';
+}
+
+function showProfileAlert(){
+    const alertModal = document.getElementById('profileAlertModal');
+    if (alertModal) {
+        alertModal.style.display = 'block';
+    }
+}
+
+function closeProfileAlert(){
+    const alertModal = document.getElementById('profileAlertModal');
+    if (alertModal) {
+        alertModal.style.display = 'none';
+    }
+}
+
+function goToProfile(){
+    window.location.href = '{{ url_for("students.profile") }}';
 }
 
 function closeApplication(){ 
@@ -874,7 +986,12 @@ async function handleFileUpload(requirement, fileInput) {
     }
 }
 
-window.addEventListener('click', (e)=>{ const m=document.getElementById('applyModal'); if(e.target===m){ closeApplication(); }});
+window.addEventListener('click', (e)=>{ 
+    const m=document.getElementById('applyModal'); 
+    if(e.target===m){ closeApplication(); }
+    const alertM = document.getElementById('profileAlertModal');
+    if(e.target===alertM){ closeProfileAlert(); }
+});
 
 document.addEventListener('DOMContentLoaded', ()=>{
   const form = document.getElementById('applyForm');
@@ -1026,6 +1143,29 @@ function resetFilters() {
     applyFilters();
 }
 </script>
+
+<!-- Profile Alert Modal -->
+<div id="profileAlertModal" class="alert-modal">
+    <div class="alert-modal-content">
+        <div class="alert-modal-header">
+            <i class="fas fa-exclamation-triangle"></i>
+            <h3 class="alert-modal-title">Profile Update Required</h3>
+        </div>
+        <div class="alert-modal-body">
+            <p class="alert-modal-message">
+                Please update your profile first!<br><br>
+                You need to specify your <strong>Year Level</strong> and <strong>Course</strong> in your profile settings before you can apply for scholarships.<br><br>
+                Would you like to go to your profile page now?
+            </p>
+        </div>
+        <div class="alert-modal-footer">
+            <button class="alert-btn alert-btn-cancel" onclick="closeProfileAlert()">Cancel</button>
+            <button class="alert-btn alert-btn-primary" onclick="goToProfile()">
+                <i class="fas fa-user-edit"></i> Go to Profile
+            </button>
+        </div>
+    </div>
+</div>
 
 <!-- Apply Modal -->
 <div id="applyModal" class="modal">
