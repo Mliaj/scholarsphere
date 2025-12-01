@@ -520,6 +520,25 @@ function openAppDetails(appId){
               </div>` : ''}
             </div>
           </section>
+          ${a.family_background ? `
+          <section>
+            <h3 style="color:#003366; margin-bottom:.5rem;">Family Background</h3>
+            <div style="display:grid; gap:.4rem;">
+              ${a.family_background.parent_guardian_name ? `<div><strong>Parent/Guardian Name:</strong> ${a.family_background.parent_guardian_name}</div>` : ''}
+              ${a.family_background.occupation ? `<div><strong>Occupation:</strong> ${a.family_background.occupation}</div>` : ''}
+              ${a.family_background.household_income ? `<div><strong>Household Income:</strong> ${a.family_background.household_income}</div>` : ''}
+              ${a.family_background.dependents !== '' && a.family_background.dependents !== null ? `<div><strong>Dependents:</strong> ${a.family_background.dependents}</div>` : ''}
+            </div>
+          </section>` : ''}
+          ${a.academic_information ? `
+          <section>
+            <h3 style="color:#003366; margin-bottom:.5rem;">Academic Information</h3>
+            <div style="display:grid; gap:.4rem;">
+              ${a.academic_information.latest_gpa ? `<div><strong>Latest GPA:</strong> ${a.academic_information.latest_gpa}</div>` : ''}
+              ${a.academic_information.current_semester ? `<div><strong>Current Semester:</strong> ${a.academic_information.current_semester}</div>` : ''}
+              ${a.academic_information.school_year ? `<div><strong>School Year:</strong> ${a.academic_information.school_year}</div>` : ''}
+            </div>
+          </section>` : ''}
           <section>
             <h3 style="color:#003366; margin-bottom:.5rem;">Applied Documents</h3>
             <ul style="padding-left:1rem;">${docs}</ul>

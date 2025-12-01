@@ -610,6 +610,47 @@ def apply_scholarship(scholarship_id):
         )
         application_id = result.lastrowid
         
+        # Save Family Background information
+        if 'guardian' in form_data and form_data.get('guardian'):
+            try:
+                db.session.execute(
+                    text("""
+                        INSERT INTO family_backgrounds 
+                        (application_id, parent_guardian_name, occupation, household_income, dependents, created_at)
+                        VALUES (:application_id, :parent_guardian_name, :occupation, :household_income, :dependents, :created_at)
+                    """),
+                    {
+                        "application_id": application_id,
+                        "parent_guardian_name": form_data.get('guardian', ''),
+                        "occupation": form_data.get('occupation', ''),
+                        "household_income": form_data.get('income', ''),
+                        "dependents": int(form_data.get('dependents', 0)) if form_data.get('dependents') else None,
+                        "created_at": current_time
+                    }
+                )
+            except Exception as e:
+                print(f"Warning: Could not save family background: {e}")
+        
+        # Save Academic Information
+        if any(form_data.get(k) for k in ['gpa', 'semester', 'school_year']):
+            try:
+                db.session.execute(
+                    text("""
+                        INSERT INTO academic_information 
+                        (application_id, latest_gpa, current_semester, school_year, created_at)
+                        VALUES (:application_id, :latest_gpa, :current_semester, :school_year, :created_at)
+                    """),
+                    {
+                        "application_id": application_id,
+                        "latest_gpa": form_data.get('gpa', ''),
+                        "current_semester": form_data.get('semester', ''),
+                        "school_year": form_data.get('school_year', ''),
+                        "created_at": current_time
+                    }
+                )
+            except Exception as e:
+                print(f"Warning: Could not save academic information: {e}")
+        
         # Link selected credentials to the application (if any requirements exist)
         if selected_credentials and len(selected_credentials) > 0:
             for requirement, credential_id in selected_credentials.items():
@@ -970,6 +1011,43 @@ def get_application_detail(application_id):
         ).fetchone()
         if not app_row:
             return jsonify({'success': False, 'error': 'Application not found'}), 404
+        
+        # Get Family Background information
+        family_bg = db.session.execute(
+            text("""
+                SELECT parent_guardian_name, occupation, household_income, dependents
+                FROM family_backgrounds
+                WHERE application_id = :id
+                LIMIT 1
+            """), {"id": application_id}
+        ).fetchone()
+        
+        family_background = None
+        if family_bg:
+            family_background = {
+                "parent_guardian_name": family_bg[0] or "",
+                "occupation": family_bg[1] or "",
+                "household_income": family_bg[2] or "",
+                "dependents": family_bg[3] if family_bg[3] is not None else ""
+            }
+        
+        # Get Academic Information
+        academic_info = db.session.execute(
+            text("""
+                SELECT latest_gpa, current_semester, school_year
+                FROM academic_information
+                WHERE application_id = :id
+                LIMIT 1
+            """), {"id": application_id}
+        ).fetchone()
+        
+        academic_information = None
+        if academic_info:
+            academic_information = {
+                "latest_gpa": academic_info[0] or "",
+                "current_semester": academic_info[1] or "",
+                "school_year": academic_info[2] or ""
+            }
             
         # Get current requirements
         req_str = app_row[13] or ''
@@ -1178,7 +1256,10 @@ def get_application_detail(application_id):
             'slots': app_row[9] or 'Unlimited',
             'contact_name': app_row[10] or '',
             'contact_email': app_row[11] or '',
-            'contact_phone': app_row[12] or ''
+            'contact_phone': app_row[12] or '',
+            # Family Background and Academic Information
+            'family_background': family_background,
+            'academic_information': academic_information
         }
         return jsonify({'success': True, 'application': payload})
     except Exception as e:

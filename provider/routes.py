@@ -1511,6 +1511,43 @@ def api_application_detail(id):
                     'is_verified': cred.is_verified,
                     'is_active': cred.is_active
                 })
+        
+        # Get Family Background information
+        family_bg = db.session.execute(
+            text("""
+                SELECT parent_guardian_name, occupation, household_income, dependents
+                FROM family_backgrounds
+                WHERE application_id = :id
+                LIMIT 1
+            """), {"id": application.id}
+        ).fetchone()
+        
+        family_background = None
+        if family_bg:
+            family_background = {
+                "parent_guardian_name": family_bg[0] or "",
+                "occupation": family_bg[1] or "",
+                "household_income": family_bg[2] or "",
+                "dependents": family_bg[3] if family_bg[3] is not None else ""
+            }
+        
+        # Get Academic Information
+        academic_info = db.session.execute(
+            text("""
+                SELECT latest_gpa, current_semester, school_year
+                FROM academic_information
+                WHERE application_id = :id
+                LIMIT 1
+            """), {"id": application.id}
+        ).fetchone()
+        
+        academic_information = None
+        if academic_info:
+            academic_information = {
+                "latest_gpa": academic_info[0] or "",
+                "current_semester": academic_info[1] or "",
+                "school_year": academic_info[2] or ""
+            }
             
         return jsonify({
             'success': True,
@@ -1523,7 +1560,9 @@ def api_application_detail(id):
                 'date_applied': application.application_date.strftime('%Y-%m-%d'),
                 'status': application.status
             },
-            'credentials': cred_list
+            'credentials': cred_list,
+            'family_background': family_background,
+            'academic_information': academic_information
         })
     except Exception as e:
         db.session.rollback()

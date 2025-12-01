@@ -39,6 +39,8 @@ TABLES = [
     'notifications',
     'schedule',
     'application_remarks',
+    'family_backgrounds',
+    'academic_information',
     'scholarship_application_files',
     'scholarship_applications',
     'credentials',
