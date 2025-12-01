@@ -1181,17 +1181,16 @@ def get_application_detail(application_id):
                     })
             
         # Documents
+        # Get student remarks (remarks linked to student, not application)
         try:
             remarks = db.session.execute(
                 text("""
-                    SELECT ar.remark_text, ar.status, ar.created_at, u.first_name, u.last_name
-                    FROM application_remarks ar
-                    JOIN scholarship_applications sa ON sa.id = ar.application_id
-                    JOIN scholarships s ON sa.scholarship_id = s.id
-                    JOIN users u ON u.id = ar.provider_id
-                    WHERE ar.application_id = :id
-                    ORDER BY ar.created_at DESC
-                """), {"id": application_id}
+                    SELECT sr.remark_text, sr.created_at, u.first_name, u.last_name, u.organization
+                    FROM student_remarks sr
+                    JOIN users u ON u.id = sr.provider_id
+                    WHERE sr.student_id = :student_id
+                    ORDER BY sr.created_at DESC
+                """), {"student_id": current_user.id}
             ).fetchall()
         except Exception:
             remarks = []
@@ -1215,7 +1214,7 @@ def get_application_detail(application_id):
                 return dt_obj.strftime(fmt)
             return val.strftime(fmt)
 
-        remarks_list = [{"text": r[0], "status": (r[1] or '').title(), "date": format_dt(r[2], '%B %d, %Y %I:%M %p'), "provider": f"{r[3]} {r[4]}"} for r in remarks]
+        remarks_list = [{"text": r[0], "date": format_dt(r[1], '%B %d, %Y %I:%M %p'), "provider": f"{r[2]} {r[3]}", "organization": r[4] or ''} for r in remarks]
         # Schedules
         try:
             # Prefer new schedule table

@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 from flask_login import login_required, current_user
-from app import db, User, Scholarship, ScholarshipApplication, Credential, Schedule, Notification, ScholarshipApplicationFile, Announcement
+from app import db, User, Scholarship, ScholarshipApplication, Credential, Schedule, Notification, ScholarshipApplicationFile, Announcement, StudentRemark
 from email_utils import send_email
 from werkzeug.security import check_password_hash, generate_password_hash
 from datetime import datetime # Import datetime here
@@ -1567,6 +1567,21 @@ def api_application_detail(id):
                 "address": personal_info[2] or "",
                 "contact_number": personal_info[3] or ""
             }
+        
+        # Get remarks made by current provider for this student
+        remarks = StudentRemark.query.filter_by(
+            student_id=student.id,
+            provider_id=current_user.id
+        ).order_by(StudentRemark.created_at.desc()).all()
+        
+        remarks_list = []
+        for remark in remarks:
+            remarks_list.append({
+                'id': remark.id,
+                'remark_text': remark.remark_text,
+                'created_at': remark.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                'updated_at': remark.updated_at.strftime('%Y-%m-%d %H:%M:%S') if remark.updated_at else None
+            })
             
         return jsonify({
             'success': True,
@@ -1582,11 +1597,102 @@ def api_application_detail(id):
             'credentials': cred_list,
             'family_background': family_background,
             'academic_information': academic_information,
-            'personal_information': personal_information
+            'personal_information': personal_information,
+            'remarks': remarks_list
         })
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'error': f'Error loading application details: {str(e)}'}), 500
+
+@provider_bp.route('/api/student/<int:student_id>/remarks', methods=['GET'])
+@login_required
+def api_get_student_remarks(student_id):
+    """Get all remarks for a student (only remarks made by current provider)"""
+    try:
+        if current_user.role != 'provider':
+            return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+        
+        # Verify student exists
+        student = User.query.get_or_404(student_id)
+        if student.role != 'student':
+            return jsonify({'success': False, 'error': 'Invalid student'}), 400
+        
+        # Get remarks made by current provider for this student
+        remarks = StudentRemark.query.filter_by(
+            student_id=student_id,
+            provider_id=current_user.id
+        ).order_by(StudentRemark.created_at.desc()).all()
+        
+        remarks_list = []
+        for remark in remarks:
+            remarks_list.append({
+                'id': remark.id,
+                'remark_text': remark.remark_text,
+                'created_at': remark.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                'updated_at': remark.updated_at.strftime('%Y-%m-%d %H:%M:%S') if remark.updated_at else None
+            })
+        
+        return jsonify({'success': True, 'remarks': remarks_list})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': f'Error loading remarks: {str(e)}'}), 500
+
+@provider_bp.route('/api/student/<int:student_id>/remarks', methods=['POST'])
+@login_required
+def api_add_student_remark(student_id):
+    """Add a new remark for a student"""
+    try:
+        if current_user.role != 'provider':
+            return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+        
+        data = request.get_json()
+        remark_text = data.get('remark_text', '').strip()
+        
+        if not remark_text:
+            return jsonify({'success': False, 'error': 'Remark text is required'}), 400
+        
+        # Verify student exists
+        student = User.query.get_or_404(student_id)
+        if student.role != 'student':
+            return jsonify({'success': False, 'error': 'Invalid student'}), 400
+        
+        # Create new remark
+        remark = StudentRemark(
+            student_id=student_id,
+            provider_id=current_user.id,
+            remark_text=remark_text
+        )
+        
+        db.session.add(remark)
+        
+        # Create in-app notification for the student
+        provider_name = current_user.organization or current_user.get_full_name()
+        # Truncate remark text for notification (first 150 chars)
+        remark_preview = remark_text[:150] + ('...' if len(remark_text) > 150 else '')
+        
+        notification = Notification(
+            user_id=student_id,
+            type='info',
+            title=f'New Remark from {provider_name}',
+            message=f'A provider has added a remark about your application. View your application details to see the full remark.',
+            created_at=datetime.utcnow(),
+            is_active=True
+        )
+        db.session.add(notification)
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'remark': {
+                'id': remark.id,
+                'remark_text': remark.remark_text,
+                'created_at': remark.created_at.strftime('%Y-%m-%d %H:%M:%S')
+            }
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': f'Error adding remark: {str(e)}'}), 500
 
 @provider_bp.route('/api/scholarship/<int:id>/report-pdf')
 @login_required

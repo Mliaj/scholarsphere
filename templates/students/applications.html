@@ -555,7 +555,7 @@ function openAppDetails(appId){
           </section>
           <section>
             <h3 style="color:#003366; margin-bottom:.5rem;">Provider Remarks</h3>
-            ${a.remarks.length ? a.remarks.map(r=>`<div style="padding:.5rem 0; border-bottom:1px solid #eee;"><div><strong>${r.provider}</strong> — <em>${r.status}</em></div><div>${r.text}</div><div style="color:#999;font-size:.85rem;">${r.date||''}</div></div>`).join('') : '<div>No remarks yet.</div>'}
+            ${a.remarks.length ? a.remarks.map(r=>`<div style="padding:.75rem 0; border-bottom:1px solid #eee;"><div style="margin-bottom:0.5rem;"><strong>${r.provider}</strong>${r.organization ? ` <span style="color:#666; font-size:0.85rem;">(${r.organization})</span>` : ''}</div><div style="color:#333; white-space:pre-wrap; margin-bottom:0.5rem;">${r.text}</div><div style="color:#999;font-size:.85rem;">${r.date||''}</div></div>`).join('') : '<div style="color:#666; font-style:italic;">No remarks yet.</div>'}
           </section>
           <section>
             <h3 style="color:#003366; margin-bottom:.5rem;">Next Steps (Schedules)</h3>

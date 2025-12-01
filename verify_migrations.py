@@ -35,6 +35,7 @@ def verify_migrations():
                 'scholarship_applications',
                 'scholarship_application_files',
                 'application_remarks',
+                'student_remarks',
                 'notifications',
                 'schedule'
             ]

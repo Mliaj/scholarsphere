@@ -214,6 +214,21 @@ class ApplicationRemark(db.Model):
     application = db.relationship('ScholarshipApplication', backref='remarks')
     provider = db.relationship('User')
 
+# Student Remarks model (for provider notes on students - one-to-many relationship)
+class StudentRemark(db.Model):
+    __tablename__ = 'student_remarks'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)  # user_id of the student
+    provider_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)  # user_id of the provider
+    remark_text = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, onupdate=datetime.utcnow)
+    
+    # Relationships
+    student = db.relationship('User', foreign_keys=[student_id], backref='remarks')
+    provider = db.relationship('User', foreign_keys=[provider_id])
+
 # Family Background model (for scholarship application)
 class FamilyBackground(db.Model):
     __tablename__ = 'family_backgrounds'

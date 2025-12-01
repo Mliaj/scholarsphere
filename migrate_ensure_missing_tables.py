@@ -58,6 +58,27 @@ def migrate():
                 print("Table 'application_remarks' created.")
             else:
                 print("Table 'application_remarks' already exists.")
+
+            # 3. Create student_remarks
+            if 'student_remarks' not in existing_tables:
+                print("Creating table 'student_remarks'...")
+                conn.execute(text("""
+                    CREATE TABLE student_remarks (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        student_id INT NOT NULL,
+                        provider_id INT NOT NULL,
+                        remark_text TEXT NOT NULL,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        updated_at DATETIME NULL,
+                        FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE,
+                        FOREIGN KEY (provider_id) REFERENCES users(id) ON DELETE CASCADE,
+                        INDEX idx_remarks_student_id (student_id),
+                        INDEX idx_remarks_provider_id (provider_id)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+                """))
+                print("Table 'student_remarks' created.")
+            else:
+                print("Table 'student_remarks' already exists.")
                 
             conn.commit()
             print("Migration completed successfully!")

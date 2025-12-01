@@ -319,6 +319,9 @@
                   <button class="btn-sm btn-view" onclick="viewApplication({{ app.application_id }})">
                     <i class="fas fa-eye"></i> View Details
                   </button>
+                  <button class="btn-sm" onclick="openRemarksModal({{ app.user_id }}, '{{ app.student_name }}')" style="background:#6c757d; color:#fff; border:none; padding:0.4rem 0.8rem; border-radius:6px; cursor:pointer; font-size:0.85rem; margin-left:0.5rem;">
+                    <i class="fas fa-comment"></i> Remarks
+                  </button>
                   {% if app.status.lower() == 'pending' %}
                   <button class="btn-sm btn-approve" onclick="reviewApplication({{ app.application_id }}, 'approve')">
                     <i class="fas fa-check"></i> Approve
@@ -382,6 +385,37 @@
     <div class="modal-body" id="reviewConfirmBody" style="padding:2rem;"></div>
     <div class="modal-footer">
       <button type="button" class="btn-modal secondary" onclick="closeReviewConfirm()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Student Remarks Modal -->
+<div id="remarksModal" class="modal" style="display:none;">
+  <div class="modal-content" style="max-width:700px;">
+    <div class="modal-header">
+      <h2 class="modal-title">Student Remarks</h2>
+      <button class="close" onclick="closeRemarksModal()">&times;</button>
+    </div>
+    <div class="modal-body" style="padding:2rem;">
+      <div id="remarksStudentInfo" style="margin-bottom:1.5rem; padding-bottom:1rem; border-bottom:1px solid #e9ecef;">
+        <h3 style="margin:0; color:#003366;" id="remarksStudentName"></h3>
+      </div>
+      <div style="margin-bottom:1.5rem;">
+        <h4 style="color:#003366; margin-bottom:0.75rem;">Add New Remark</h4>
+        <textarea id="newRemarkText" placeholder="Enter your remark about this student..." style="width:100%; min-height:100px; padding:0.75rem; border:1px solid #ddd; border-radius:6px; font-family:inherit; font-size:0.9rem;" required></textarea>
+        <button onclick="addRemark()" style="margin-top:0.75rem; background:#007bff; color:#fff; border:none; padding:0.6rem 1.2rem; border-radius:6px; cursor:pointer; font-weight:600;">
+          <i class="fas fa-plus"></i> Add Remark
+        </button>
+      </div>
+      <div>
+        <h4 style="color:#003366; margin-bottom:0.75rem;">Previous Remarks</h4>
+        <div id="remarksList" style="max-height:400px; overflow-y:auto;">
+          <p style="color:#666; font-style:italic;">Loading remarks...</p>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn-modal secondary" onclick="closeRemarksModal()">Close</button>
     </div>
   </div>
 </div>
@@ -543,6 +577,42 @@ function viewApplication(applicationId) {
           `;
         }
         
+        // Build Remarks section
+        let remarksHtml = '';
+        if (data.remarks && data.remarks.length > 0) {
+          const remarksList = data.remarks.map(remark => {
+            const date = new Date(remark.created_at);
+            const formattedDate = date.toLocaleString('en-US', {
+              year: 'numeric',
+              month: 'short',
+              day: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit'
+            });
+            return `
+              <div style="background:#f8f9fa; padding:1rem; margin-bottom:0.75rem; border-radius:6px; border-left:4px solid #007bff;">
+                <div style="color:#666; font-size:0.85rem; margin-bottom:0.5rem;">${formattedDate}</div>
+                <div style="color:#333; white-space:pre-wrap;">${remark.remark_text}</div>
+              </div>
+            `;
+          }).join('');
+          remarksHtml = `
+            <div>
+              <h3 style="color:#003366; margin-bottom:1rem;">Your Remarks</h3>
+              <div style="max-height:300px; overflow-y:auto;">
+                ${remarksList}
+              </div>
+            </div>
+          `;
+        } else {
+          remarksHtml = `
+            <div>
+              <h3 style="color:#003366; margin-bottom:1rem;">Your Remarks</h3>
+              <div style="color:#666; font-style:italic;">No remarks yet. Use the "Remarks" button on the applications list to add remarks about this student.</div>
+            </div>
+          `;
+        }
+        
         content.innerHTML = `
           <div style="display:grid; gap:1.5rem;">
             <div>
@@ -565,6 +635,7 @@ function viewApplication(applicationId) {
             ${familyBgHtml}
             ${academicInfoHtml}
             ${credentialsHtml}
+            ${remarksHtml}
           </div>
         `;
 
@@ -1271,6 +1342,101 @@ function generatePDF() {
             generateBtn.innerHTML = '<i class="fas fa-download"></i> Generate & Download';
         }
     }, 1000);
+}
+
+// Remarks Modal Functions
+let currentRemarksStudentId = null;
+
+function openRemarksModal(studentId, studentName) {
+    currentRemarksStudentId = studentId;
+    document.getElementById('remarksStudentName').textContent = studentName;
+    document.getElementById('remarksModal').style.display = 'block';
+    document.getElementById('newRemarkText').value = '';
+    loadRemarks(studentId);
+}
+
+function closeRemarksModal() {
+    document.getElementById('remarksModal').style.display = 'none';
+    currentRemarksStudentId = null;
+    document.getElementById('remarksList').innerHTML = '<p style="color:#666; font-style:italic;">Loading remarks...</p>';
+}
+
+function loadRemarks(studentId) {
+    fetch(`/provider/api/student/${studentId}/remarks`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const remarksList = document.getElementById('remarksList');
+                if (data.remarks && data.remarks.length > 0) {
+                    remarksList.innerHTML = data.remarks.map(remark => {
+                        const date = new Date(remark.created_at);
+                        const formattedDate = date.toLocaleString('en-US', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                        });
+                        return `
+                            <div style="background:#f8f9fa; padding:1rem; margin-bottom:0.75rem; border-radius:6px; border-left:4px solid #007bff;">
+                                <div style="color:#666; font-size:0.85rem; margin-bottom:0.5rem;">${formattedDate}</div>
+                                <div style="color:#333; white-space:pre-wrap;">${remark.remark_text}</div>
+                            </div>
+                        `;
+                    }).join('');
+                } else {
+                    remarksList.innerHTML = '<p style="color:#666; font-style:italic;">No remarks yet. Add your first remark above.</p>';
+                }
+            } else {
+                document.getElementById('remarksList').innerHTML = '<p style="color:#dc3545;">Error loading remarks: ' + (data.error || 'Unknown error') + '</p>';
+            }
+        })
+        .catch(error => {
+            document.getElementById('remarksList').innerHTML = '<p style="color:#dc3545;">Error loading remarks: ' + error.message + '</p>';
+        });
+}
+
+function addRemark() {
+    if (!currentRemarksStudentId) {
+        alert('Error: Student ID not set');
+        return;
+    }
+    
+    const remarkText = document.getElementById('newRemarkText').value.trim();
+    if (!remarkText) {
+        alert('Please enter a remark');
+        return;
+    }
+    
+    fetch(`/provider/api/student/${currentRemarksStudentId}/remarks`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            remark_text: remarkText
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            document.getElementById('newRemarkText').value = '';
+            loadRemarks(currentRemarksStudentId);
+        } else {
+            alert('Error adding remark: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        alert('Error adding remark: ' + error.message);
+    });
+}
+
+// Close modal when clicking outside
+window.onclick = function(event) {
+    const remarksModal = document.getElementById('remarksModal');
+    if (event.target === remarksModal) {
+        closeRemarksModal();
+    }
 }
 </script>
 {% endblock %}

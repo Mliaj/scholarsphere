@@ -87,6 +87,12 @@ def main():
             'description': 'Create application_remarks table for provider reviews'
         },
         {
+            'name': 'Student Remarks',
+            'module': 'migrate_add_student_remarks_table',
+            'function': 'migrate',
+            'description': 'Create student_remarks table for provider remarks on students (one-to-many)'
+        },
+        {
             'name': 'Announcements Table',
             'module': 'migrate_add_announcements_table',
             'function': 'migrate',
@@ -109,7 +115,7 @@ def main():
             'name': 'Ensure Missing Tables',
             'module': 'migrate_ensure_missing_tables',
             'function': 'migrate',
-            'description': 'Final check to ensure scholarship_application_files and application_remarks exist'
+            'description': 'Final check to ensure scholarship_application_files, application_remarks, and student_remarks exist'
         },
         {
             'name': 'Drop Unique Constraint',

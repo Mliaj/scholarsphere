@@ -38,6 +38,7 @@ TABLES = [
     'announcements',
     'notifications',
     'schedule',
+    'student_remarks',
     'application_remarks',
     'family_backgrounds',
     'academic_information',
