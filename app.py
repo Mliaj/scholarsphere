@@ -144,7 +144,9 @@ class Scholarship(db.Model):
     description = db.Column(db.Text, nullable=True)
     type = db.Column(db.String(100), nullable=True) # e.g., 'Academic', 'Athletic'
     level = db.Column(db.String(100), nullable=True) # e.g., 'Undergraduate', 'Graduate'
-    eligibility = db.Column(db.Text, nullable=True)
+    eligibility = db.Column(db.Text, nullable=True) # Minimum GPA goes here
+    program_course = db.Column(db.String(255), nullable=True) # Program/Course field
+    additional_criteria = db.Column(db.Text, nullable=True) # Additional criteria field
     slots = db.Column(db.Integer, nullable=True)
     contact_name = db.Column(db.String(255), nullable=True)
     contact_email = db.Column(db.String(255), nullable=True)

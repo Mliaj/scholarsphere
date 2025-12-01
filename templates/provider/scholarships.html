@@ -322,7 +322,6 @@
             <label class="form-label" style="font-weight:500;">Additional criteria (optional)</label>
             <input type="text" id="eligNotes" class="form-control" placeholder="Any other requirement...">
           </div>
-          <input type="hidden" id="eligibility" name="eligibility">
         </div>
         <div class="form-group">
           <label for="scholarshipDeadline" class="form-label">Deadline *</label>
@@ -452,7 +451,6 @@
             <label class="form-label" style="font-weight:500;">Additional criteria (optional)</label>
             <input type="text" id="editEligNotes" class="form-control" placeholder="Any other requirement...">
           </div>
-          <input type="hidden" id="editEligibilityHidden" name="eligibility">
         </div>
         <div class="form-group">
           <label class="form-label">Scholarship Type</label>
@@ -588,7 +586,13 @@ function viewScholarship(id){
               <div><strong>Created:</strong> ${data.scholarship.created_date}</div>
             </div>
 
-            <div><strong>Eligibility:</strong><br>${data.scholarship.eligibility || 'No specific eligibility criteria.'}</div>
+            <div style="background: #f8f9fa; padding: 1rem; border-radius: 8px;">
+              <div style="font-weight:600; margin-bottom:.75rem; color:#003366;">Eligibility Criteria</div>
+              ${data.scholarship.eligibility ? `<div><strong>Minimum GPA:</strong> ${data.scholarship.eligibility}</div>` : ''}
+              ${data.scholarship.program_course ? `<div><strong>Program/Course:</strong> ${data.scholarship.program_course}</div>` : ''}
+              ${data.scholarship.additional_criteria ? `<div><strong>Additional Criteria:</strong> ${data.scholarship.additional_criteria}</div>` : ''}
+              ${!data.scholarship.eligibility && !data.scholarship.program_course && !data.scholarship.additional_criteria ? '<div>No specific eligibility criteria.</div>' : ''}
+            </div>
             <div><strong>Requirements:</strong><br>${reqs.length ? reqs.map(r => `• ${r}`).join('<br>') : 'No specific requirements'}</div>
             
             <div style="background: #eef2f7; padding: 1rem; border-radius: 8px;">
@@ -638,6 +642,25 @@ function editScholarship(id){
           document.getElementById('editScholarshipTypeOther').style.display='';
           document.getElementById('editScholarshipTypeOther').value = data.scholarship.type;
         }
+        // Populate eligibility fields separately
+        document.getElementById('editEligGpaText').value = data.scholarship.eligibility || '';  // Minimum GPA from eligibility column
+        const programCourse = data.scholarship.program_course || '';
+        if (programCourse) {
+          const knownPrograms = ['All Programs', 'BSIT', 'BSCS', 'Engineering', 'Education', 'Nursing', 'Business Administration', 'Accountancy', 'Hospitality Management', 'Maritime', 'Architecture'];
+          if (knownPrograms.includes(programCourse)) {
+            document.getElementById('editEligProgramSelect').value = programCourse;
+            document.getElementById('editEligProgramOther').style.display = 'none';
+            document.getElementById('editEligProgramOther').value = '';
+          } else {
+            document.getElementById('editEligProgramSelect').value = '__OTHER__';
+            document.getElementById('editEligProgramOther').style.display = '';
+            document.getElementById('editEligProgramOther').value = programCourse;
+          }
+        } else {
+          document.getElementById('editEligProgramSelect').value = '';
+          document.getElementById('editEligProgramOther').style.display = 'none';
+        }
+        document.getElementById('editEligNotes').value = data.scholarship.additional_criteria || '';
         // Pre-check requirements checkboxes using raw requirements
         const values = (data.scholarship.requirements || '').split(',').map(s=>s.trim()).filter(Boolean);
         document.querySelectorAll('#editScholarshipModal .req-edit').forEach(cb => { cb.checked = values.includes(cb.value); });
@@ -751,15 +774,13 @@ document.getElementById('createScholarshipForm').addEventListener('submit', asyn
   const typeSel = document.getElementById('scholarshipType');
   const typeOther = document.getElementById('scholarshipTypeOther').value.trim();
   data.type = (typeSel.value === '__OTHER__') ? typeOther : typeSel.value;
-  // Build eligibility summary string (frontend only)
-  const elig = [];
+  // Send fields separately: minimum_gpa (to eligibility), program_course, additional_criteria
   const gpaSel = document.getElementById('eligGpaText').value.trim();
-  if(gpaSel) elig.push(`Min GPA: ${gpaSel}`);
+  data.minimum_gpa = gpaSel;  // This will be stored in eligibility column
   let progVal = document.getElementById('eligProgramSelect').value;
   if(progVal === '__OTHER__') progVal = document.getElementById('eligProgramOther').value.trim();
-  if(progVal) elig.push(`Programs: ${progVal}`);
-  if(document.getElementById('eligNotes').value.trim()) elig.push(document.getElementById('eligNotes').value.trim());
-  document.getElementById('eligibility').value = elig.join('; ');
+  data.program_course = progVal || '';
+  data.additional_criteria = document.getElementById('eligNotes').value.trim() || '';
   // Collect requirements from checkboxes + optional other text
   const reqs = Array.from(document.querySelectorAll('#createScholarshipModal .req:checked')).map(el => el.value);
   // gather custom chips
@@ -803,15 +824,13 @@ document.getElementById('editScholarshipForm').addEventListener('submit', async 
   const etypeSel = document.getElementById('editScholarshipType');
   const etypeOther = document.getElementById('editScholarshipTypeOther').value.trim();
   data.type = (etypeSel.value === '__OTHER__') ? etypeOther : etypeSel.value;
-  // Build eligibility summary for edit
-  const eligE = [];
+  // Send fields separately: minimum_gpa (to eligibility), program_course, additional_criteria
   const egpaSel = document.getElementById('editEligGpaText').value.trim();
-  if(egpaSel) eligE.push(`Min GPA: ${egpaSel}`);
+  data.minimum_gpa = egpaSel;  // This will be stored in eligibility column
   let eprogVal = document.getElementById('editEligProgramSelect').value;
   if(eprogVal === '__OTHER__') eprogVal = document.getElementById('editEligProgramOther').value.trim();
-  if(eprogVal) eligE.push(`Programs: ${eprogVal}`);
-  if(document.getElementById('editEligNotes').value.trim()) eligE.push(document.getElementById('editEligNotes').value.trim());
-  document.getElementById('editEligibilityHidden').value = eligE.join('; ');
+  data.program_course = eprogVal || '';
+  data.additional_criteria = document.getElementById('editEligNotes').value.trim() || '';
   const reqs = Array.from(document.querySelectorAll('#editScholarshipModal .req-edit:checked')).map(el => el.value);
   const chips = Array.from(document.querySelectorAll('#editReqCustomList .chip span')).map(s => s.textContent.trim());
   const other = (document.getElementById('editReqOther').value || '').trim();
