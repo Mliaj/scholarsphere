@@ -401,6 +401,56 @@ function viewApplication(applicationId) {
               </div>`;
         }
 
+        // Build Personal Information section
+        let personalInfoHtml = '';
+        if (data.personal_information) {
+          const pi = data.personal_information;
+          personalInfoHtml = `
+            <div>
+              <h3 style="color:#003366; margin-bottom:1rem;">Personal Information</h3>
+              <div style="display:grid; gap:0.75rem;">
+                ${pi.department ? `<div><strong>Department:</strong> ${pi.department}</div>` : ''}
+                ${pi.school_university ? `<div><strong>School/University:</strong> ${pi.school_university}</div>` : ''}
+                ${pi.address ? `<div><strong>Address:</strong> ${pi.address}</div>` : ''}
+                ${pi.contact_number ? `<div><strong>Contact Number:</strong> ${pi.contact_number}</div>` : ''}
+              </div>
+            </div>
+          `;
+        }
+        
+        // Build Family Background section
+        let familyBgHtml = '';
+        if (data.family_background) {
+          const fb = data.family_background;
+          familyBgHtml = `
+            <div>
+              <h3 style="color:#003366; margin-bottom:1rem;">Family Background</h3>
+              <div style="display:grid; gap:0.75rem;">
+                ${fb.parent_guardian_name ? `<div><strong>Parent/Guardian Name:</strong> ${fb.parent_guardian_name}</div>` : ''}
+                ${fb.occupation ? `<div><strong>Occupation:</strong> ${fb.occupation}</div>` : ''}
+                ${fb.household_income ? `<div><strong>Household Income:</strong> ${fb.household_income}</div>` : ''}
+                ${fb.dependents !== '' && fb.dependents !== null ? `<div><strong>Dependents:</strong> ${fb.dependents}</div>` : ''}
+              </div>
+            </div>
+          `;
+        }
+        
+        // Build Academic Information section
+        let academicInfoHtml = '';
+        if (data.academic_information) {
+          const ai = data.academic_information;
+          academicInfoHtml = `
+            <div>
+              <h3 style="color:#003366; margin-bottom:1rem;">Academic Information</h3>
+              <div style="display:grid; gap:0.75rem;">
+                ${ai.latest_gpa ? `<div><strong>Latest GPA:</strong> ${ai.latest_gpa}</div>` : ''}
+                ${ai.current_semester ? `<div><strong>Current Semester:</strong> ${ai.current_semester}</div>` : ''}
+                ${ai.school_year ? `<div><strong>School Year:</strong> ${ai.school_year}</div>` : ''}
+              </div>
+            </div>
+          `;
+        }
+        
         content.innerHTML = `
           <div style="display:grid; gap:1.5rem;">
             <div>
@@ -419,6 +469,9 @@ function viewApplication(applicationId) {
                 <div><strong>Status:</strong> <span class="application-status ${data.application.status.toLowerCase()}">${data.application.status}</span></div>
               </div>
             </div>
+            ${personalInfoHtml}
+            ${familyBgHtml}
+            ${academicInfoHtml}
             ${credentialsHtml}
           </div>
         `;
@@ -497,8 +550,29 @@ function reviewApplication(applicationId, action) {
     // Check if documents are verified
     let needsVerification = false;
     
-    // If modal is open for this app, use live count
+    // Always re-check verification status, especially if modal is open
+    // If modal is open for this app, use live count (which may have been updated)
     if (currentAppVerification.id === applicationId) {
+        // Re-count verified documents from the DOM to ensure accuracy
+        const modalContent = document.getElementById('applicationDetailsContent');
+        if (modalContent) {
+            // Count verified buttons (disabled verify buttons are verified)
+            const verifiedButtons = modalContent.querySelectorAll('button[id^="verifyBtn-"]:disabled');
+            const totalButtons = modalContent.querySelectorAll('button[id^="verifyBtn-"]');
+            const activeCredentials = Array.from(totalButtons).filter(btn => {
+                // Check if parent container is not the deleted credential style
+                const parent = btn.closest('div[style*="background"]');
+                if (parent && parent.style.background.includes('#fff5f5')) {
+                    return false; // Deleted credential
+                }
+                return true;
+            }).length;
+            
+            // Update counts based on actual DOM state
+            currentAppVerification.verifiedCount = verifiedButtons.length;
+            currentAppVerification.total = activeCredentials;
+        }
+        
         if (currentAppVerification.total > 0 && currentAppVerification.verifiedCount < currentAppVerification.total) {
             needsVerification = true;
         }

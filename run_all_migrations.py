@@ -128,6 +128,24 @@ def main():
             'module': 'migrate_add_scholarship_eligibility_fields',
             'function': 'migrate',
             'description': 'Add program_course and additional_criteria columns to scholarships table'
+        },
+        {
+            'name': 'Family Background Table',
+            'module': 'migrate_add_family_background_table',
+            'function': 'migrate',
+            'description': 'Create family_backgrounds table for scholarship application family information'
+        },
+        {
+            'name': 'Academic Information Table',
+            'module': 'migrate_add_academic_information_table',
+            'function': 'migrate',
+            'description': 'Create academic_information table for scholarship application academic details'
+        },
+        {
+            'name': 'Application Personal Information Table',
+            'module': 'migrate_add_personal_information_table',
+            'function': 'migrate',
+            'description': 'Create application_personal_information table for department, school, address, contact'
         }
     ]
     
