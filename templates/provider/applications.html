@@ -99,6 +99,93 @@
     
     @media (max-width:1024px){ .sidebar{width:250px;} .main-content{margin-left:250px;} }
     @media (max-width:768px){ .sidebar{transform:translateX(-100%); transition:transform .3s;} .sidebar.open{transform:translateX(0);} .main-content{margin-left:0;} .stats-bar{flex-direction:column;} }
+    
+    /* PDF Modal Styles */
+    .btn-pdf:hover { transform:translateY(-2px); box-shadow:0 4px 12px rgba(220,53,69,0.4); }
+    .pdf-modal { display:none; position:fixed; z-index:1001; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.6); animation:fadeIn 0.2s ease; }
+    .pdf-modal-content { background:#fff; margin:5% auto; padding:0; border-radius:15px; width:90%; max-width:500px; box-shadow:0 10px 40px rgba(0,0,0,0.2); animation:slideDown 0.3s ease; }
+    @keyframes fadeIn {
+        from { opacity:0; }
+        to { opacity:1; }
+    }
+    @keyframes slideDown {
+        from { transform:translateY(-30px); opacity:0; }
+        to { transform:translateY(0); opacity:1; }
+    }
+    .pdf-modal-header {
+        padding:1.5rem;
+        background:linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+        border-radius:15px 15px 0 0;
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+    }
+    .pdf-modal-header h3 {
+        margin:0;
+        font-size:1.3rem;
+        color:#fff;
+        font-weight:700;
+    }
+    .pdf-modal-body {
+        padding:2rem 1.5rem;
+    }
+    .pdf-modal-body label {
+        display:block;
+        margin-bottom:0.75rem;
+        font-weight:600;
+        color:#333;
+        font-size:0.95rem;
+    }
+    .pdf-modal-body select {
+        width:100%;
+        padding:0.75rem;
+        border:2px solid #ddd;
+        border-radius:8px;
+        font-size:1rem;
+        background:#fff;
+        cursor:pointer;
+        transition:border-color 0.3s;
+    }
+    .pdf-modal-body select:focus {
+        outline:none;
+        border-color:#dc3545;
+    }
+    .pdf-modal-footer {
+        padding:1rem 1.5rem 1.5rem;
+        display:flex;
+        justify-content:flex-end;
+        gap:0.75rem;
+    }
+    .pdf-btn {
+        padding:0.75rem 1.5rem;
+        border:none;
+        border-radius:8px;
+        cursor:pointer;
+        font-weight:600;
+        font-size:0.95rem;
+        transition:all 0.3s ease;
+    }
+    .pdf-btn-cancel {
+        background:#e9ecef;
+        color:#495057;
+    }
+    .pdf-btn-cancel:hover {
+        background:#dee2e6;
+    }
+    .pdf-btn-generate {
+        background:linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+        color:#fff;
+        box-shadow:0 2px 8px rgba(220,53,69,0.3);
+    }
+    .pdf-btn-generate:hover {
+        transform:translateY(-1px);
+        box-shadow:0 4px 12px rgba(220,53,69,0.4);
+    }
+    .pdf-btn-generate:disabled {
+        opacity:0.6;
+        cursor:not-allowed;
+        transform:none;
+    }
 </style>
 {% endblock %}
 
@@ -140,7 +227,12 @@
         <h1>Student Applications</h1>
         <p>Review and manage applications for your scholarship offers</p>
       </div>
-      <div class="user-menu"><div class="user-avatar">UC</div></div>
+      <div class="user-menu" style="display:flex; gap:0.75rem; align-items:center;">
+        <button class="btn-pdf" onclick="openPDFModal()" style="padding:0.75rem 1.5rem; background:linear-gradient(135deg, #dc3545 0%, #c82333 100%); color:#fff; border:none; border-radius:8px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:0.5rem; transition:all 0.3s; box-shadow:0 2px 8px rgba(220,53,69,0.3);">
+          <i class="fas fa-file-pdf"></i> Generate PDF
+        </button>
+        <div class="user-avatar">UC</div>
+      </div>
     </div>
 
     <!-- Statistics Bar -->
@@ -1029,6 +1121,36 @@ window.addEventListener('profilePictureUpdated', function(e) {
 });
 </script>
 
+<!-- PDF Generation Modal -->
+<div id="pdfModal" class="pdf-modal">
+    <div class="pdf-modal-content">
+        <div class="pdf-modal-header">
+            <h3><i class="fas fa-file-pdf"></i> Generate PDF Report</h3>
+            <button onclick="closePDFModal()" style="background:none; border:none; font-size:1.5rem; cursor:pointer; color:#fff; padding:0; width:30px; height:30px; display:flex; align-items:center; justify-content:center;">&times;</button>
+        </div>
+        <div class="pdf-modal-body">
+            <label for="pdfScholarshipSelect">Select Scholarship:</label>
+            <select id="pdfScholarshipSelect" class="form-control">
+                <option value="">-- Select a Scholarship --</option>
+                {% if scholarships %}
+                    {% for scholarship in scholarships %}
+                        <option value="{{ scholarship.id }}">{{ scholarship.title }} ({{ scholarship.code }}) - {{ scholarship.application_count }} application{{ 's' if scholarship.application_count != 1 else '' }}</option>
+                    {% endfor %}
+                {% endif %}
+            </select>
+            <p style="margin-top:1rem; font-size:0.85rem; color:#666;">
+                <i class="fas fa-info-circle"></i> This will generate a comprehensive PDF report including scholarship details, application statistics, and applicant list.
+            </p>
+        </div>
+        <div class="pdf-modal-footer">
+            <button class="pdf-btn pdf-btn-cancel" onclick="closePDFModal()">Cancel</button>
+            <button class="pdf-btn pdf-btn-generate" onclick="generatePDF()" id="generatePDFBtn">
+                <i class="fas fa-download"></i> Generate & Download
+            </button>
+        </div>
+    </div>
+</div>
+
 <!-- Provider Guidelines Modal -->
 <div id="providerGuidelinesModal" style="display: none; position: fixed; z-index: 10000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); overflow: auto;">
     <div style="background: #fff; margin: 5% auto; padding: 0; border-radius: 15px; width: 90%; max-width: 700px; max-height: 85vh; display: flex; flex-direction: column; box-shadow: 0 8px 32px rgba(0,0,0,0.2);">
@@ -1094,6 +1216,61 @@ window.onclick = function(event) {
     if (event.target == modal) {
         closeProviderGuidelinesModal();
     }
+    const pdfModal = document.getElementById('pdfModal');
+    if (event.target == pdfModal) {
+        closePDFModal();
+    }
+}
+
+// PDF Generation Functions
+function openPDFModal() {
+    const modal = document.getElementById('pdfModal');
+    if (modal) {
+        modal.style.display = 'block';
+        // Reset selection
+        document.getElementById('pdfScholarshipSelect').value = '';
+        const generateBtn = document.getElementById('generatePDFBtn');
+        if (generateBtn) {
+            generateBtn.disabled = false;
+            generateBtn.innerHTML = '<i class="fas fa-download"></i> Generate & Download';
+        }
+    }
+}
+
+function closePDFModal() {
+    const modal = document.getElementById('pdfModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+function generatePDF() {
+    const select = document.getElementById('pdfScholarshipSelect');
+    const scholarshipId = select.value;
+    const generateBtn = document.getElementById('generatePDFBtn');
+    
+    if (!scholarshipId) {
+        alert('Please select a scholarship first.');
+        return;
+    }
+    
+    // Disable button and show loading state
+    if (generateBtn) {
+        generateBtn.disabled = true;
+        generateBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
+    }
+    
+    // Generate PDF by redirecting to the PDF route
+    window.location.href = `/provider/api/scholarship/${scholarshipId}/report-pdf`;
+    
+    // Close modal after a short delay (to allow download to start)
+    setTimeout(() => {
+        closePDFModal();
+        if (generateBtn) {
+            generateBtn.disabled = false;
+            generateBtn.innerHTML = '<i class="fas fa-download"></i> Generate & Download';
+        }
+    }, 1000);
 }
 </script>
 {% endblock %}
