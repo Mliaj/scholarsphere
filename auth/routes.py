@@ -20,7 +20,7 @@ def login():
         # Redirect based on user role
         if current_user.role == 'student':
             return redirect(url_for('students.dashboard'))
-        elif current_user.role == 'provider':
+        elif current_user.role in ('provider_admin', 'provider_staff'):
             return redirect(url_for('provider.dashboard'))
         elif current_user.role == 'admin':
             return redirect(url_for('admin.dashboard'))
@@ -78,14 +78,24 @@ def login():
         
         if is_student_id:
             result = db.session.execute(
-                text("SELECT * FROM users WHERE student_id = :student_id"),
+                text("""
+                    SELECT id, first_name, last_name, email, student_id, birthday, password_hash, 
+                           role, profile_picture, year_level, course, organization, managed_by,
+                           created_at, updated_at, is_active, reset_token, reset_token_expires
+                    FROM users WHERE student_id = :student_id
+                """),
                 {"student_id": identifier}
             ).fetchone()
         else:
             # Case-insensitive email lookup
             email_lookup = identifier.lower()
             result = db.session.execute(
-                text("SELECT * FROM users WHERE LOWER(email) = :email"),
+                text("""
+                    SELECT id, first_name, last_name, email, student_id, birthday, password_hash, 
+                           role, profile_picture, year_level, course, organization, managed_by,
+                           created_at, updated_at, is_active, reset_token, reset_token_expires
+                    FROM users WHERE LOWER(email) = :email
+                """),
                 {"email": email_lookup}
             ).fetchone()
         
@@ -103,9 +113,9 @@ def login():
                 year_level=result[9],
                 course=result[10],
                 organization=result[11],
-                created_at=result[12],
-                updated_at=result[13],
-                is_active=result[14]
+                created_at=result[13],
+                updated_at=result[14],
+                is_active=result[15]
             )
         else:
             user = None
@@ -118,7 +128,7 @@ def login():
             # Determine redirect URL
             if user.role == 'student':
                 next_url = url_for('students.dashboard')
-            elif user.role == 'provider':
+            elif user.role in ('provider_admin', 'provider_staff'):
                 next_url = url_for('provider.dashboard')
             elif user.role == 'admin':
                 next_url = url_for('admin.dashboard')

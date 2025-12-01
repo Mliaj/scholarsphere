@@ -8,7 +8,7 @@ from sqlalchemy import text
 
 with app.app_context():
     result = db.session.execute(
-        text("SELECT id, first_name, last_name, email, organization, role FROM users WHERE role='provider' ORDER BY id")
+        text("SELECT id, first_name, last_name, email, organization, role FROM users WHERE role IN ('provider_admin', 'provider_staff') ORDER BY id")
     )
     rows = result.fetchall()
     

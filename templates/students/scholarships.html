@@ -51,6 +51,30 @@
         position: relative;
         overflow: hidden;
     }
+    .matching-ribbon {
+        position: absolute;
+        top: 0;
+        right: 0;
+        background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+        color: white;
+        padding: 8px 16px;
+        font-size: 0.7rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        box-shadow: 0 2px 8px rgba(40, 167, 69, 0.3);
+        z-index: 10;
+        white-space: nowrap;
+        border-radius: 0 16px 0 16px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .matching-ribbon::before {
+        content: '✓';
+        font-size: 0.85rem;
+        font-weight: 900;
+    }
     .scholarship-card:hover {
         transform: translateY(-2px);
         box-shadow: 0 8px 30px rgba(0,0,0,0.12);
@@ -499,6 +523,14 @@
         .scholarship-card h3 { 
             font-size: 1.1rem; 
         }
+        .matching-ribbon {
+            padding: 6px 12px;
+            font-size: 0.65rem;
+            letter-spacing: 0.3px;
+        }
+        .matching-ribbon::before {
+            font-size: 0.75rem;
+        }
         .requirements-list {
             gap: 0.4rem;
         }
@@ -633,6 +665,9 @@
                      data-org="{{ s.provider|default('') }}" 
                      data-type="{{ s.type|default('') }}" 
                      data-level="{{ s.level|default('') }}">
+                    {% if s.is_matching_course %}
+                    <div class="matching-ribbon">Matches Your Course</div>
+                    {% endif %}
                     <div class="scholarship-meta">
                         <span class="badge">{{ s.provider }}</span>
                         {% if s.type %}<span class="badge" style="background:#e9ecef; color:#495057; border-color:#ced4da;">{{ s.type }}</span>{% endif %}
@@ -676,8 +711,18 @@
                         {% endif %}
                     </div>
                     
-                    <div class="scholarship-meta" style="justify-content:space-between;">
+                    <div class="scholarship-meta" style="justify-content:space-between; flex-wrap: wrap; gap: 0.5rem;">
                         <span><i class="fas fa-calendar-alt"></i> Deadline: {{ s.deadline }}</span>
+                        {% if s.semester or s.school_year %}
+                        <span><i class="fas fa-graduation-cap"></i> 
+                            {% if s.semester %}{{ s.semester }} Semester{% endif %}
+                            {% if s.semester and s.school_year %} - {% endif %}
+                            {% if s.school_year %}{{ s.school_year }}{% endif %}
+                        </span>
+                        {% endif %}
+                        {% if s.semester_date %}
+                        <span><i class="fas fa-calendar-check"></i> Last Semester Date: {{ s.semester_date }}</span>
+                        {% endif %}
                     </div>
 
                     {% if s.contact_name or s.contact_email or s.contact_phone %}
@@ -689,7 +734,9 @@
                     {% endif %}
 
                     <div class="actions">
-                        {% if s.has_applied and not s.can_apply_again %}
+                        {% if s.is_expired %}
+                            <button class="btn-apply" disabled style="background: #6c757d; cursor: not-allowed;">Expired</button>
+                        {% elif s.has_applied and not s.can_apply_again %}
                             <button class="btn-apply" disabled>Applied ({{ s.application_status|title }})</button>
                         {% else %}
                             <button class="btn-apply" onclick="openApplication({{ s.scholarship_id }}, '{{ s.title|escape }}')">{% if s.can_apply_again %}Apply Again{% else %}Apply Now{% endif %}</button>

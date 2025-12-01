@@ -23,7 +23,8 @@ def create_uc_admin():
             last_name='Administrator',
             email='admin@uc.edu',
             student_id='00000001',  # Special admin ID
-            role='admin'
+            role='admin',
+            is_active=True
         )
         admin.set_password('admin123')
         
@@ -35,9 +36,13 @@ def create_uc_admin():
             print("🔑 Password: admin123")
             print("👤 Name: UC Administrator")
             print("🆔 Student ID: 00000001")
+            print("🔐 Role: admin")
             print("⚠️  Please change the password after first login!")
         except Exception as e:
+            db.session.rollback()
             print(f"❌ Error creating UC admin: {e}")
+            import traceback
+            traceback.print_exc()
 
 if __name__ == '__main__':
     create_uc_admin()
