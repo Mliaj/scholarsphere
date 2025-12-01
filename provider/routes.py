@@ -402,21 +402,105 @@ def generate_report_pdf():
         flash('Access denied. Provider access required.', 'error')
         return redirect(url_for('index'))
 
+    # Get actual data
+    scholarships = Scholarship.query.filter_by(provider_id=current_user.id).all()
+    scholarship_ids = [s.id for s in scholarships]
+    
+    total_scholarships = len(scholarships)
+    active_scholarships = len([s for s in scholarships if s.status in ['active', 'approved']])
+    draft_scholarships = len([s for s in scholarships if s.status == 'draft'])
+    archived_scholarships = len([s for s in scholarships if s.status == 'archived'])
+    
+    # Get application statistics
+    if scholarship_ids:
+        total_applications = ScholarshipApplication.query.filter(
+            ScholarshipApplication.scholarship_id.in_(scholarship_ids)
+        ).count()
+        pending_applications = ScholarshipApplication.query.filter(
+            ScholarshipApplication.scholarship_id.in_(scholarship_ids),
+            ScholarshipApplication.status == 'pending',
+            ScholarshipApplication.is_active == True
+        ).count()
+        approved_applications = ScholarshipApplication.query.filter(
+            ScholarshipApplication.scholarship_id.in_(scholarship_ids),
+            ScholarshipApplication.status == 'approved',
+            ScholarshipApplication.is_active == True
+        ).count()
+        rejected_applications = ScholarshipApplication.query.filter(
+            ScholarshipApplication.scholarship_id.in_(scholarship_ids),
+            ScholarshipApplication.status == 'rejected',
+            ScholarshipApplication.is_active == True
+        ).count()
+    else:
+        total_applications = 0
+        pending_applications = 0
+        approved_applications = 0
+        rejected_applications = 0
+
     # Create a file-like buffer to receive PDF data.
     buffer = io.BytesIO()
     
     # Create the PDF object, using the buffer as its "file."
     p = canvas.Canvas(buffer, pagesize=letter)
     
-    # Draw things on the PDF. Here's where the PDF generation happens.
-    p.drawString(100, 750, f"Provider Report for {current_user.organization or current_user.get_full_name()}")
-    p.drawString(100, 730, f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    p.drawString(100, 710, "--------------------------------------------------")
+    # Header
+    y = 750
+    p.drawString(100, y, f"Provider Report for {current_user.organization or current_user.get_full_name()}")
+    y -= 20
+    p.drawString(100, y, f"Provider ID: PRV-{str(current_user.id).zfill(3)}")
+    y -= 20
+    p.drawString(100, y, f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    y -= 20
+    p.drawString(100, y, "-" * 60)
     
-    # Add some dummy data for now
-    p.drawString(100, 690, "Summary of Activities:")
-    p.drawString(120, 670, "- Total Scholarships: N/A")
-    p.drawString(120, 650, "- Total Applications: N/A")
+    # Scholarship Statistics
+    y -= 30
+    p.drawString(100, y, "SCHOLARSHIP STATISTICS:")
+    y -= 20
+    p.drawString(120, y, f"Total Scholarships: {total_scholarships}")
+    y -= 20
+    p.drawString(120, y, f"Active Scholarships: {active_scholarships}")
+    y -= 20
+    p.drawString(120, y, f"Draft Scholarships: {draft_scholarships}")
+    y -= 20
+    p.drawString(120, y, f"Archived Scholarships: {archived_scholarships}")
+    
+    # Application Statistics
+    y -= 30
+    p.drawString(100, y, "APPLICATION STATISTICS:")
+    y -= 20
+    p.drawString(120, y, f"Total Applications: {total_applications}")
+    y -= 20
+    p.drawString(120, y, f"Pending Applications: {pending_applications}")
+    y -= 20
+    p.drawString(120, y, f"Approved Applications: {approved_applications}")
+    y -= 20
+    p.drawString(120, y, f"Rejected Applications: {rejected_applications}")
+    
+    # List of Scholarships
+    if scholarships:
+        y -= 40
+        if y < 100:
+            p.showPage()
+            y = 750
+        
+        p.drawString(100, y, "SCHOLARSHIP LIST:")
+        y -= 20
+        
+        for scholarship in scholarships[:20]:  # Limit to 20 per page
+            status_display = scholarship.status.upper()
+            if scholarship.status == 'archived':
+                status_display = "ARCHIVED"
+            
+            p.drawString(120, y, f"- {scholarship.code}: {scholarship.title} ({status_display})")
+            y -= 20
+            if y < 50:
+                p.showPage()
+                y = 750
+        
+        if len(scholarships) > 20:
+            p.drawString(120, y, f"... and {len(scholarships) - 20} more scholarships")
+            y -= 20
 
     # Close the PDF object cleanly.
     p.showPage()
@@ -1526,17 +1610,94 @@ def api_scholarship_report_pdf(id):
         p.drawString(120, y, f"Slots: {scholarship.slots}")
         y -= 20
     
-    # Application Statistics
+    if scholarship.eligibility:
+        p.drawString(120, y, f"Minimum GPA: {scholarship.eligibility}")
+        y -= 20
+    
+    if scholarship.program_course:
+        p.drawString(120, y, f"Program/Course: {scholarship.program_course}")
+        y -= 20
+    
+    if scholarship.additional_criteria:
+        # Handle long additional criteria with word wrapping
+        criteria_lines = []
+        words = scholarship.additional_criteria.split()
+        current_line = ""
+        for word in words:
+            if len(current_line + word) < 60:
+                current_line += word + " "
+            else:
+                if current_line:
+                    criteria_lines.append(current_line.strip())
+                current_line = word + " "
+        if current_line:
+            criteria_lines.append(current_line.strip())
+        
+        p.drawString(120, y, "Additional Criteria:")
+        y -= 15
+        for line in criteria_lines[:5]:  # Limit to 5 lines
+            p.drawString(140, y, line)
+            y -= 15
+        if len(criteria_lines) > 5:
+            p.drawString(140, y, "...")
+            y -= 15
+    
+    if scholarship.requirements:
+        # Convert requirements from short codes to descriptive names
+        from credential_matcher import CredentialMatcher
+        req_codes = [req.strip() for req in scholarship.requirements.split(',') if req.strip()]
+        requirements_list = []
+        for req_code in req_codes:
+            if req_code in CredentialMatcher.REQUIREMENT_MAPPINGS:
+                requirements_list.append(CredentialMatcher.REQUIREMENT_MAPPINGS[req_code][0])
+            else:
+                requirements_list.append(req_code)  # Keep custom requirements as-is
+        
+        if requirements_list:
+            p.drawString(120, y, "Required Documents:")
+            y -= 20
+            for req in requirements_list:
+                p.drawString(140, y, f"• {req}")
+                y -= 18
+                if y < 50:  # New page if needed
+                    p.showPage()
+                    y = 750
+    
+    if scholarship.contact_name or scholarship.contact_email or scholarship.contact_phone:
+        y -= 10
+        p.drawString(120, y, "Contact Information:")
+        y -= 15
+        if scholarship.contact_name:
+            p.drawString(140, y, f"Name: {scholarship.contact_name}")
+            y -= 15
+        if scholarship.contact_email:
+            p.drawString(140, y, f"Email: {scholarship.contact_email}")
+            y -= 15
+        if scholarship.contact_phone:
+            p.drawString(140, y, f"Phone: {scholarship.contact_phone}")
+            y -= 15
+    
+    # Application Statistics - use actual counts from database for accuracy
     y -= 30
     p.drawString(100, y, "APPLICATION STATISTICS:")
     y -= 20
-    p.drawString(120, y, f"Total Applications: {scholarship.applications_count or 0}")
+    
+    # Get actual counts from database for accuracy
+    total_apps = ScholarshipApplication.query.filter_by(scholarship_id=scholarship.id).count()
+    active_apps_count = ScholarshipApplication.query.filter_by(scholarship_id=scholarship.id, is_active=True).count()
+    pending_count = ScholarshipApplication.query.filter_by(scholarship_id=scholarship.id, status='pending', is_active=True).count()
+    approved_count = ScholarshipApplication.query.filter_by(scholarship_id=scholarship.id, status='approved', is_active=True).count()
+    rejected_count = ScholarshipApplication.query.filter_by(scholarship_id=scholarship.id, status='rejected', is_active=True).count()
+    
+    p.drawString(120, y, f"Total Applications: {total_apps}")
     y -= 20
-    p.drawString(120, y, f"Pending: {scholarship.pending_count or 0}")
+    p.drawString(120, y, f"Active Applications: {active_apps_count}")
     y -= 20
-    p.drawString(120, y, f"Approved: {scholarship.approved_count or 0}")
+    p.drawString(120, y, f"Pending: {pending_count}")
     y -= 20
-    p.drawString(120, y, f"Rejected: {scholarship.disapproved_count or 0}")
+    p.drawString(120, y, f"Approved: {approved_count}")
+    y -= 20
+    p.drawString(120, y, f"Rejected: {rejected_count}")
     
     # List applicants (only active applications)
     active_apps = [app for app in scholarship.applications if app.is_active]

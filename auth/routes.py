@@ -137,8 +137,22 @@ def login():
             return resp
         else:
             flash('Invalid credentials.', 'error')
+            # On failed login, handle "Remember Me" appropriately
+            remember_was_checked = request.form.get('remember') == 'on'
+            identifier_entered = request.form.get('identifier', '')
+            
+            if remember_was_checked:
+                # "Remember Me" was checked - restore what they typed and keep checkbox checked
+                remembered_identifier = identifier_entered
+                return render_template('auth/login.html', remembered_identifier=remembered_identifier)
+            else:
+                # "Remember Me" was unchecked - don't restore anything and clear cookie
+                remembered_identifier = ''
+                resp = make_response(render_template('auth/login.html', remembered_identifier=remembered_identifier))
+                resp.set_cookie('remembered_identifier', '', expires=0)
+                return resp
     
-    # GET request: Check for remembered identifier
+    # GET request: Check for remembered identifier from cookie
     remembered_identifier = request.cookies.get('remembered_identifier', '')
     return render_template('auth/login.html', remembered_identifier=remembered_identifier)
 
