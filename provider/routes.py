@@ -9,6 +9,52 @@ from credential_matcher import CredentialMatcher
 
 provider_bp = Blueprint('provider', __name__)
 
+def notify_matching_students(scholarship):
+    """Notify students whose course matches the scholarship's program_course"""
+    if not scholarship.program_course or not scholarship.program_course.strip():
+        return
+    
+    scholarship_course_upper = scholarship.program_course.strip().upper()
+    scholarship_courses = [c.strip() for c in scholarship_course_upper.split(',')]
+    
+    # Find all students with matching courses
+    students = db.session.execute(
+        text("""
+            SELECT id, first_name, last_name, course, email
+            FROM users
+            WHERE role = 'student' AND course IS NOT NULL AND course != ''
+        """)
+    ).fetchall()
+    
+    matching_count = 0
+    for student in students:
+        student_course = (student[3] or '').strip().upper()
+        if student_course:
+            # Check if courses match
+            is_match = student_course in scholarship_courses or any(
+                student_course in sc or sc in student_course 
+                for sc in scholarship_courses
+            )
+            
+            if is_match:
+                matching_count += 1
+                # Send notification
+                db.session.execute(
+                    text("""
+                        INSERT INTO notifications (user_id, type, title, message, created_at, is_active)
+                        VALUES (:user_id, :type, :title, :message, :created_at, 1)
+                    """),
+                    {
+                        "user_id": student[0],
+                        "type": 'info',
+                        "title": 'New Scholarship Match!',
+                        "message": f'A new scholarship "{scholarship.title}" ({scholarship.code}) matches your course! Check it out in Browse Scholarships.',
+                        "created_at": datetime.utcnow()
+                    }
+                )
+    
+    return matching_count
+
 @provider_bp.route('/dashboard')
 @login_required
 def dashboard():
@@ -1116,6 +1162,10 @@ def api_publish_scholarship(id):
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
         
     scholarship.status = 'approved'
+    
+    # Notify matching students when scholarship is published
+    notify_matching_students(scholarship)
+    
     db.session.commit()
     
     return jsonify({'success': True})
@@ -1161,6 +1211,12 @@ def api_create_scholarship():
         )
         
         db.session.add(new_scholarship)
+        db.session.flush()  # Flush to get the ID without committing
+        
+        # If scholarship is created as approved/active, notify matching students
+        if new_scholarship.status in ('approved', 'active'):
+            notify_matching_students(new_scholarship)
+        
         db.session.commit()
         
         return jsonify({'success': True, 'id': new_scholarship.id})
@@ -1211,6 +1267,9 @@ def api_scholarship_detail(id):
     elif request.method == 'POST':
         data = request.get_json()
         try:
+            old_status = scholarship.status
+            old_program_course = scholarship.program_course
+            
             if 'title' in data: scholarship.title = data['title']
             if 'description' in data: scholarship.description = data['description']
             if 'amount' in data: scholarship.amount = data['amount']
@@ -1228,6 +1287,21 @@ def api_scholarship_detail(id):
             if 'contact_name' in data: scholarship.contact_name = data['contact_name']
             if 'contact_email' in data: scholarship.contact_email = data['contact_email']
             if 'contact_phone' in data: scholarship.contact_phone = data['contact_phone']
+            
+            # Notify matching students if:
+            # 1. Status changed to approved/active (from draft or other status)
+            # 2. Program course was updated and scholarship is active/approved
+            should_notify = False
+            if 'status' in data:
+                new_status = data['status']
+                if new_status in ('approved', 'active') and old_status not in ('approved', 'active'):
+                    should_notify = True
+            elif 'program_course' in data and scholarship.status in ('approved', 'active'):
+                if data['program_course'] != old_program_course:
+                    should_notify = True
+            
+            if should_notify:
+                notify_matching_students(scholarship)
             
             db.session.commit()
             return jsonify({'success': True})

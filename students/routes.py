@@ -463,6 +463,20 @@ def scholarships():
         
         has_applied = (existing_application_status is not None and existing_application_status.lower() in ['pending', 'approved'])
         can_apply_again = (existing_application_status is not None and existing_application_status.lower() in ['rejected', 'withdrawn'])
+        
+        # Check if scholarship matches student's course
+        is_matching_course = False
+        student_course = (current_user.course or '').strip().upper()
+        scholarship_course = (scholarship[11] or '').strip().upper()
+        
+        if student_course and scholarship_course:
+            # Check for exact match or if scholarship course contains student course or vice versa
+            # Also handle comma-separated courses in scholarship (e.g., "BSIT, BSCS, BSCE")
+            scholarship_courses = [c.strip() for c in scholarship_course.split(',')]
+            is_matching_course = student_course in scholarship_courses or any(
+                student_course in sc or sc in student_course 
+                for sc in scholarship_courses
+            )
 
         scholarships_data.append({
             'id': scholarship[1] or f"SCH-{scholarship_id:03d}",
@@ -485,7 +499,8 @@ def scholarships():
             'scholarship_id': scholarship_id,
             'has_applied': has_applied,
             'application_status': existing_application_status,
-            'can_apply_again': can_apply_again
+            'can_apply_again': can_apply_again,
+            'is_matching_course': is_matching_course
         })
     
     return render_template('students/scholarships.html', scholarships=scholarships_data, user=current_user, today_date=today_date)
@@ -1634,6 +1649,63 @@ def update_profile():
                 "created_at": datetime.utcnow()
             }
         )
+        
+        # Check for matching scholarships if course was updated
+        if course:
+            matching_scholarships = db.session.execute(
+                text("""
+                    SELECT id, code, title, program_course
+                    FROM scholarships
+                    WHERE status IN ('active', 'approved') AND is_active = 1
+                    AND program_course IS NOT NULL AND program_course != ''
+                """)
+            ).fetchall()
+            
+            student_course_upper = course.strip().upper()
+            matching_count = 0
+            
+            for scholarship in matching_scholarships:
+                scholarship_course = (scholarship[3] or '').strip().upper()
+                if scholarship_course:
+                    # Check if courses match (handle comma-separated courses)
+                    scholarship_courses = [c.strip() for c in scholarship_course.split(',')]
+                    is_match = student_course_upper in scholarship_courses or any(
+                        student_course_upper in sc or sc in student_course_upper 
+                        for sc in scholarship_courses
+                    )
+                    
+                    if is_match:
+                        matching_count += 1
+                        # Send notification for each matching scholarship
+                        db.session.execute(
+                            text("""
+                                INSERT INTO notifications (user_id, type, title, message, created_at, is_active)
+                                VALUES (:user_id, :type, :title, :message, :created_at, 1)
+                            """),
+                            {
+                                "user_id": current_user.id,
+                                "type": 'info',
+                                "title": 'New Scholarship Match!',
+                                "message": f'We found a scholarship that matches your course: {scholarship[2]} ({scholarship[1]}). Check it out in Browse Scholarships!',
+                                "created_at": datetime.utcnow()
+                            }
+                        )
+            
+            if matching_count > 0:
+                # Also send a summary notification
+                db.session.execute(
+                    text("""
+                        INSERT INTO notifications (user_id, type, title, message, created_at, is_active)
+                        VALUES (:user_id, :type, :title, :message, :created_at, 1)
+                    """),
+                    {
+                        "user_id": current_user.id,
+                        "type": 'info',
+                        "title": 'Scholarship Matches Found!',
+                        "message": f'We found {matching_count} scholarship(s) that match your course. Look for the "Matches Your Course" ribbon on scholarship cards!',
+                        "created_at": datetime.utcnow()
+                    }
+                )
         
         db.session.commit()
         
