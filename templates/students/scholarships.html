@@ -721,8 +721,11 @@ function openApplication(id, title){
     const course = {% if current_user.course %}'{{ current_user.course }}'{% else %}null{% endif %};
     
     // Check if year_level or course is missing or empty
-    if (!yearLevel || yearLevel === 'null' || yearLevel.trim() === '' || 
-        !course || course === 'null' || course.trim() === '') {
+    // Handle both null values and empty strings safely
+    const yearLevelValid = yearLevel && yearLevel !== 'null' && String(yearLevel).trim() !== '';
+    const courseValid = course && course !== 'null' && String(course).trim() !== '';
+    
+    if (!yearLevelValid || !courseValid) {
         // Show custom alert modal
         showProfileAlert();
         return;
