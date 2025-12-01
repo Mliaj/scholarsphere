@@ -1548,6 +1548,25 @@ def api_application_detail(id):
                 "current_semester": academic_info[1] or "",
                 "school_year": academic_info[2] or ""
             }
+        
+        # Get Personal Information (department, school, address, contact)
+        personal_info = db.session.execute(
+            text("""
+                SELECT department, school_university, address, contact_number
+                FROM application_personal_information
+                WHERE application_id = :id
+                LIMIT 1
+            """), {"id": application.id}
+        ).fetchone()
+        
+        personal_information = None
+        if personal_info:
+            personal_information = {
+                "department": personal_info[0] or "",
+                "school_university": personal_info[1] or "",
+                "address": personal_info[2] or "",
+                "contact_number": personal_info[3] or ""
+            }
             
         return jsonify({
             'success': True,
@@ -1562,7 +1581,8 @@ def api_application_detail(id):
             },
             'credentials': cred_list,
             'family_background': family_background,
-            'academic_information': academic_information
+            'academic_information': academic_information,
+            'personal_information': personal_information
         })
     except Exception as e:
         db.session.rollback()

@@ -401,6 +401,23 @@ function viewApplication(applicationId) {
               </div>`;
         }
 
+        // Build Personal Information section
+        let personalInfoHtml = '';
+        if (data.personal_information) {
+          const pi = data.personal_information;
+          personalInfoHtml = `
+            <div>
+              <h3 style="color:#003366; margin-bottom:1rem;">Personal Information</h3>
+              <div style="display:grid; gap:0.75rem;">
+                ${pi.department ? `<div><strong>Department:</strong> ${pi.department}</div>` : ''}
+                ${pi.school_university ? `<div><strong>School/University:</strong> ${pi.school_university}</div>` : ''}
+                ${pi.address ? `<div><strong>Address:</strong> ${pi.address}</div>` : ''}
+                ${pi.contact_number ? `<div><strong>Contact Number:</strong> ${pi.contact_number}</div>` : ''}
+              </div>
+            </div>
+          `;
+        }
+        
         // Build Family Background section
         let familyBgHtml = '';
         if (data.family_background) {
@@ -452,6 +469,7 @@ function viewApplication(applicationId) {
                 <div><strong>Status:</strong> <span class="application-status ${data.application.status.toLowerCase()}">${data.application.status}</span></div>
               </div>
             </div>
+            ${personalInfoHtml}
             ${familyBgHtml}
             ${academicInfoHtml}
             ${credentialsHtml}

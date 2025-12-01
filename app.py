@@ -245,6 +245,22 @@ class AcademicInformation(db.Model):
     # Relationships
     application = db.relationship('ScholarshipApplication', backref='academic_information')
 
+# Application Personal Information model (for scholarship application)
+class ApplicationPersonalInformation(db.Model):
+    __tablename__ = 'application_personal_information'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    application_id = db.Column(db.Integer, db.ForeignKey('scholarship_applications.id'), nullable=False, unique=True)
+    department = db.Column(db.String(255), nullable=True)
+    school_university = db.Column(db.String(255), nullable=True)
+    address = db.Column(db.Text, nullable=True)
+    contact_number = db.Column(db.String(50), nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=True, onupdate=datetime.utcnow)
+    
+    # Relationships
+    application = db.relationship('ScholarshipApplication', backref='personal_information')
+
 # Notification model for student interactions
 class Notification(db.Model):
     __tablename__ = 'notifications'

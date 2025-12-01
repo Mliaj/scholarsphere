@@ -140,6 +140,12 @@ def main():
             'module': 'migrate_add_academic_information_table',
             'function': 'migrate',
             'description': 'Create academic_information table for scholarship application academic details'
+        },
+        {
+            'name': 'Application Personal Information Table',
+            'module': 'migrate_add_personal_information_table',
+            'function': 'migrate',
+            'description': 'Create application_personal_information table for department, school, address, contact'
         }
     ]
     

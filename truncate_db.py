@@ -41,6 +41,7 @@ TABLES = [
     'application_remarks',
     'family_backgrounds',
     'academic_information',
+    'application_personal_information',
     'scholarship_application_files',
     'scholarship_applications',
     'credentials',

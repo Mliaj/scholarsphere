@@ -520,6 +520,16 @@ function openAppDetails(appId){
               </div>` : ''}
             </div>
           </section>
+          ${a.personal_information ? `
+          <section>
+            <h3 style="color:#003366; margin-bottom:.5rem;">Personal Information</h3>
+            <div style="display:grid; gap:.4rem;">
+              ${a.personal_information.department ? `<div><strong>Department:</strong> ${a.personal_information.department}</div>` : ''}
+              ${a.personal_information.school_university ? `<div><strong>School/University:</strong> ${a.personal_information.school_university}</div>` : ''}
+              ${a.personal_information.address ? `<div><strong>Address:</strong> ${a.personal_information.address}</div>` : ''}
+              ${a.personal_information.contact_number ? `<div><strong>Contact Number:</strong> ${a.personal_information.contact_number}</div>` : ''}
+            </div>
+          </section>` : ''}
           ${a.family_background ? `
           <section>
             <h3 style="color:#003366; margin-bottom:.5rem;">Family Background</h3>

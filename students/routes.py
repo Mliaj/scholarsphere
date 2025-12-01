@@ -651,6 +651,27 @@ def apply_scholarship(scholarship_id):
             except Exception as e:
                 print(f"Warning: Could not save academic information: {e}")
         
+        # Save Personal Information (department, school, address, contact)
+        if any(form_data.get(k) for k in ['department', 'school', 'address', 'contact']):
+            try:
+                db.session.execute(
+                    text("""
+                        INSERT INTO application_personal_information 
+                        (application_id, department, school_university, address, contact_number, created_at)
+                        VALUES (:application_id, :department, :school_university, :address, :contact_number, :created_at)
+                    """),
+                    {
+                        "application_id": application_id,
+                        "department": form_data.get('department', ''),
+                        "school_university": form_data.get('school', ''),
+                        "address": form_data.get('address', ''),
+                        "contact_number": form_data.get('contact', ''),
+                        "created_at": current_time
+                    }
+                )
+            except Exception as e:
+                print(f"Warning: Could not save personal information: {e}")
+        
         # Link selected credentials to the application (if any requirements exist)
         if selected_credentials and len(selected_credentials) > 0:
             for requirement, credential_id in selected_credentials.items():
@@ -1048,6 +1069,25 @@ def get_application_detail(application_id):
                 "current_semester": academic_info[1] or "",
                 "school_year": academic_info[2] or ""
             }
+        
+        # Get Personal Information (department, school, address, contact)
+        personal_info = db.session.execute(
+            text("""
+                SELECT department, school_university, address, contact_number
+                FROM application_personal_information
+                WHERE application_id = :id
+                LIMIT 1
+            """), {"id": application_id}
+        ).fetchone()
+        
+        personal_information = None
+        if personal_info:
+            personal_information = {
+                "department": personal_info[0] or "",
+                "school_university": personal_info[1] or "",
+                "address": personal_info[2] or "",
+                "contact_number": personal_info[3] or ""
+            }
             
         # Get current requirements
         req_str = app_row[13] or ''
@@ -1257,9 +1297,10 @@ def get_application_detail(application_id):
             'contact_name': app_row[10] or '',
             'contact_email': app_row[11] or '',
             'contact_phone': app_row[12] or '',
-            # Family Background and Academic Information
+            # Family Background, Academic Information, and Personal Information
             'family_background': family_background,
-            'academic_information': academic_information
+            'academic_information': academic_information,
+            'personal_information': personal_information
         }
         return jsonify({'success': True, 'application': payload})
     except Exception as e:
