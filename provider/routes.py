@@ -1023,7 +1023,9 @@ def api_create_scholarship():
             # New fields
             type=data.get('type', ''),
             level=data.get('level', ''),
-            eligibility=data.get('eligibility', ''),
+            eligibility=data.get('minimum_gpa', ''),  # Minimum GPA goes in eligibility column
+            program_course=data.get('program_course', ''),
+            additional_criteria=data.get('additional_criteria', ''),
             slots=int(data.get('slots')) if data.get('slots') else None,
             contact_name=data.get('contact_name', ''),
             contact_email=data.get('contact_email', ''),
@@ -1068,7 +1070,9 @@ def api_scholarship_detail(id):
                 # New fields
                 'type': scholarship.type or '',
                 'level': scholarship.level or '',
-                'eligibility': scholarship.eligibility or '',
+                'eligibility': scholarship.eligibility or '',  # Minimum GPA
+                'program_course': scholarship.program_course or '',
+                'additional_criteria': scholarship.additional_criteria or '',
                 'slots': scholarship.slots or '',
                 'contact_name': scholarship.contact_name or '',
                 'contact_email': scholarship.contact_email or '',
@@ -1089,7 +1093,9 @@ def api_scholarship_detail(id):
             # New fields update
             if 'type' in data: scholarship.type = data['type']
             if 'level' in data: scholarship.level = data['level']
-            if 'eligibility' in data: scholarship.eligibility = data['eligibility']
+            if 'minimum_gpa' in data: scholarship.eligibility = data['minimum_gpa']  # Minimum GPA in eligibility column
+            if 'program_course' in data: scholarship.program_course = data['program_course']
+            if 'additional_criteria' in data: scholarship.additional_criteria = data['additional_criteria']
             if 'slots' in data: scholarship.slots = int(data['slots']) if data['slots'] else None
             if 'contact_name' in data: scholarship.contact_name = data['contact_name']
             if 'contact_email' in data: scholarship.contact_email = data['contact_email']

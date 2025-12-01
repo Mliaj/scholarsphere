@@ -564,10 +564,14 @@
                         <div><strong>Slots:</strong> {{ s.slots or 'Unlimited' }}</div>
                     </div>
 
-                    {% if s.eligibility and s.eligibility != 'No specific eligibility criteria' %}
+                    {% if s.eligibility or s.program_course or s.additional_criteria %}
                     <div class="scholarship-req">
-                        <strong>Eligibility:</strong>
-                        <div style="font-size:0.9rem; color:#555; margin-top:0.25rem;">{{ s.eligibility }}</div>
+                        <strong>Eligibility Criteria:</strong>
+                        <div style="font-size:0.9rem; color:#555; margin-top:0.25rem; display:grid; gap:0.25rem;">
+                            {% if s.eligibility %}<div><strong>Minimum GPA:</strong> {{ s.eligibility }}</div>{% endif %}
+                            {% if s.program_course %}<div><strong>Program/Course:</strong> {{ s.program_course }}</div>{% endif %}
+                            {% if s.additional_criteria %}<div><strong>Additional Criteria:</strong> {{ s.additional_criteria }}</div>{% endif %}
+                        </div>
                     </div>
                     {% endif %}
 

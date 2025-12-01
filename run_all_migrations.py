@@ -122,6 +122,12 @@ def main():
             'module': 'migrate_add_password_reset',
             'function': 'migrate',
             'description': 'Add reset_token and reset_token_expires columns to users table'
+        },
+        {
+            'name': 'Scholarship Eligibility Fields',
+            'module': 'migrate_add_scholarship_eligibility_fields',
+            'function': 'migrate',
+            'description': 'Add program_course and additional_criteria columns to scholarships table'
         }
     ]
     
