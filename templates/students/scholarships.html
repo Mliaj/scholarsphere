@@ -711,8 +711,18 @@
                         {% endif %}
                     </div>
                     
-                    <div class="scholarship-meta" style="justify-content:space-between;">
+                    <div class="scholarship-meta" style="justify-content:space-between; flex-wrap: wrap; gap: 0.5rem;">
                         <span><i class="fas fa-calendar-alt"></i> Deadline: {{ s.deadline }}</span>
+                        {% if s.semester or s.school_year %}
+                        <span><i class="fas fa-graduation-cap"></i> 
+                            {% if s.semester %}{{ s.semester }} Semester{% endif %}
+                            {% if s.semester and s.school_year %} - {% endif %}
+                            {% if s.school_year %}{{ s.school_year }}{% endif %}
+                        </span>
+                        {% endif %}
+                        {% if s.semester_date %}
+                        <span><i class="fas fa-calendar-check"></i> Last Semester Date: {{ s.semester_date }}</span>
+                        {% endif %}
                     </div>
 
                     {% if s.contact_name or s.contact_email or s.contact_phone %}
@@ -724,7 +734,9 @@
                     {% endif %}
 
                     <div class="actions">
-                        {% if s.has_applied and not s.can_apply_again %}
+                        {% if s.is_expired %}
+                            <button class="btn-apply" disabled style="background: #6c757d; cursor: not-allowed;">Expired</button>
+                        {% elif s.has_applied and not s.can_apply_again %}
                             <button class="btn-apply" disabled>Applied ({{ s.application_status|title }})</button>
                         {% else %}
                             <button class="btn-apply" onclick="openApplication({{ s.scholarship_id }}, '{{ s.title|escape }}')">{% if s.can_apply_again %}Apply Again{% else %}Apply Now{% endif %}</button>

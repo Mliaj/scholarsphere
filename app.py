@@ -154,6 +154,11 @@ class Scholarship(db.Model):
     provider_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     status = db.Column(db.String(20), nullable=False, default='draft')  # draft, approved, active, closed
     deadline = db.Column(db.Date, nullable=True)
+    is_expired_deadline = db.Column(db.Boolean, nullable=False, default=False)
+    semester = db.Column(db.String(50), nullable=True)  # e.g., "1st", "2nd"
+    school_year = db.Column(db.String(50), nullable=True)  # e.g., "2025 - 2026"
+    semester_date = db.Column(db.Date, nullable=True)
+    is_expired_semester = db.Column(db.Boolean, nullable=False, default=False)
     amount = db.Column(db.String(100), nullable=True)  # e.g., "₱50,000 per semester"
     requirements = db.Column(db.Text, nullable=True)
     applications_count = db.Column(db.Integer, nullable=False, default=0)

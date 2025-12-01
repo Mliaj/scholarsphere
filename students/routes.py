@@ -384,26 +384,64 @@ def scholarships():
     from datetime import datetime
     db = current_app.extensions['sqlalchemy']
 
-    # Archive scholarships with past deadlines
+    today = datetime.utcnow().date()
+    today_date = today.isoformat()
+    
+    # Update expired deadline status (but keep scholarship active)
     db.session.execute(
         text(
             """
             UPDATE scholarships
-            SET is_active = 0, status = 'closed'
-            WHERE deadline < :today AND is_active = 1
+            SET is_expired_deadline = 1
+            WHERE deadline IS NOT NULL AND deadline < :today AND is_expired_deadline = 0
             """
         ),
-        {"today": datetime.utcnow().date()}
+        {"today": today}
     )
-    db.session.commit()
     
-    today_date = datetime.utcnow().date().isoformat()
+    # Update expired semester status
+    db.session.execute(
+        text(
+            """
+            UPDATE scholarships
+            SET is_expired_semester = 1
+            WHERE semester_date IS NOT NULL AND semester_date < :today AND is_expired_semester = 0
+            """
+        ),
+        {"today": today}
+    )
+    
+    # Reset expiration status if deadline/semester_date is updated to future date
+    db.session.execute(
+        text(
+            """
+            UPDATE scholarships
+            SET is_expired_deadline = 0
+            WHERE deadline IS NOT NULL AND deadline >= :today AND is_expired_deadline = 1
+            """
+        ),
+        {"today": today}
+    )
+    
+    db.session.execute(
+        text(
+            """
+            UPDATE scholarships
+            SET is_expired_semester = 0
+            WHERE semester_date IS NOT NULL AND semester_date >= :today AND is_expired_semester = 1
+            """
+        ),
+        {"today": today}
+    )
+    
+    db.session.commit()
     
     available_scholarships = db.session.execute(
         text(
             """
             SELECT s.id, s.code, s.title, s.description, s.amount, s.deadline, s.requirements, u.organization,
-                   s.type, s.level, s.eligibility, s.program_course, s.additional_criteria, s.slots, s.contact_name, s.contact_email, s.contact_phone
+                   s.type, s.level, s.eligibility, s.program_course, s.additional_criteria, s.slots, s.contact_name, s.contact_email, s.contact_phone,
+                   s.is_expired_deadline, s.semester, s.school_year, s.semester_date, s.is_expired_semester
             FROM scholarships s
             LEFT JOIN users u ON s.provider_id = u.id
             WHERE s.status IN ('active','approved') AND s.is_active = 1
@@ -464,19 +502,43 @@ def scholarships():
         has_applied = (existing_application_status is not None and existing_application_status.lower() in ['pending', 'approved'])
         can_apply_again = (existing_application_status is not None and existing_application_status.lower() in ['rejected', 'withdrawn'])
         
+        # Check expiration status
+        is_expired_deadline = bool(scholarship[17]) if len(scholarship) > 17 else False
+        is_expired_semester = bool(scholarship[21]) if len(scholarship) > 21 else False
+        is_expired = is_expired_deadline or is_expired_semester
+        
+        # Parse semester_date
+        semester_date_val = scholarship[20] if len(scholarship) > 20 else None
+        semester_date = None
+        if semester_date_val:
+            if isinstance(semester_date_val, str):
+                try:
+                    semester_date = datetime.fromisoformat(semester_date_val.replace('Z','+00:00'))
+                except:
+                    try:
+                        semester_date = datetime.strptime(semester_date_val, '%Y-%m-%d')
+                    except:
+                        semester_date = None
+            elif hasattr(semester_date_val, 'strftime'):
+                semester_date = semester_date_val
+        
         # Check if scholarship matches student's course
         is_matching_course = False
         student_course = (current_user.course or '').strip().upper()
         scholarship_course = (scholarship[11] or '').strip().upper()
         
         if student_course and scholarship_course:
-            # Check for exact match or if scholarship course contains student course or vice versa
-            # Also handle comma-separated courses in scholarship (e.g., "BSIT, BSCS, BSCE")
-            scholarship_courses = [c.strip() for c in scholarship_course.split(',')]
-            is_matching_course = student_course in scholarship_courses or any(
-                student_course in sc or sc in student_course 
-                for sc in scholarship_courses
-            )
+            # Check if "All Programs" is selected - matches all courses
+            if scholarship_course == 'ALL PROGRAMS':
+                is_matching_course = True
+            else:
+                # Check for exact match or if scholarship course contains student course or vice versa
+                # Also handle comma-separated courses in scholarship (e.g., "BSIT, BSCS, BSCE")
+                scholarship_courses = [c.strip().upper() for c in scholarship_course.split(',')]
+                is_matching_course = student_course in scholarship_courses or any(
+                    student_course in sc or sc in student_course 
+                    for sc in scholarship_courses
+                )
 
         scholarships_data.append({
             'id': scholarship[1] or f"SCH-{scholarship_id:03d}",
@@ -500,7 +562,13 @@ def scholarships():
             'has_applied': has_applied,
             'application_status': existing_application_status,
             'can_apply_again': can_apply_again,
-            'is_matching_course': is_matching_course
+            'is_matching_course': is_matching_course,
+            'is_expired': is_expired,
+            'is_expired_deadline': is_expired_deadline,
+            'is_expired_semester': is_expired_semester,
+            'semester': scholarship[18] if len(scholarship) > 18 else '',
+            'school_year': scholarship[19] if len(scholarship) > 19 else '',
+            'semester_date': semester_date.strftime('%B %d, %Y') if semester_date else None
         })
     
     return render_template('students/scholarships.html', scholarships=scholarships_data, user=current_user, today_date=today_date)
@@ -536,8 +604,14 @@ def apply_scholarship(scholarship_id):
                 selected_credentials = {}
         
         # Check if scholarship exists and is active
+        today = datetime.utcnow().date()
         scholarship = db.session.execute(
-            text("SELECT id, status, applications_count, pending_count, requirements FROM scholarships WHERE id = :id AND is_active = 1"),
+            text("""
+                SELECT id, status, applications_count, pending_count, requirements, 
+                       deadline, is_expired_deadline, semester_date, is_expired_semester
+                FROM scholarships 
+                WHERE id = :id AND is_active = 1
+            """),
             {"id": scholarship_id}
         ).fetchone()
                     
@@ -548,6 +622,43 @@ def apply_scholarship(scholarship_id):
         scholarship_status = (scholarship[1] or '').lower()
         if scholarship_status not in ['active', 'approved']:
              return jsonify({'success': False, 'message': 'This scholarship is closed or archived and is no longer accepting applications.'}), 400
+        
+        # Check if scholarship is expired (deadline or semester)
+        is_expired_deadline = bool(scholarship[6]) if len(scholarship) > 6 else False
+        is_expired_semester = bool(scholarship[8]) if len(scholarship) > 8 else False
+        
+        # Also check deadline directly if not already marked as expired
+        if not is_expired_deadline and scholarship[5]:
+            deadline_date = scholarship[5]
+            if isinstance(deadline_date, str):
+                try:
+                    deadline_date = datetime.strptime(deadline_date, '%Y-%m-%d').date()
+                except:
+                    deadline_date = None
+            if deadline_date and deadline_date < today:
+                is_expired_deadline = True
+        
+        # Check semester_date directly if not already marked as expired
+        if not is_expired_semester and scholarship[7]:
+            semester_date = scholarship[7]
+            if isinstance(semester_date, str):
+                try:
+                    semester_date = datetime.strptime(semester_date, '%Y-%m-%d').date()
+                except:
+                    semester_date = None
+            if semester_date and semester_date < today:
+                is_expired_semester = True
+        
+        if is_expired_deadline or is_expired_semester:
+            reason = []
+            if is_expired_deadline:
+                reason.append("deadline has passed")
+            if is_expired_semester:
+                reason.append("semester date has passed")
+            return jsonify({
+                'success': False, 
+                'message': f'This scholarship is expired. The {" and ".join(reason)}. Please contact the provider if you believe this is an error.'
+            }), 400
         
         # GLOBAL CHECK: Does the student have an APPROVED application for ANY scholarship?
         # If they are already a scholar (approved anywhere), they cannot apply for new ones.
@@ -1667,12 +1778,16 @@ def update_profile():
             for scholarship in matching_scholarships:
                 scholarship_course = (scholarship[3] or '').strip().upper()
                 if scholarship_course:
-                    # Check if courses match (handle comma-separated courses)
-                    scholarship_courses = [c.strip() for c in scholarship_course.split(',')]
-                    is_match = student_course_upper in scholarship_courses or any(
-                        student_course_upper in sc or sc in student_course_upper 
-                        for sc in scholarship_courses
-                    )
+                    # Check if "All Programs" is selected - matches all courses
+                    if scholarship_course == 'ALL PROGRAMS':
+                        is_match = True
+                    else:
+                        # Check if courses match (handle comma-separated courses)
+                        scholarship_courses = [c.strip().upper() for c in scholarship_course.split(',')]
+                        is_match = student_course_upper in scholarship_courses or any(
+                            student_course_upper in sc or sc in student_course_upper 
+                            for sc in scholarship_courses
+                        )
                     
                     if is_match:
                         matching_count += 1

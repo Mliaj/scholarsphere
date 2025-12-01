@@ -83,6 +83,25 @@
     .btn-modal.secondary:hover { background:#545b62; }
   .chip { display:inline-flex; align-items:center; gap:.4rem; background:#eef2f7; border:1px solid #d8e0ea; border-radius:999px; padding:.25rem .6rem; font-size:.85rem; }
 
+    /* Hide spin buttons on school year inputs */
+    #schoolYearStart::-webkit-inner-spin-button,
+    #schoolYearStart::-webkit-outer-spin-button,
+    #schoolYearEnd::-webkit-inner-spin-button,
+    #schoolYearEnd::-webkit-outer-spin-button,
+    #editSchoolYearStart::-webkit-inner-spin-button,
+    #editSchoolYearStart::-webkit-outer-spin-button,
+    #editSchoolYearEnd::-webkit-inner-spin-button,
+    #editSchoolYearEnd::-webkit-outer-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+    #schoolYearStart,
+    #schoolYearEnd,
+    #editSchoolYearStart,
+    #editSchoolYearEnd {
+        -moz-appearance: textfield;
+    }
+
     @media (max-width:1024px){ .sidebar{width:250px;} .main-content{margin-left:250px;} }
     @media (max-width:768px){ .sidebar{transform:translateX(-100%); transition:transform .3s;} .sidebar.open{transform:translateX(0);} .main-content{margin-left:0;} .modal-content{width:95%; margin:5% auto;} }
 </style>
@@ -328,8 +347,35 @@
           <input type="date" id="scholarshipDeadline" name="deadline" class="form-control" required min="{{ today_date }}">
         </div>
         <div class="form-group">
-          <label for="slots" class="form-label">Slots Available</label>
-          <input type="number" id="slots" name="slots" class="form-control" min="1" placeholder="e.g., 50">
+          <label class="form-label">Semester & School Year</label>
+          <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:.75rem;">
+            <div>
+              <label for="scholarshipSemester" class="form-label" style="font-size:0.85rem;">Semester</label>
+              <select id="scholarshipSemester" name="semester" class="form-control">
+                <option value="">Select Semester</option>
+                <option value="1st">1st Semester</option>
+                <option value="2nd">2nd Semester</option>
+              </select>
+            </div>
+            <div>
+              <label for="schoolYearStart" class="form-label" style="font-size:0.85rem;">School Year Start</label>
+              <input type="number" id="schoolYearStart" class="form-control" min="2000" max="2100" placeholder="2025" style="width:100%;">
+            </div>
+            <div>
+              <label for="schoolYearEnd" class="form-label" style="font-size:0.85rem;">School Year End</label>
+              <input type="number" id="schoolYearEnd" class="form-control" min="2000" max="2100" placeholder="2026" style="width:100%;">
+            </div>
+            <input type="hidden" id="schoolYear" name="school_year">
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="semesterDate" class="form-label">Semester Date *</label>
+          <input type="date" id="semesterDate" name="semester_date" class="form-control" min="{{ today_date }}" placeholder="Select semester end date" required>
+          <small style="color:#666; font-size:0.85rem;">Date when the semester ends</small>
+        </div>
+        <div class="form-group">
+          <label for="slots" class="form-label">Slots Offered</label>
+          <input type="number" id="slots" name="slots" class="form-control" min="1" step="1" pattern="[0-9]*" inputmode="numeric" placeholder="e.g., 50">
         </div>
         <div class="form-group">
           <label class="form-label">Contact Person</label>
@@ -409,16 +455,33 @@
           <input type="text" id="editScholarshipTitle" name="title" class="form-control" required>
         </div>
         <div class="form-group">
-          <label for="editScholarshipDescription" class="form-label">Description</label>
-          <textarea id="editScholarshipDescription" name="description" class="form-control"></textarea>
+          <label for="editScholarshipDescription" class="form-label">Description / Overview</label>
+          <textarea id="editScholarshipDescription" name="description" class="form-control" placeholder="Brief overview of the program"></textarea>
         </div>
         <div class="form-group">
-          <label for="editScholarshipAmount" class="form-label">Amount</label>
-          <input type="text" id="editScholarshipAmount" name="amount" class="form-control">
+          <label class="form-label">Scholarship Type</label>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:.5rem;">
+            <select id="editScholarshipType" class="form-control">
+              <option value="">Select type</option>
+              <option>Academic</option>
+              <option>Financial Aid</option>
+              <option>Working Scholar</option>
+              <option>Athletic</option>
+              <option>Research</option>
+              <option value="__OTHER__">Other…</option>
+            </select>
+            <input type="text" id="editScholarshipTypeOther" class="form-control" placeholder="Enter custom type" style="display:none;">
+          </div>
+          <input type="hidden" name="type" id="editScholarshipTypeFinal">
         </div>
         <div class="form-group">
-          <label for="editScholarshipDeadline" class="form-label">Deadline *</label>
-          <input type="date" id="editScholarshipDeadline" name="deadline" class="form-control" required min="{{ today_date }}">
+          <label class="form-label">Level</label>
+          <select id="editScholarshipLevel" name="level" class="form-control">
+            <option value="">Select level</option>
+            <option>Senior High</option>
+            <option>College</option>
+            <option>Post-Grad</option>
+          </select>
         </div>
         <div class="form-group">
           <label class="form-label">Eligibility Criteria</label>
@@ -453,20 +516,47 @@
           </div>
         </div>
         <div class="form-group">
-          <label class="form-label">Scholarship Type</label>
-          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:.5rem;">
-            <select id="editScholarshipType" class="form-control">
-              <option value="">Select type</option>
-              <option>Academic</option>
-              <option>Financial Aid</option>
-              <option>Working Scholar</option>
-              <option>Athletic</option>
-              <option>Research</option>
-              <option value="__OTHER__">Other…</option>
-            </select>
-            <input type="text" id="editScholarshipTypeOther" class="form-control" placeholder="Enter custom type" style="display:none;">
+          <label for="editScholarshipDeadline" class="form-label">Deadline *</label>
+          <input type="date" id="editScholarshipDeadline" name="deadline" class="form-control" required min="{{ today_date }}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Semester & School Year</label>
+          <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:.75rem;">
+            <div>
+              <label for="editScholarshipSemester" class="form-label" style="font-size:0.85rem;">Semester</label>
+              <select id="editScholarshipSemester" name="semester" class="form-control">
+                <option value="">Select Semester</option>
+                <option value="1st">1st Semester</option>
+                <option value="2nd">2nd Semester</option>
+              </select>
+            </div>
+            <div>
+              <label for="editSchoolYearStart" class="form-label" style="font-size:0.85rem;">School Year Start</label>
+              <input type="number" id="editSchoolYearStart" class="form-control" min="2000" max="2100" placeholder="2025" style="width:100%;">
+            </div>
+            <div>
+              <label for="editSchoolYearEnd" class="form-label" style="font-size:0.85rem;">School Year End</label>
+              <input type="number" id="editSchoolYearEnd" class="form-control" min="2000" max="2100" placeholder="2026" style="width:100%;">
+            </div>
+            <input type="hidden" id="editSchoolYear" name="school_year">
           </div>
-          <input type="hidden" name="type" id="editScholarshipTypeFinal">
+        </div>
+        <div class="form-group">
+          <label for="editSemesterDate" class="form-label">Semester Date *</label>
+          <input type="date" id="editSemesterDate" name="semester_date" class="form-control" min="{{ today_date }}" placeholder="Select semester end date" required>
+          <small style="color:#666; font-size:0.85rem;">Date when the semester ends</small>
+        </div>
+        <div class="form-group">
+          <label for="editSlots" class="form-label">Slots Offered</label>
+          <input type="number" id="editSlots" name="slots" class="form-control" min="1" step="1" pattern="[0-9]*" inputmode="numeric" placeholder="e.g., 50">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Contact Person</label>
+          <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:.75rem;">
+            <input type="text" id="editContactName" name="contact_name" class="form-control" placeholder="Name">
+            <input type="email" id="editContactEmail" name="contact_email" class="form-control" placeholder="Email">
+            <input type="text" id="editContactPhone" name="contact_phone" class="form-control" placeholder="Phone">
+          </div>
         </div>
         <div class="form-group">
           <label class="form-label">Requirements *</label>
@@ -583,6 +673,9 @@ function viewScholarship(id){
               <div><strong>Amount:</strong> ${data.scholarship.amount || 'Not specified'}</div>
               <div><strong>Slots:</strong> ${data.scholarship.slots || 'Unlimited'}</div>
               <div><strong>Deadline:</strong> ${data.scholarship.deadline}</div>
+              ${data.scholarship.semester ? `<div><strong>Semester:</strong> ${data.scholarship.semester}</div>` : ''}
+              ${data.scholarship.school_year ? `<div><strong>School Year:</strong> ${data.scholarship.school_year}</div>` : ''}
+              ${data.scholarship.semester_date ? `<div><strong>Semester Date:</strong> ${data.scholarship.semester_date}</div>` : ''}
               <div><strong>Created:</strong> ${data.scholarship.created_date}</div>
             </div>
 
@@ -629,8 +722,27 @@ function editScholarship(id){
         document.getElementById('editScholarshipCodeDisplay').textContent = data.scholarship.code;
         document.getElementById('editScholarshipTitle').value = data.scholarship.title;
         document.getElementById('editScholarshipDescription').value = data.scholarship.description || '';
-        document.getElementById('editScholarshipAmount').value = data.scholarship.amount || '';
         document.getElementById('editScholarshipDeadline').value = data.scholarship.deadline;
+        document.getElementById('editScholarshipLevel').value = data.scholarship.level || '';
+        // Semester and School Year
+        document.getElementById('editScholarshipSemester').value = data.scholarship.semester || '';
+        if (data.scholarship.school_year) {
+          const yearMatch = data.scholarship.school_year.match(/(\d{4})\s*-\s*(\d{4})/);
+          if (yearMatch) {
+            document.getElementById('editSchoolYearStart').value = yearMatch[1];
+            document.getElementById('editSchoolYearEnd').value = yearMatch[2];
+          } else {
+            const singleYear = data.scholarship.school_year.match(/\d{4}/);
+            if (singleYear) {
+              document.getElementById('editSchoolYearStart').value = singleYear[0];
+            }
+          }
+        }
+        document.getElementById('editSemesterDate').value = data.scholarship.semester_date || '';
+        document.getElementById('editSlots').value = data.scholarship.slots || '';
+        document.getElementById('editContactName').value = data.scholarship.contact_name || '';
+        document.getElementById('editContactEmail').value = data.scholarship.contact_email || '';
+        document.getElementById('editContactPhone').value = data.scholarship.contact_phone || '';
         // Type select/other
         const knownTypes = ['Academic','Financial Aid','Working Scholar','Athletic','Research'];
         if(knownTypes.includes(data.scholarship.type||'')){
@@ -781,6 +893,16 @@ document.getElementById('createScholarshipForm').addEventListener('submit', asyn
   if(progVal === '__OTHER__') progVal = document.getElementById('eligProgramOther').value.trim();
   data.program_course = progVal || '';
   data.additional_criteria = document.getElementById('eligNotes').value.trim() || '';
+  // Handle school year (combine start and end)
+  const yearStart = document.getElementById('schoolYearStart').value.trim();
+  const yearEnd = document.getElementById('schoolYearEnd').value.trim();
+  if (yearStart && yearEnd) {
+    data.school_year = `${yearStart} - ${yearEnd}`;
+  } else if (yearStart) {
+    data.school_year = yearStart;
+  } else {
+    data.school_year = '';
+  }
   // Collect requirements from checkboxes + optional other text
   const reqs = Array.from(document.querySelectorAll('#createScholarshipModal .req:checked')).map(el => el.value);
   // gather custom chips
@@ -831,6 +953,16 @@ document.getElementById('editScholarshipForm').addEventListener('submit', async 
   if(eprogVal === '__OTHER__') eprogVal = document.getElementById('editEligProgramOther').value.trim();
   data.program_course = eprogVal || '';
   data.additional_criteria = document.getElementById('editEligNotes').value.trim() || '';
+  // Handle school year (combine start and end)
+  const editYearStart = document.getElementById('editSchoolYearStart').value.trim();
+  const editYearEnd = document.getElementById('editSchoolYearEnd').value.trim();
+  if (editYearStart && editYearEnd) {
+    data.school_year = `${editYearStart} - ${editYearEnd}`;
+  } else if (editYearStart) {
+    data.school_year = editYearStart;
+  } else {
+    data.school_year = '';
+  }
   const reqs = Array.from(document.querySelectorAll('#editScholarshipModal .req-edit:checked')).map(el => el.value);
   const chips = Array.from(document.querySelectorAll('#editReqCustomList .chip span')).map(s => s.textContent.trim());
   const other = (document.getElementById('editReqOther').value || '').trim();

@@ -152,6 +152,12 @@ def main():
             'module': 'migrate_add_personal_information_table',
             'function': 'migrate',
             'description': 'Create application_personal_information table for department, school, address, contact'
+        },
+        {
+            'name': 'Scholarships - Semester and Expiration Fields',
+            'module': 'migrate_add_scholarship_semester_fields',
+            'function': 'migrate',
+            'description': 'Add is_expired_deadline, semester, school_year, semester_date, is_expired_semester columns to scholarships table'
         }
     ]
     

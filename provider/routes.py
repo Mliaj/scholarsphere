@@ -15,7 +15,6 @@ def notify_matching_students(scholarship):
         return
     
     scholarship_course_upper = scholarship.program_course.strip().upper()
-    scholarship_courses = [c.strip() for c in scholarship_course_upper.split(',')]
     
     # Find all students with matching courses
     students = db.session.execute(
@@ -30,11 +29,16 @@ def notify_matching_students(scholarship):
     for student in students:
         student_course = (student[3] or '').strip().upper()
         if student_course:
-            # Check if courses match
-            is_match = student_course in scholarship_courses or any(
-                student_course in sc or sc in student_course 
-                for sc in scholarship_courses
-            )
+            # Check if "All Programs" is selected - matches all courses
+            if scholarship_course_upper == 'ALL PROGRAMS':
+                is_match = True
+            else:
+                # Check if courses match
+                scholarship_courses = [c.strip().upper() for c in scholarship_course_upper.split(',')]
+                is_match = student_course in scholarship_courses or any(
+                    student_course in sc or sc in student_course 
+                    for sc in scholarship_courses
+                )
             
             if is_match:
                 matching_count += 1
@@ -1207,7 +1211,11 @@ def api_create_scholarship():
             slots=int(data.get('slots')) if data.get('slots') else None,
             contact_name=data.get('contact_name', ''),
             contact_email=data.get('contact_email', ''),
-            contact_phone=data.get('contact_phone', '')
+            contact_phone=data.get('contact_phone', ''),
+            # Semester and school year fields
+            semester=data.get('semester', ''),
+            school_year=data.get('school_year', ''),
+            semester_date=datetime.strptime(data['semester_date'], '%Y-%m-%d').date() if data.get('semester_date') else None
         )
         
         db.session.add(new_scholarship)
@@ -1260,7 +1268,10 @@ def api_scholarship_detail(id):
                 'slots': scholarship.slots or '',
                 'contact_name': scholarship.contact_name or '',
                 'contact_email': scholarship.contact_email or '',
-                'contact_phone': scholarship.contact_phone or ''
+                'contact_phone': scholarship.contact_phone or '',
+                'semester': scholarship.semester or '',
+                'school_year': scholarship.school_year or '',
+                'semester_date': scholarship.semester_date.strftime('%Y-%m-%d') if scholarship.semester_date else ''
             }
         })
         
@@ -1287,6 +1298,13 @@ def api_scholarship_detail(id):
             if 'contact_name' in data: scholarship.contact_name = data['contact_name']
             if 'contact_email' in data: scholarship.contact_email = data['contact_email']
             if 'contact_phone' in data: scholarship.contact_phone = data['contact_phone']
+            # Semester and school year fields
+            if 'semester' in data: scholarship.semester = data['semester']
+            if 'school_year' in data: scholarship.school_year = data['school_year']
+            if 'semester_date' in data and data['semester_date']:
+                scholarship.semester_date = datetime.strptime(data['semester_date'], '%Y-%m-%d').date()
+            elif 'semester_date' in data and not data['semester_date']:
+                scholarship.semester_date = None
             
             # Notify matching students if:
             # 1. Status changed to approved/active (from draft or other status)
