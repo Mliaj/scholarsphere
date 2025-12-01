@@ -559,9 +559,11 @@
                     <h3>{{ s.title }}</h3>
                     <div class="scholarship-desc">{{ s.description }}</div>
                     
-                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.5rem; margin-bottom:1rem; font-size:0.9rem; color:#555;">
-                        <div><strong>Amount:</strong> {{ s.amount or 'Not specified' }}</div>
+                    <div style="margin-bottom:1rem; font-size:0.9rem; color:#555;">
                         <div><strong>Slots:</strong> {{ s.slots or 'Unlimited' }}</div>
+                        <!-- Amount field commented out for later use
+                        <div><strong>Amount:</strong> {{ s.amount or 'Not specified' }}</div>
+                        -->
                     </div>
 
                     {% if s.eligibility or s.program_course or s.additional_criteria %}
