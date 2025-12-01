@@ -24,7 +24,7 @@ def dashboard():
     ).scalar() or 0
     
     total_providers = db.session.execute(
-        text("SELECT COUNT(*) FROM users WHERE role = 'provider'")
+        text("SELECT COUNT(*) FROM users WHERE role IN ('provider_admin', 'provider_staff')")
     ).scalar() or 0
     
     # Additional counts from scholarships/applications aggregates
@@ -107,18 +107,28 @@ def users():
     # Get real users data from database using SQLAlchemy
     users_data = User.query.order_by(User.created_at.desc()).all()
     
+    # Add manager information for provider_staff
+    for user in users_data:
+        if user.role == 'provider_staff' and user.managed_by:
+            manager = User.query.get(user.managed_by)
+            user.manager_name = manager.get_full_name() if manager else 'Unknown'
+            user.manager_email = manager.email if manager else 'Unknown'
+        else:
+            user.manager_name = None
+            user.manager_email = None
+    
     return render_template('admin/users.html', users=users_data)
 
 @admin_bp.route('/providers')
 @login_required
 def providers():
-    """Provider management page"""
+    """Provider admin management page"""
     if current_user.role != 'admin':
         flash('Access denied. Admin access required.', 'error')
         return redirect(url_for('index'))
     
-    # Get all providers from database using SQLAlchemy
-    providers_data = User.query.filter_by(role='provider').order_by(User.created_at.desc()).all()
+    # Get only provider_admin users from database using SQLAlchemy
+    providers_data = User.query.filter_by(role='provider_admin').order_by(User.created_at.desc()).all()
     
     return render_template('admin/providers.html', providers=providers_data)
 
@@ -352,7 +362,7 @@ def update_user(user_id):
         # If organization present, validate against providers
         if organization:
             org_exists = db.session.execute(
-                text("SELECT DISTINCT organization FROM users WHERE role = 'provider' AND organization = :org"),
+                text("SELECT DISTINCT organization FROM users WHERE role = 'provider_admin' AND organization = :org"),
                 {'org': organization}
             ).fetchone()
             if not org_exists:
@@ -380,7 +390,7 @@ def list_organizations():
     try:
         result = db.session.execute(text("""
             SELECT DISTINCT organization FROM users 
-            WHERE role = 'provider' AND organization IS NOT NULL AND TRIM(organization) <> '' 
+            WHERE role = 'provider_admin' AND organization IS NOT NULL AND TRIM(organization) <> '' 
             ORDER BY organization ASC
         """))
         orgs = [r[0] for r in result.fetchall()]
@@ -481,7 +491,7 @@ def get_stats():
         ).scalar() or 0
         
         total_providers = db.session.execute(
-            text("SELECT COUNT(*) FROM users WHERE role = 'provider'")
+            text("SELECT COUNT(*) FROM users WHERE role IN ('provider_admin', 'provider_staff')")
         ).scalar() or 0
         
         # Aggregate dynamic counts
@@ -672,12 +682,12 @@ def create_provider_api():
                 'error': 'Email already exists'
             }), 400
         
-        # Create new provider
+        # Create new provider (as provider_admin)
         new_provider = User(
             first_name=data['firstName'],
             last_name=data['lastName'],
             email=data['email'].lower(),
-            role='provider',
+            role='provider_admin',
             organization=data['organization']
         )
         new_provider.set_password(data['password'])
@@ -706,7 +716,7 @@ def get_provider_details(provider_id):
         return jsonify({'error': 'Access denied'}), 403
     
     try:
-        provider = User.query.filter_by(id=provider_id, role='provider').first()
+        provider = User.query.filter_by(id=provider_id, role='provider_admin').first()
         
         if not provider:
             return jsonify({
@@ -745,7 +755,7 @@ def delete_provider(provider_id):
     
     try:
         # Check if provider exists
-        provider = User.query.filter_by(id=provider_id, role='provider').first()
+        provider = User.query.filter_by(id=provider_id, role='provider_admin').first()
         
         if not provider:
             return jsonify({
@@ -788,7 +798,7 @@ def set_provider_active(provider_id):
         data = request.get_json() or {}
         is_active = bool(data.get('is_active'))
 
-        provider = User.query.filter_by(id=provider_id, role='provider').first()
+        provider = User.query.filter_by(id=provider_id, role='provider_admin').first()
         if not provider:
             return jsonify({'success': False, 'error': 'Provider not found'}), 404
 

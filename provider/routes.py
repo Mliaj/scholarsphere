@@ -9,6 +9,36 @@ from credential_matcher import CredentialMatcher
 
 provider_bp = Blueprint('provider', __name__)
 
+def is_provider_admin():
+    """Check if current user is a provider admin"""
+    return current_user.is_authenticated and current_user.role == 'provider_admin'
+
+def is_provider_staff():
+    """Check if current user is a provider staff"""
+    return current_user.is_authenticated and current_user.role == 'provider_staff'
+
+def is_provider_role():
+    """Check if current user is any provider role (admin or staff)"""
+    return current_user.is_authenticated and current_user.role in ('provider_admin', 'provider_staff')
+
+def require_provider_admin():
+    """Require provider admin access, redirect if not"""
+    if not is_provider_admin():
+        flash('Access denied. Provider admin access required.', 'error')
+        return redirect(url_for('provider.dashboard'))
+
+def require_provider_role():
+    """Require any provider role access, redirect if not"""
+    if not is_provider_role():
+        flash('Access denied. Provider access required.', 'error')
+        return redirect(url_for('index'))
+
+def get_provider_id():
+    """Get the provider ID - for staff, return their manager's ID; for admin, return their own ID"""
+    if current_user.role == 'provider_staff' and current_user.managed_by:
+        return current_user.managed_by
+    return current_user.id
+
 def notify_matching_students(scholarship):
     """Notify students whose course matches the scholarship's program_course"""
     if not scholarship.program_course or not scholarship.program_course.strip():
@@ -63,18 +93,18 @@ def notify_matching_students(scholarship):
 @login_required
 def dashboard():
     """Provider dashboard"""
-    if current_user.role != 'provider':
-        flash('Access denied. Provider access required.', 'error')
-        return redirect(url_for('index'))
+    require_provider_role()
+    
+    provider_id = get_provider_id()
     
     # Calculate dashboard stats
     active_scholarships = Scholarship.query.filter(
-        Scholarship.provider_id == current_user.id,
+        Scholarship.provider_id == provider_id,
         Scholarship.status.in_(['active', 'approved'])
     ).count()
-    draft_scholarships = Scholarship.query.filter_by(provider_id=current_user.id, status='draft').count()
+    draft_scholarships = Scholarship.query.filter_by(provider_id=provider_id, status='draft').count()
     
-    scholarships = Scholarship.query.filter_by(provider_id=current_user.id).all()
+    scholarships = Scholarship.query.filter_by(provider_id=provider_id).all()
     scholarship_ids = [s.id for s in scholarships]
     
     total_applications = ScholarshipApplication.query.filter(
@@ -86,6 +116,15 @@ def dashboard():
         ScholarshipApplication.status == 'pending'
     ).count() if scholarship_ids else 0
     
+    # Get the actual provider user (admin or admin of staff)
+    if current_user.role == 'provider_staff' and current_user.managed_by:
+        provider_user = User.query.get(current_user.managed_by)
+    else:
+        provider_user = current_user
+    
+    # Format provider ID
+    provider_id_formatted = f"PRV-{str(provider_user.id).zfill(3)}"
+    
     # Prepare data dictionary
     data = {
         'stats': {
@@ -95,7 +134,9 @@ def dashboard():
             'new_applications': 0, # Mock for now
             'pending_reviews': pending_reviews,
             'today_reviews': 0 # Mock for now
-        }
+        },
+        'provider_id': provider_id_formatted,
+        'organization': provider_user.organization or 'Not set'
     }
     
     return render_template('provider/dashboard.html', user=current_user, data=data)
@@ -103,10 +144,8 @@ def dashboard():
 @provider_bp.route('/scholarships')
 @login_required
 def scholarships():
-    """Provider scholarships page"""
-    if current_user.role != 'provider':
-        flash('Access denied. Provider access required.', 'error')
-        return redirect(url_for('index'))
+    """Provider scholarships page - Admin only"""
+    require_provider_admin()
 
     all_scholarships = Scholarship.query.filter_by(provider_id=current_user.id).all()
     
@@ -138,11 +177,10 @@ def scholarships():
 @login_required
 def applications():
     """Provider applications page"""
-    if current_user.role != 'provider':
-        flash('Access denied. Provider access required.', 'error')
-        return redirect(url_for('index'))
-
-    scholarships = Scholarship.query.filter_by(provider_id=current_user.id).all()
+    require_provider_role()
+    
+    provider_id = get_provider_id()
+    scholarships = Scholarship.query.filter_by(provider_id=provider_id).all()
     
     total_applications = 0
     # Pre-process scholarships to attach application count and formatted applications if needed by template
@@ -178,12 +216,11 @@ def applications():
 @login_required
 def schedules():
     """Provider schedules page"""
-    if current_user.role != 'provider':
-        flash('Access denied. Provider access required.', 'error')
-        return redirect(url_for('index'))
+    require_provider_role()
     
+    provider_id = get_provider_id()
     # Get applications to list for scheduling
-    scholarships = Scholarship.query.filter_by(provider_id=current_user.id).all()
+    scholarships = Scholarship.query.filter_by(provider_id=provider_id).all()
     scholarship_ids = [s.id for s in scholarships]
     
     raw_applications = ScholarshipApplication.query.filter(
@@ -220,11 +257,10 @@ def schedules():
 @login_required
 def documents():
     """Provider documents page"""
-    if current_user.role != 'provider':
-        flash('Access denied. Provider access required.', 'error')
-        return redirect(url_for('index'))
-
-    scholarships = Scholarship.query.filter_by(provider_id=current_user.id).all()
+    require_provider_role()
+    
+    provider_id = get_provider_id()
+    scholarships = Scholarship.query.filter_by(provider_id=provider_id).all()
     scholarship_ids = [s.id for s in scholarships]
     
     # Get all applications for these scholarships
@@ -273,18 +309,20 @@ def documents():
 @login_required
 def profile():
     """Provider profile page"""
-    if current_user.role != 'provider':
-        flash('Access denied. Provider access required.', 'error')
-        return redirect(url_for('index'))
+    require_provider_role()
+    
+    # Get manager info if user is provider_staff
+    manager = None
+    if current_user.role == 'provider_staff' and current_user.managed_by:
+        manager = User.query.get(current_user.managed_by)
         
-    return render_template('provider/profile.html', user=current_user, profile=current_user)
+    return render_template('provider/profile.html', user=current_user, profile=current_user, manager=manager)
 
 @provider_bp.route('/update-profile', methods=['POST'])
 @login_required
 def update_profile():
     """Update provider profile information"""
-    if current_user.role != 'provider':
-        return jsonify({'success': False, 'message': 'Access denied'}), 403
+    require_provider_role()
     
     try:
         from flask import current_app
@@ -359,6 +397,13 @@ def update_profile():
             user.profile_picture = new_profile_pic
         user.updated_at = datetime.utcnow()
         
+        # If provider admin updates organization, sync it to all their staff
+        if current_user.role == 'provider_admin':
+            staff_members = User.query.filter_by(managed_by=current_user.id).all()
+            for staff in staff_members:
+                staff.organization = organization
+                staff.updated_at = datetime.utcnow()
+        
         db.session.commit()
         
         # Create notification
@@ -400,8 +445,7 @@ def update_profile():
 @login_required
 def reset_password():
     """Reset password for logged-in provider"""
-    if current_user.role != 'provider':
-        return jsonify({'success': False, 'message': 'Access denied'}), 403
+    require_provider_role()
     
     try:
         data = request.get_json()
@@ -448,9 +492,7 @@ from flask import make_response # make_response is already imported in the file
 @login_required
 def generate_report_pdf():
     """Generates a PDF report for the provider"""
-    if current_user.role != 'provider':
-        flash('Access denied. Provider access required.', 'error')
-        return redirect(url_for('index'))
+    require_provider_role()
 
     # Get actual data
     scholarships = Scholarship.query.filter_by(provider_id=current_user.id).all()
@@ -567,8 +609,7 @@ def generate_report_pdf():
 @login_required
 def review_application(application_id):
     """Approve or reject a scholarship application"""
-    if current_user.role != 'provider':
-        return jsonify({'error': 'Access denied'}), 403
+    require_provider_role()
 
     data = request.get_json()
     action = data.get('action')
@@ -712,8 +753,7 @@ def review_application(application_id):
 @login_required
 def send_broadcast_announcement(scholarship_id):
     """Send announcement to applicants of a scholarship, optionally filtered by status"""
-    if current_user.role != 'provider':
-        return jsonify({'error': 'Access denied'}), 403
+    require_provider_role()
 
     data = request.get_json()
     message = data.get('message')
@@ -785,8 +825,7 @@ def send_broadcast_announcement(scholarship_id):
 @login_required
 def send_individual_announcement():
     """Send announcement to a specific student by looking them up"""
-    if current_user.role != 'provider':
-        return jsonify({'error': 'Access denied'}), 403
+    require_provider_role()
 
     data = request.get_json()
     recipient_str = data.get('recipient') # Name, ID, or Email string
@@ -867,8 +906,7 @@ def send_individual_announcement():
 @login_required
 def create_schedule(application_id):
     """Create a schedule for an application"""
-    if current_user.role != 'provider':
-        return jsonify({'error': 'Access denied'}), 403
+    require_provider_role()
 
     data = request.get_json()
     schedule_date = data.get('schedule_date')
@@ -926,8 +964,7 @@ def create_schedule(application_id):
 @login_required
 def review_credential(credential_id):
     """Approve or reject a credential; notify student"""
-    if current_user.role != 'provider':
-        return jsonify({'error': 'Access denied'}), 403
+    require_provider_role()
     try:
         from flask import current_app
         from datetime import datetime
@@ -993,10 +1030,10 @@ def review_credential(credential_id):
 @login_required
 def api_scholarships_list():
     """Get list of scholarships for dashboard charts/tables"""
-    if current_user.role != 'provider':
-        return jsonify({'success': False, 'error': 'Access denied'})
+    require_provider_role()
     
-    scholarships = Scholarship.query.filter_by(provider_id=current_user.id).all()
+    provider_id = get_provider_id()
+    scholarships = Scholarship.query.filter_by(provider_id=provider_id).all()
     data = []
     for s in scholarships:
         data.append({
@@ -1014,10 +1051,10 @@ def api_scholarships_list():
 @login_required
 def api_applications_list():
     """Get list of applications for dashboard"""
-    if current_user.role != 'provider':
-        return jsonify([])
-
-    scholarships = Scholarship.query.filter_by(provider_id=current_user.id).all()
+    require_provider_role()
+    
+    provider_id = get_provider_id()
+    scholarships = Scholarship.query.filter_by(provider_id=provider_id).all()
     scholarship_ids = [s.id for s in scholarships]
     
     applications = ScholarshipApplication.query.filter(
@@ -1041,9 +1078,9 @@ def api_applications_list():
 @login_required
 def api_scholarships_search():
     """Autocomplete search for scholarships"""
-    if current_user.role != 'provider':
-        return jsonify([])
+    require_provider_role()
     
+    provider_id = get_provider_id()
     query = request.args.get('q', '').strip()
     if not query or len(query) < 2:
         return jsonify([])
@@ -1073,14 +1110,14 @@ def api_scholarships_search():
 @login_required
 def api_students_search():
     """Autocomplete search for students"""
-    if current_user.role != 'provider':
-        return jsonify([])
+    require_provider_role()
     
+    provider_id = get_provider_id()
     query = request.args.get('q', '').strip()
     if not query or len(query) < 2:
         return jsonify([])
 
-    scholarships = Scholarship.query.filter_by(provider_id=current_user.id).all()
+    scholarships = Scholarship.query.filter_by(provider_id=provider_id).all()
     scholarship_ids = [s.id for s in scholarships]
     
     if not scholarship_ids:
@@ -1116,12 +1153,12 @@ def api_students_search():
 @login_required
 def api_announcements_history():
     """Get history of sent announcements with search"""
-    if current_user.role != 'provider':
-        return jsonify([])
+    require_provider_role()
     
+    provider_id = get_provider_id()
     search_q = request.args.get('search', '').strip()
     
-    query = Announcement.query.filter_by(provider_id=current_user.id)
+    query = Announcement.query.filter_by(provider_id=provider_id)
     
     if search_q:
         query = query.filter(Announcement.title.like(f"%{search_q}%"))
@@ -1157,8 +1194,7 @@ def api_announcements_history():
 @login_required
 def api_publish_scholarship(id):
     """Publish a scholarship by its ID"""
-    if current_user.role != 'provider':
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    require_provider_admin()
         
     scholarship = Scholarship.query.get_or_404(id)
     
@@ -1178,8 +1214,7 @@ def api_publish_scholarship(id):
 @login_required
 def api_create_scholarship():
     """Create a new scholarship"""
-    if current_user.role != 'provider':
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    require_provider_admin()
         
     data = request.get_json()
     
@@ -1188,12 +1223,15 @@ def api_create_scholarship():
         return jsonify({'success': False, 'error': 'Title and Code are required'}), 400
         
     try:
+        # Get provider ID (for admin, this is their own ID)
+        provider_id = get_provider_id()
+        
         # Check for duplicate code
         if Scholarship.query.filter_by(code=data['code']).first():
             return jsonify({'success': False, 'error': 'Scholarship code already exists'}), 400
 
         new_scholarship = Scholarship(
-            provider_id=current_user.id,
+            provider_id=provider_id,
             title=data['title'],
             code=data['code'],
             description=data.get('description', ''),
@@ -1237,8 +1275,7 @@ def api_create_scholarship():
 @login_required
 def api_scholarship_detail(id):
     """Get, Update, or Archive a scholarship"""
-    if current_user.role != 'provider':
-        return jsonify({'error': 'Unauthorized'}), 403
+    require_provider_admin()
         
     scholarship = Scholarship.query.get_or_404(id)
     
@@ -1380,8 +1417,7 @@ def api_scholarship_detail(id):
 @login_required
 def api_scholarship_restore(id):
     """Restore an archived scholarship and remove all student applications"""
-    if current_user.role != 'provider':
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    require_provider_admin()
     
     scholarship = Scholarship.query.get_or_404(id)
     
@@ -1489,8 +1525,7 @@ def api_scholarship_restore(id):
 @login_required
 def api_scholarship_permanent_delete(id):
     """Permanently delete a scholarship"""
-    if current_user.role != 'provider':
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    require_provider_admin()
     
     scholarship = Scholarship.query.get_or_404(id)
     
@@ -1512,16 +1547,16 @@ def api_scholarship_permanent_delete(id):
 def api_application_detail(id):
     """Get application details for modal"""
     try:
-        if current_user.role != 'provider':
-            return jsonify({'success': False, 'error': 'Unauthorized'}), 403
-
+        require_provider_role()
+        
+        provider_id = get_provider_id()
         application = ScholarshipApplication.query.get_or_404(id)
         scholarship = Scholarship.query.get(application.scholarship_id)
         
         if not scholarship:
             return jsonify({'success': False, 'error': 'Scholarship not found'}), 404
         
-        if scholarship.provider_id != current_user.id:
+        if scholarship.provider_id != provider_id:
             return jsonify({'success': False, 'error': 'Unauthorized'}), 403
             
         student = User.query.get(application.user_id)
@@ -1701,9 +1736,9 @@ def api_application_detail(id):
 def api_get_student_remarks(student_id):
     """Get all remarks for a student (only remarks made by current provider)"""
     try:
-        if current_user.role != 'provider':
-            return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+        require_provider_role()
         
+        provider_id = get_provider_id()
         # Verify student exists
         student = User.query.get_or_404(student_id)
         if student.role != 'student':
@@ -1712,7 +1747,7 @@ def api_get_student_remarks(student_id):
         # Get remarks made by current provider for this student
         remarks = StudentRemark.query.filter_by(
             student_id=student_id,
-            provider_id=current_user.id
+            provider_id=provider_id
         ).order_by(StudentRemark.created_at.desc()).all()
         
         remarks_list = []
@@ -1734,9 +1769,9 @@ def api_get_student_remarks(student_id):
 def api_add_student_remark(student_id):
     """Add a new remark for a student"""
     try:
-        if current_user.role != 'provider':
-            return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+        require_provider_role()
         
+        provider_id = get_provider_id()
         data = request.get_json()
         remark_text = data.get('remark_text', '').strip()
         
@@ -1751,7 +1786,7 @@ def api_add_student_remark(student_id):
         # Create new remark
         remark = StudentRemark(
             student_id=student_id,
-            provider_id=current_user.id,
+            provider_id=provider_id,
             remark_text=remark_text
         )
         
@@ -1790,8 +1825,7 @@ def api_add_student_remark(student_id):
 @login_required
 def api_scholarship_report_pdf(id):
     """Download PDF report for a specific scholarship (works for both active and archived)"""
-    if current_user.role != 'provider':
-        return redirect(url_for('index'))
+    require_provider_admin()
 
     scholarship = Scholarship.query.get_or_404(id)
     if scholarship.provider_id != current_user.id:
@@ -1998,3 +2032,225 @@ def api_scholarship_report_pdf(id):
     response.headers['Content-Type'] = 'application/pdf'
     response.headers['Content-Disposition'] = f'attachment; filename={filename}'
     return response
+
+# ==================== Staff Account Management Routes ====================
+
+@provider_bp.route('/staff')
+@login_required
+def staff_management():
+    """Staff Account Management page - Admin only"""
+    require_provider_admin()
+    
+    # Get all staff members managed by this admin (using relationship)
+    staff_members = current_user.get_staff_members()
+    
+    staff_data = []
+    for staff in staff_members:
+        staff_data.append({
+            'id': staff.id,
+            'first_name': staff.first_name,
+            'last_name': staff.last_name,
+            'email': staff.email,
+            'organization': staff.organization or '',
+            'is_active': staff.is_active,
+            'created_at': staff.created_at.strftime('%Y-%m-%d') if staff.created_at else ''
+        })
+    
+    return render_template('provider/staff.html', user=current_user, staff_members=staff_data)
+
+@provider_bp.route('/api/staff', methods=['POST'])
+@login_required
+def create_staff():
+    """Create a new staff member - Admin only"""
+    require_provider_admin()
+    
+    data = request.get_json()
+    
+    # Validation
+    if not all([data.get('first_name'), data.get('last_name'), data.get('email'), data.get('password')]):
+        return jsonify({'success': False, 'error': 'All fields are required'}), 400
+    
+    # Check if email already exists
+    if User.query.filter_by(email=data['email']).first():
+        return jsonify({'success': False, 'error': 'Email already exists'}), 400
+    
+    try:
+        # Use admin's organization automatically
+        admin_organization = current_user.organization or ''
+        
+        new_staff = User(
+            first_name=data['first_name'],
+            last_name=data['last_name'],
+            email=data['email'],
+            organization=admin_organization,
+            role='provider_staff',
+            managed_by=current_user.id,
+            is_active=True
+        )
+        new_staff.set_password(data['password'])
+        
+        db.session.add(new_staff)
+        db.session.commit()
+        
+        return jsonify({'success': True, 'id': new_staff.id})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@provider_bp.route('/api/staff/<int:staff_id>', methods=['GET', 'POST', 'DELETE'])
+@login_required
+def staff_detail(staff_id):
+    """Get, Update, or Deactivate a staff member - Admin only"""
+    require_provider_admin()
+    
+    staff = User.query.get_or_404(staff_id)
+    
+    # Verify staff belongs to this admin
+    if staff.managed_by != current_user.id or staff.role != 'provider_staff':
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    if request.method == 'GET':
+        return jsonify({
+            'success': True,
+            'staff': {
+                'id': staff.id,
+                'first_name': staff.first_name,
+                'last_name': staff.last_name,
+                'email': staff.email,
+                'organization': staff.organization or '',
+                'is_active': staff.is_active
+            }
+        })
+    
+    elif request.method == 'POST':
+        data = request.get_json()
+        try:
+            if 'first_name' in data: staff.first_name = data['first_name']
+            if 'last_name' in data: staff.last_name = data['last_name']
+            if 'email' in data: 
+                # Check if email is already taken by another user
+                existing = User.query.filter_by(email=data['email']).first()
+                if existing and existing.id != staff.id:
+                    return jsonify({'success': False, 'error': 'Email already taken'}), 400
+                staff.email = data['email']
+            if 'organization' in data: staff.organization = data['organization']
+            if 'password' in data and data['password']:
+                staff.set_password(data['password'])
+            
+            db.session.commit()
+            return jsonify({'success': True})
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({'success': False, 'error': str(e)}), 500
+    
+    elif request.method == 'DELETE':
+        # Deactivate instead of delete
+        try:
+            staff.is_active = False
+            db.session.commit()
+            return jsonify({'success': True})
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({'success': False, 'error': str(e)}), 500
+
+@provider_bp.route('/api/staff/<int:staff_id>/activate', methods=['POST'])
+@login_required
+def activate_staff(staff_id):
+    """Activate a deactivated staff member - Admin only"""
+    require_provider_admin()
+    
+    staff = User.query.get_or_404(staff_id)
+    
+    if staff.managed_by != current_user.id or staff.role != 'provider_staff':
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    try:
+        staff.is_active = True
+        db.session.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# ==================== Reports & Analytics Routes ====================
+
+@provider_bp.route('/reports')
+@login_required
+def reports():
+    """Reports and analytics page - Admin only"""
+    require_provider_admin()
+    
+    try:
+        from flask import current_app
+        db = current_app.extensions['sqlalchemy']
+        
+        provider_id = current_user.id
+        
+        # Get scholarships created by this provider
+        scholarship_ids = db.session.execute(
+            text("SELECT id FROM scholarships WHERE provider_id = :provider_id"),
+            {"provider_id": provider_id}
+        ).fetchall()
+        scholarship_ids = [s[0] for s in scholarship_ids]
+        
+        if not scholarship_ids:
+            # Return empty data if no scholarships
+            return render_template('provider/reports.html', data={
+                'totals': {'total_applications': 0},
+                'top_scholarships': [],
+                'status_counts': {'pending': 0, 'approved': 0, 'disapproved': 0}
+            }, user=current_user)
+        
+        # Status counts from scholarship_applications table (only for this provider's scholarships)
+        scholarship_ids_str = ','.join(map(str, scholarship_ids))
+        status_row = db.session.execute(
+            text(f"""
+                SELECT 
+                  SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending,
+                  SUM(CASE WHEN status='approved' THEN 1 ELSE 0 END) AS approved,
+                  SUM(CASE WHEN status='rejected' THEN 1 ELSE 0 END) AS disapproved,
+                  COUNT(*) AS total
+                FROM scholarship_applications
+                WHERE scholarship_id IN ({scholarship_ids_str}) AND COALESCE(is_active,1) = 1
+            """)
+        ).fetchone() or (0,0,0,0)
+        
+        pending = int(status_row[0] or 0)
+        approved = int(status_row[1] or 0)
+        disapproved = int(status_row[2] or 0)
+        total_applications = int(status_row[3] or 0)
+        
+        # Top scholarships by applications (only this provider's scholarships)
+        rows = db.session.execute(
+            text("""
+                SELECT s.title, COUNT(sa.id) as apps
+                FROM scholarship_applications sa
+                JOIN scholarships s ON sa.scholarship_id = s.id
+                WHERE s.provider_id = :provider_id AND COALESCE(sa.is_active,1) = 1
+                GROUP BY s.id, s.title
+                ORDER BY apps DESC, s.title ASC
+                LIMIT 5
+            """),
+            {"provider_id": provider_id}
+        ).fetchall()
+        top_scholarships = [{'name': r[0], 'applications': int(r[1] or 0)} for r in rows]
+        
+        data = {
+            'totals': {
+                'total_applications': total_applications
+            },
+            'top_scholarships': top_scholarships,
+            'status_counts': {
+                'pending': pending,
+                'approved': approved,
+                'disapproved': disapproved
+            }
+        }
+        return render_template('provider/reports.html', data=data, user=current_user)
+    except Exception as e:
+        flash('Failed to load reports data', 'error')
+        return render_template('provider/reports.html', data={
+            'totals': {'total_applications': 0},
+            'top_scholarships': [],
+            'status_counts': {'pending': 0, 'approved': 0, 'disapproved': 0}
+        }, user=current_user)

@@ -304,6 +304,16 @@
         color: #856404;
     }
 
+    .role-provider_admin {
+        background: #d1ecf1;
+        color: #0c5460;
+    }
+
+    .role-provider_staff {
+        background: #e2e3e5;
+        color: #383d41;
+    }
+
     .role-admin {
         background: #f8d7da;
         color: #721c24;
@@ -703,7 +713,7 @@
                 <i class="fas fa-users"></i> User Management
             </div>
             <div class="nav-item" onclick="window.location.href='{{ url_for('admin.providers') }}'">
-                <i class="fas fa-building"></i> Provider Management
+                <i class="fas fa-building"></i> Provider Admin Management
             </div>
             <div class="nav-item" onclick="window.location.href='{{ url_for('admin.scholarships') }}'">
                 <i class="fas fa-graduation-cap"></i> Scholarship Oversight
@@ -742,7 +752,8 @@
                 <select class="filter-select" id="roleFilter">
                     <option value="">All Roles</option>
                     <option value="student">Students</option>
-                    <option value="provider">Providers</option>
+                    <option value="provider_admin">Provider Admins</option>
+                    <option value="provider_staff">Provider Staff</option>
                     <option value="admin">Admins</option>
                 </select>
                 <select class="filter-select" id="statusFilter">
@@ -763,6 +774,7 @@
                     <tr>
                         <th>User</th>
                         <th>Role</th>
+                        <th>Manager</th>
                         <th>Status</th>
                         <th>Registration Date</th>
                         <th>Actions</th>
@@ -787,8 +799,22 @@
                         </td>
                         <td>
                             <span class="role-badge role-{{ user.role }}">
-                                {{ user.role.title() }}
+                                {% if user.role == 'provider_admin' %}Provider Admin
+                                {% elif user.role == 'provider_staff' %}Provider Staff
+                                {% else %}{{ user.role.title() }}{% endif %}
                             </span>
+                        </td>
+                        <td>
+                            {% if user.role == 'provider_staff' and user.manager_name %}
+                                <div style="font-size: 0.85rem;">
+                                    <strong>{{ user.manager_name }}</strong><br>
+                                    <span style="color: #666; font-size: 0.8rem;">{{ user.manager_email }}</span>
+                                </div>
+                            {% elif user.role == 'provider_staff' %}
+                                <span style="color: #999; font-style: italic;">No manager assigned</span>
+                            {% else %}
+                                <span style="color: #999;">—</span>
+                            {% endif %}
                         </td>
                         <td>
                             {% if user.is_active %}
@@ -1058,7 +1084,8 @@ function editUser(userId) {
                         <label for="editRole">Role</label>
                         <select id="editRole" class="role-select"> 
                             <option value="student" ${u.role==='student'?'selected':''}>student</option>
-                            <option value="provider" ${u.role==='provider'?'selected':''}>provider</option>
+                            <option value="provider_admin" ${u.role==='provider_admin'?'selected':''}>provider_admin</option>
+                            <option value="provider_staff" ${u.role==='provider_staff'?'selected':''}>provider_staff</option>
                             <option value="admin" ${u.role==='admin'?'selected':''}>admin</option>
                         </select>
                     </div>

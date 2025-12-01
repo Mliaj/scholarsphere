@@ -158,6 +158,12 @@ def main():
             'module': 'migrate_add_scholarship_semester_fields',
             'function': 'migrate',
             'description': 'Add is_expired_deadline, semester, school_year, semester_date, is_expired_semester columns to scholarships table'
+        },
+        {
+            'name': 'Provider Roles and Staff Relationship',
+            'module': 'migrate_provider_roles_and_staff',
+            'function': 'migrate',
+            'description': 'Update provider roles to provider_admin and provider_staff, add managed_by field for staff relationship'
         }
     ]
     

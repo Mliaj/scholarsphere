@@ -77,16 +77,26 @@ class User(UserMixin, db.Model):
     student_id = db.Column(db.String(8), unique=True)
     birthday = db.Column(db.Date)
     password_hash = db.Column(db.String(255), nullable=False)
-    role = db.Column(db.Enum('student', 'provider', 'admin'), nullable=False, default='student')
+    role = db.Column(db.Enum('student', 'provider_admin', 'provider_staff', 'admin'), nullable=False, default='student')
     profile_picture = db.Column(db.String(255), nullable=True)
     year_level = db.Column(db.String(20), nullable=True)  # 1st year, 2nd year, 3rd year, 4th year
     course = db.Column(db.String(50), nullable=True)  # BSIT, BSCS, BSCE, etc.
     organization = db.Column(db.String(255), nullable=True)  # For providers
+    managed_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)  # For provider_staff, links to provider_admin
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, onupdate=datetime.utcnow)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     reset_token = db.Column(db.String(100), nullable=True)
     reset_token_expires = db.Column(db.DateTime, nullable=True)
+    
+    # Relationships
+    # One-to-many: one provider_admin can have many provider_staff
+    # - staff_members: List of all staff members for a provider_admin
+    # - manager (backref): The provider_admin that manages a provider_staff
+    staff_members = db.relationship('User', 
+                                     foreign_keys=[managed_by],
+                                     backref=db.backref('manager', remote_side=[id], lazy='select'),
+                                     lazy='select')
     
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -96,6 +106,30 @@ class User(UserMixin, db.Model):
     
     def get_full_name(self):
         return f"{self.first_name} {self.last_name}"
+    
+    def is_provider_admin(self):
+        """Check if user is a provider admin"""
+        return self.role == 'provider_admin'
+    
+    def is_provider_staff(self):
+        """Check if user is a provider staff"""
+        return self.role == 'provider_staff'
+    
+    def is_provider_role(self):
+        """Check if user is any provider role (admin or staff)"""
+        return self.role in ('provider_admin', 'provider_staff')
+    
+    def get_staff_members(self):
+        """Get all staff members for a provider admin (filtered by role)"""
+        if not self.is_provider_admin():
+            return []
+        return [staff for staff in self.staff_members if staff.role == 'provider_staff']
+    
+    def get_manager(self):
+        """Get the manager (provider_admin) for a provider_staff"""
+        if not self.is_provider_staff():
+            return None
+        return self.manager if self.manager and self.manager.role == 'provider_admin' else None
 
 # Award model for storing student achievements
 class Award(db.Model):
@@ -384,7 +418,7 @@ def login():
             # Redirect based on role
             if user.role == 'student':
                 return redirect(url_for('students.dashboard'))
-            elif user.role == 'provider':
+            elif user.role in ('provider_admin', 'provider_staff'):
                 return redirect(url_for('provider.dashboard'))
             elif user.role == 'admin':
                 return redirect(url_for('admin.dashboard'))
