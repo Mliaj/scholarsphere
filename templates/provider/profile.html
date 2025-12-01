@@ -195,6 +195,71 @@
     transform: translateY(0);
   }
   
+  .password-input-container {
+    position: relative;
+    width: 100%;
+  }
+
+  .password-input-container input {
+    padding-right: 2.5rem !important;
+    position: relative;
+    z-index: 1;
+  }
+  
+  .password-toggle {
+    position: absolute;
+    right: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    cursor: pointer !important;
+    color: #666;
+    z-index: 100 !important;
+    pointer-events: auto !important;
+    padding: 0.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+  }
+
+  .password-toggle i {
+    pointer-events: none !important;
+  }
+
+  .password-toggle:hover {
+    color: #003366;
+  }
+  
+  .password-strength {
+    margin-top: 0.5rem;
+    font-size: 0.85rem;
+  }
+  
+  .strength-bar {
+    height: 4px;
+    border-radius: 2px;
+    margin-top: 0.25rem;
+    transition: width 0.3s, background-color 0.3s;
+    width: 0%;
+  }
+  
+  .strength-weak {
+    background-color: #dc3545;
+    width: 33%;
+  }
+  
+  .strength-medium {
+    background-color: #ffc107;
+    width: 66%;
+  }
+  
+  .strength-strong {
+    background-color: #28a745;
+    width: 100%;
+  }
+  
   /* Modal Styles */
   .modal {
     display: none;
@@ -381,6 +446,66 @@
 
 {% block content %}
 <script>
+// Password toggle function for provider - must be defined globally for inline onclick
+window.toggleProviderPasswordVisibility = function(inputId, toggleId) {
+    const input = document.getElementById(inputId);
+    const toggle = document.getElementById(toggleId);
+    if (!input || !toggle) {
+        return false;
+    }
+    
+    const icon = toggle.querySelector('i');
+    if (!icon) {
+        return false;
+    }
+    
+    if (input.type === 'password') {
+        input.type = 'text';
+        icon.classList.remove('fa-eye');
+        icon.classList.add('fa-eye-slash');
+    } else {
+        input.type = 'password';
+        icon.classList.remove('fa-eye-slash');
+        icon.classList.add('fa-eye');
+    }
+    return false;
+};
+
+// Also set up event delegation as backup - more robust
+document.addEventListener('DOMContentLoaded', function() {
+    const modal = document.getElementById('passwordResetModal');
+    if (modal) {
+        modal.addEventListener('click', function(e) {
+            // Check if click is on toggle or icon
+            let toggle = e.target.closest('.password-toggle');
+            if (!toggle && e.target.classList.contains('fa-eye')) {
+                toggle = e.target.parentElement;
+            }
+            if (!toggle && e.target.classList.contains('fa-eye-slash')) {
+                toggle = e.target.parentElement;
+            }
+            
+            if (toggle) {
+                e.preventDefault();
+                e.stopPropagation();
+                const toggleId = toggle.id;
+                let inputId = '';
+                if (toggleId === 'currentPassword-toggle') {
+                    inputId = 'currentPassword';
+                } else if (toggleId === 'newPassword-toggle') {
+                    inputId = 'newPassword';
+                } else if (toggleId === 'confirmPassword-toggle') {
+                    inputId = 'confirmPassword';
+                }
+                if (inputId) {
+                    window.toggleProviderPasswordVisibility(inputId, toggleId);
+                }
+                return false;
+            }
+        }, true); // Use capture phase to catch earlier
+    }
+});
+
 // Define functions IMMEDIATELY before content renders
 window.openEditModal = function() {
   console.log('openEditModal function called');
@@ -565,6 +690,9 @@ if (typeof window.openEditModal === 'undefined') {
       <div class="action-buttons">
         <button type="button" class="btn-edit" id="editProfileBtn" onclick="return window.openEditModal();" style="cursor: pointer !important; pointer-events: auto !important;">
           <i class="fas fa-edit"></i> Edit Profile
+        </button>
+        <button type="button" class="btn-edit" onclick="openPasswordResetModal()" style="background: linear-gradient(135deg, #6c757d 0%, #495057 100%); cursor: pointer !important; pointer-events: auto !important;">
+          <i class="fas fa-key"></i> Reset Password
         </button>
       </div>
     </div>
@@ -1017,5 +1145,304 @@ window.onclick = function(event) {
         closeProviderGuidelinesModal();
     }
 }
+
+// Password Reset Functions
+function openPasswordResetModal() {
+    document.getElementById('passwordResetModal').style.display = 'block';
+    document.getElementById('passwordResetModal').classList.add('show');
+    // Clear form and messages
+    document.getElementById('passwordResetForm').reset();
+    document.getElementById('passwordResetError').style.display = 'none';
+    document.getElementById('passwordResetSuccess').style.display = 'none';
+    // Reset strength indicator
+    const strengthBar = document.getElementById('strengthBar');
+    const strengthText = document.getElementById('strengthText');
+    const passwordMatch = document.getElementById('passwordMatch');
+    if (strengthBar) {
+        strengthBar.className = 'strength-bar';
+        strengthBar.style.width = '0%';
+    }
+    if (strengthText) strengthText.textContent = '';
+    if (passwordMatch) passwordMatch.textContent = '';
+    
+    // Initialize password strength and ensure toggles work
+    setTimeout(function() {
+        initProviderPasswordStrength();
+        // Ensure toggle buttons are clickable
+        ['currentPassword-toggle', 'newPassword-toggle', 'confirmPassword-toggle'].forEach(function(toggleId) {
+            const toggle = document.getElementById(toggleId);
+            if (toggle) {
+                // Add click handler directly
+                toggle.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    let inputId = '';
+                    if (toggleId === 'currentPassword-toggle') inputId = 'currentPassword';
+                    else if (toggleId === 'newPassword-toggle') inputId = 'newPassword';
+                    else if (toggleId === 'confirmPassword-toggle') inputId = 'confirmPassword';
+                    
+                    if (inputId) {
+                        window.toggleProviderPasswordVisibility(inputId, toggleId);
+                    }
+                    return false;
+                }, true); // Use capture phase
+                
+                // Also make sure it's visible and clickable
+                toggle.style.pointerEvents = 'auto';
+                toggle.style.zIndex = '100';
+                toggle.style.cursor = 'pointer';
+            }
+        });
+    }, 200);
+}
+
+function closePasswordResetModal() {
+    document.getElementById('passwordResetModal').style.display = 'none';
+    document.getElementById('passwordResetModal').classList.remove('show');
+}
+
+// Password reset form submission
+document.addEventListener('DOMContentLoaded', function() {
+    const passwordResetForm = document.getElementById('passwordResetForm');
+    if (passwordResetForm) {
+        passwordResetForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const currentPassword = document.getElementById('currentPassword').value;
+            const newPassword = document.getElementById('newPassword').value;
+            const confirmPassword = document.getElementById('confirmPassword').value;
+            
+            // Hide previous messages
+            document.getElementById('passwordResetError').style.display = 'none';
+            document.getElementById('passwordResetSuccess').style.display = 'none';
+            
+            // Client-side validation
+            if (!currentPassword || !newPassword || !confirmPassword) {
+                const errorDiv = document.getElementById('passwordResetError');
+                errorDiv.textContent = 'Please fill in all fields';
+                errorDiv.style.display = 'block';
+                return;
+            }
+            
+            if (newPassword !== confirmPassword) {
+                const errorDiv = document.getElementById('passwordResetError');
+                errorDiv.textContent = 'New passwords do not match';
+                errorDiv.style.display = 'block';
+                return;
+            }
+            
+            if (newPassword.length < 8) {
+                const errorDiv = document.getElementById('passwordResetError');
+                errorDiv.textContent = 'Password must be at least 8 characters long';
+                errorDiv.style.display = 'block';
+                return;
+            }
+            
+            // Show loading state
+            const submitBtn = this.querySelector('button[type="submit"]');
+            const originalText = submitBtn.innerHTML;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Resetting...';
+            submitBtn.disabled = true;
+            
+            try {
+                const response = await fetch('/provider/reset-password', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        current_password: currentPassword,
+                        new_password: newPassword,
+                        confirm_password: confirmPassword
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    const successDiv = document.getElementById('passwordResetSuccess');
+                    successDiv.textContent = 'Password reset successfully!';
+                    successDiv.style.display = 'block';
+                    
+                    // Clear form
+                    this.reset();
+                    
+                    // Close modal after 2 seconds
+                    setTimeout(() => {
+                        closePasswordResetModal();
+                        if (typeof showNotification === 'function') {
+                            showNotification('Password reset successfully!', 'success');
+                        } else {
+                            alert('Password reset successfully!');
+                        }
+                    }, 2000);
+                } else {
+                    const errorDiv = document.getElementById('passwordResetError');
+                    errorDiv.textContent = data.message || 'Failed to reset password';
+                    errorDiv.style.display = 'block';
+                }
+            } catch (error) {
+                const errorDiv = document.getElementById('passwordResetError');
+                errorDiv.textContent = 'An error occurred. Please try again.';
+                errorDiv.style.display = 'block';
+            } finally {
+                submitBtn.innerHTML = originalText;
+                submitBtn.disabled = false;
+            }
+        });
+    }
+    
+    // Close modal when clicking outside
+    const passwordModal = document.getElementById('passwordResetModal');
+    if (passwordModal) {
+        passwordModal.addEventListener('click', function(e) {
+            if (e.target === passwordModal) {
+                closePasswordResetModal();
+            }
+        });
+    }
+});
+
+// Password strength checker for provider
+function initProviderPasswordStrength() {
+    // Wait for modal to be fully rendered
+    setTimeout(function() {
+        const newPasswordInput = document.getElementById('newPassword');
+        const confirmPasswordInput = document.getElementById('confirmPassword');
+        const strengthBar = document.getElementById('strengthBar');
+        const strengthText = document.getElementById('strengthText');
+        const passwordMatch = document.getElementById('passwordMatch');
+        
+        if (!newPasswordInput || !strengthBar || !strengthText) return;
+        
+        // Remove old listeners by cloning (if exists)
+        if (newPasswordInput.hasAttribute('data-strength-listener')) {
+            const newInput = newPasswordInput.cloneNode(true);
+            newPasswordInput.parentNode.replaceChild(newInput, newPasswordInput);
+            newInput.value = newPasswordInput.value;
+            newInput.setAttribute('data-strength-listener', 'true');
+        } else {
+            newPasswordInput.setAttribute('data-strength-listener', 'true');
+        }
+        
+        const finalNewInput = document.getElementById('newPassword');
+        
+        finalNewInput.addEventListener('input', function() {
+            const password = this.value;
+            const strength = checkProviderPasswordStrength(password);
+            const bar = document.getElementById('strengthBar');
+            const text = document.getElementById('strengthText');
+            if (bar && text) {
+                bar.className = 'strength-bar strength-' + strength.class;
+                text.textContent = strength.text;
+            }
+            
+            // Check password match
+            const confirm = document.getElementById('confirmPassword');
+            if (confirm && confirm.value) {
+                checkProviderPasswordMatch();
+            }
+        });
+        
+        if (confirmPasswordInput && passwordMatch) {
+            // Remove old listeners by cloning (if exists)
+            if (confirmPasswordInput.hasAttribute('data-match-listener')) {
+                const newConfirm = confirmPasswordInput.cloneNode(true);
+                confirmPasswordInput.parentNode.replaceChild(newConfirm, confirmPasswordInput);
+                newConfirm.value = confirmPasswordInput.value;
+                newConfirm.setAttribute('data-match-listener', 'true');
+            } else {
+                confirmPasswordInput.setAttribute('data-match-listener', 'true');
+            }
+            
+            const finalConfirm = document.getElementById('confirmPassword');
+            finalConfirm.addEventListener('input', checkProviderPasswordMatch);
+        }
+        
+        function checkProviderPasswordMatch() {
+            const confirm = document.getElementById('confirmPassword');
+            const newPass = document.getElementById('newPassword');
+            const match = document.getElementById('passwordMatch');
+            if (!confirm || !newPass || !match) return;
+            
+            if (confirm.value === '') {
+                match.textContent = '';
+                return;
+            }
+            if (newPass.value === confirm.value) {
+                match.textContent = '✓ Passwords match';
+                match.style.color = '#28a745';
+            } else {
+                match.textContent = '✗ Passwords do not match';
+                match.style.color = '#dc3545';
+            }
+        }
+        
+        function checkProviderPasswordStrength(password) {
+            let score = 0;
+            if (password.length >= 8) score++;
+            if (password.length >= 12) score++;
+            if (/[a-z]/.test(password) && /[A-Z]/.test(password)) score++;
+            if (/\d/.test(password)) score++;
+            if (/[^a-zA-Z\d]/.test(password)) score++;
+            
+            if (score < 2) return { class: 'weak', text: 'Weak password' };
+            if (score < 4) return { class: 'medium', text: 'Medium strength' };
+            return { class: 'strong', text: 'Strong password' };
+        }
+    }, 150);
+}
 </script>
+
+<!-- Password Reset Modal -->
+<div id="passwordResetModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>Reset Password</h2>
+      <span class="close" onclick="closePasswordResetModal()">&times;</span>
+    </div>
+    <form id="passwordResetForm">
+      <div class="modal-body" style="padding: 2rem;">
+        <div class="form-field" style="margin-bottom: 1.5rem;">
+          <label for="currentPassword" style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #003366;">Current Password</label>
+          <div class="password-input-container">
+            <input type="password" id="currentPassword" name="current_password" required style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 8px;">
+            <span class="password-toggle" id="currentPassword-toggle" onclick="window.toggleProviderPasswordVisibility('currentPassword', 'currentPassword-toggle'); event.preventDefault(); event.stopPropagation(); return false;" style="cursor: pointer !important; pointer-events: auto !important; z-index: 100 !important;">
+              <i class="fas fa-eye"></i>
+            </span>
+          </div>
+        </div>
+        <div class="form-field" style="margin-bottom: 1.5rem;">
+          <label for="newPassword" style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #003366;">New Password</label>
+          <div class="password-input-container">
+            <input type="password" id="newPassword" name="new_password" required minlength="8" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 8px;">
+            <span class="password-toggle" id="newPassword-toggle" onclick="window.toggleProviderPasswordVisibility('newPassword', 'newPassword-toggle'); event.preventDefault(); event.stopPropagation(); return false;" style="cursor: pointer !important; pointer-events: auto !important; z-index: 100 !important;">
+              <i class="fas fa-eye"></i>
+            </span>
+          </div>
+          <div class="password-strength">
+            <div class="strength-bar" id="strengthBar"></div>
+            <small id="strengthText" style="color: #666;"></small>
+          </div>
+        </div>
+        <div class="form-field" style="margin-bottom: 1.5rem;">
+          <label for="confirmPassword" style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #003366;">Confirm New Password</label>
+          <div class="password-input-container">
+            <input type="password" id="confirmPassword" name="confirm_password" required minlength="8" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 8px;">
+            <span class="password-toggle" id="confirmPassword-toggle" onclick="window.toggleProviderPasswordVisibility('confirmPassword', 'confirmPassword-toggle'); event.preventDefault(); event.stopPropagation(); return false;" style="cursor: pointer !important; pointer-events: auto !important; z-index: 100 !important;">
+              <i class="fas fa-eye"></i>
+            </span>
+          </div>
+          <small id="passwordMatch" style="color: #666; font-size: 0.85rem;"></small>
+        </div>
+        <div id="passwordResetError" style="display: none; color: #d32f2f; background: #ffebee; padding: 0.75rem; border-radius: 8px; margin-bottom: 1rem;"></div>
+        <div id="passwordResetSuccess" style="display: none; color: #2e7d32; background: #e8f5e9; padding: 0.75rem; border-radius: 8px; margin-bottom: 1rem;"></div>
+      </div>
+      <div class="modal-footer" style="padding: 1rem 2rem; border-top: 1px solid #e1e5e9; display: flex; justify-content: flex-end; gap: 1rem;">
+        <button type="button" class="btn" onclick="closePasswordResetModal()" style="padding: 0.75rem 1.5rem; background: #6c757d; color: white; border: none; border-radius: 8px; cursor: pointer;">Cancel</button>
+        <button type="submit" class="btn" style="padding: 0.75rem 1.5rem; background: #0072ce; color: white; border: none; border-radius: 8px; cursor: pointer;">Reset Password</button>
+      </div>
+    </form>
+  </div>
+</div>
 {% endblock %}

@@ -2,6 +2,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from flask_login import login_required, current_user
 from app import db, User, Scholarship, ScholarshipApplication, Credential, Schedule, Notification, ScholarshipApplicationFile, Announcement
 from email_utils import send_email
+from werkzeug.security import check_password_hash, generate_password_hash
 from datetime import datetime # Import datetime here
 from sqlalchemy import or_, text
 from credential_matcher import CredentialMatcher
@@ -344,6 +345,49 @@ def update_profile():
         print(f"Error updating profile: {str(e)}")
         print(traceback.format_exc())
         return jsonify({'success': False, 'message': f'Failed to update profile: {str(e)}'}), 500
+
+@provider_bp.route('/reset-password', methods=['POST'])
+@login_required
+def reset_password():
+    """Reset password for logged-in provider"""
+    if current_user.role != 'provider':
+        return jsonify({'success': False, 'message': 'Access denied'}), 403
+    
+    try:
+        data = request.get_json()
+        current_password = data.get('current_password', '')
+        new_password = data.get('new_password', '')
+        confirm_password = data.get('confirm_password', '')
+        
+        # Validation
+        if not current_password or not new_password or not confirm_password:
+            return jsonify({'success': False, 'message': 'Please fill in all fields'}), 400
+        
+        if new_password != confirm_password:
+            return jsonify({'success': False, 'message': 'New passwords do not match'}), 400
+        
+        if len(new_password) < 8:
+            return jsonify({'success': False, 'message': 'Password must be at least 8 characters long'}), 400
+        
+        # Verify current password
+        user = User.query.get(current_user.id)
+        if not user:
+            return jsonify({'success': False, 'message': 'User not found'}), 404
+        
+        if not user.check_password(current_password):
+            return jsonify({'success': False, 'message': 'Current password is incorrect'}), 400
+        
+        # Update password
+        user.set_password(new_password)
+        user.updated_at = datetime.utcnow()
+        
+        db.session.commit()
+        
+        return jsonify({'success': True, 'message': 'Password reset successfully'})
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': 'Failed to reset password'}), 500
 
 import io
 from reportlab.lib.pagesizes import letter
