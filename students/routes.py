@@ -5,6 +5,7 @@ Student dashboard routes for Scholarsphere
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
+from werkzeug.security import check_password_hash, generate_password_hash
 import os
 import uuid
 from datetime import datetime
@@ -1525,6 +1526,65 @@ def update_profile():
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'message': 'Failed to update profile'}), 500
+
+@students_bp.route('/reset-password', methods=['POST'])
+@login_required
+def reset_password():
+    """Reset password for logged-in student"""
+    if current_user.role != 'student':
+        return jsonify({'success': False, 'message': 'Access denied'}), 403
+    
+    try:
+        data = request.get_json()
+        current_password = data.get('current_password', '')
+        new_password = data.get('new_password', '')
+        confirm_password = data.get('confirm_password', '')
+        
+        # Validation
+        if not current_password or not new_password or not confirm_password:
+            return jsonify({'success': False, 'message': 'Please fill in all fields'}), 400
+        
+        if new_password != confirm_password:
+            return jsonify({'success': False, 'message': 'New passwords do not match'}), 400
+        
+        if len(new_password) < 8:
+            return jsonify({'success': False, 'message': 'Password must be at least 8 characters long'}), 400
+        
+        # Get database instance
+        from flask import current_app
+        db = current_app.extensions['sqlalchemy']
+        
+        # Verify current password
+        user_result = db.session.execute(
+            text("SELECT id, password_hash FROM users WHERE id = :user_id"),
+            {"user_id": current_user.id}
+        ).fetchone()
+        
+        if not user_result:
+            return jsonify({'success': False, 'message': 'User not found'}), 404
+        
+        user_id, password_hash = user_result
+        
+        if not check_password_hash(password_hash, current_password):
+            return jsonify({'success': False, 'message': 'Current password is incorrect'}), 400
+        
+        # Update password
+        new_password_hash = generate_password_hash(new_password)
+        db.session.execute(
+            text("UPDATE users SET password_hash = :password_hash, updated_at = :updated_at WHERE id = :user_id"),
+            {
+                "password_hash": new_password_hash,
+                "updated_at": datetime.utcnow(),
+                "user_id": current_user.id
+            }
+        )
+        db.session.commit()
+        
+        return jsonify({'success': True, 'message': 'Password reset successfully'})
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': 'Failed to reset password'}), 500
 
 @students_bp.route('/upload-credential', methods=['POST'])
 @login_required
