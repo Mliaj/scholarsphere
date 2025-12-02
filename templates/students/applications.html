@@ -865,10 +865,19 @@ function continueRenewal() {
                     {% if application.is_renewal %}
                     <div style="margin-bottom: 1rem; padding: 0.75rem 1rem; background: #e7f3ff; border-left: 4px solid #007bff; border-radius: 6px;">
                         <div style="font-weight: 600; color: #004085; font-size: 0.9rem;">
-                            <i class="fas fa-sync-alt" style="margin-right: 0.5rem;"></i>Waiting for Renewal
+                            <i class="fas fa-sync-alt" style="margin-right: 0.5rem;"></i>
+                            {% if application.status == 'Pending' %}
+                                Submitted Renewal Request
+                            {% else %}
+                                Waiting for Renewal
+                            {% endif %}
                         </div>
                         <div style="font-size: 0.85rem; color: #666; margin-top: 0.25rem;">
-                            This is a renewal application. Your current scholarship remains active until the provider reviews your renewal.
+                            {% if application.status == 'Pending' %}
+                                Your renewal request has been submitted and is pending provider review. Your current scholarship remains active until the provider reviews your renewal.
+                            {% else %}
+                                This is a renewal application. Your current scholarship remains active until the provider reviews your renewal.
+                            {% endif %}
                         </div>
                     </div>
                     {% elif application.renewal_failed %}

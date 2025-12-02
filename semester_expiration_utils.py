@@ -137,7 +137,7 @@ def process_expired_semester(scholarship, student):
         is_renewal=True
     ).first()
     
-    # Update application status
+    # Find the old approved application
     application = ScholarshipApplication.query.filter_by(
         user_id=student.id,
         scholarship_id=scholarship.id,
@@ -146,18 +146,19 @@ def process_expired_semester(scholarship, student):
     ).first()
     
     if application:
-        # If there's a pending renewal, check if provider approved it
+        # If there's a pending renewal, only remove the old approved application
+        # Keep the renewal application active for provider review
         if pending_renewal:
-            # Provider failed to renew - remove both applications
+            # Archive only the old approved application
             application.status = 'archived'
             application.is_active = False
             application.reviewed_at = datetime.utcnow()
-            # Also archive the renewal application
-            pending_renewal.status = 'archived'
-            pending_renewal.is_active = False
+            # Keep renewal application active - don't touch it
             db.session.commit()
+            # Don't send expiration notification since renewal is pending
+            return False
         else:
-            # No renewal attempt - just archive the original
+            # No renewal attempt - archive the original application and notify
             application.status = 'archived'
             application.is_active = False
             application.reviewed_at = datetime.utcnow()
@@ -225,8 +226,21 @@ def check_student_semester_expirations(student_id):
             days_until_expiration = (semester_date - today).days
             
             # Check if expired
+            # EXCEPTION: Don't process expiration if there's a pending renewal application
+            # Renewal applications should persist even after semester expires
             if days_until_expiration < 0:
-                process_expired_semester(scholarship, student)
+                # Check if there's a pending renewal first
+                pending_renewal = ScholarshipApplication.query.filter_by(
+                    user_id=student.id,
+                    scholarship_id=scholarship.id,
+                    status='pending',
+                    is_active=True,
+                    is_renewal=True
+                ).first()
+                
+                # Only process expiration if there's no pending renewal
+                if not pending_renewal:
+                    process_expired_semester(scholarship, student)
             else:
                 # Send only the nearest/closest notification to avoid duplicates
                 # Check from closest to farthest and send only the first applicable one

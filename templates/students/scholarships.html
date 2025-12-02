@@ -747,6 +747,10 @@
                     <div class="actions">
                         {% if s.is_expired %}
                             <button class="btn-apply" disabled style="background: #6c757d; cursor: not-allowed;">Expired</button>
+                        {% elif s.has_pending_renewal %}
+                            <button class="btn-apply" disabled style="background: #007bff; cursor: not-allowed;">Renewal Submitted</button>
+                        {% elif s.can_renew %}
+                            <button class="btn-apply" onclick="openRenewalApplication({{ s.scholarship_id }}, '{{ s.title|escape }}')" style="background: #007bff;">Apply Renewal</button>
                         {% elif s.has_applied and not s.can_apply_again %}
                             <button class="btn-apply" disabled>Applied ({{ s.application_status|title }})</button>
                         {% else %}
@@ -797,6 +801,41 @@ function openApplication(id, title){
     loadCredentialsData(id);
     
     modal.style.display = 'block';
+    // Clear renewal flag if set
+    const applyForm = document.getElementById('applyForm');
+    if (applyForm) {
+        applyForm.removeAttribute('data-is-renewal');
+    }
+}
+
+function openRenewalApplication(id, title){
+    // Check if student has year_level and course set in profile
+    const yearLevel = {% if current_user.year_level %}'{{ current_user.year_level }}'{% else %}null{% endif %};
+    const course = {% if current_user.course %}'{{ current_user.course }}'{% else %}null{% endif %};
+    
+    // Check if year_level or course is missing or empty
+    const yearLevelValid = yearLevel && yearLevel !== 'null' && String(yearLevel).trim() !== '';
+    const courseValid = course && course !== 'null' && String(course).trim() !== '';
+    
+    if (!yearLevelValid || !courseValid) {
+        // Show custom alert modal
+        showProfileAlert();
+        return;
+    }
+    
+    const modal = document.getElementById('applyModal');
+    document.getElementById('applyTitle').textContent = `Apply Renewal for ${title}`;
+    document.getElementById('applyScholarshipId').value = id;
+    
+    // Load credentials data for this scholarship
+    loadCredentialsData(id);
+    
+    modal.style.display = 'block';
+    // Mark as renewal application
+    const applyForm = document.getElementById('applyForm');
+    if (applyForm) {
+        applyForm.setAttribute('data-is-renewal', 'true');
+    }
 }
 
 function showProfileAlert(){
@@ -1064,10 +1103,12 @@ document.addEventListener('DOMContentLoaded', ()=>{
     const formData = new FormData(form);
     formData.append('selected_credentials', JSON.stringify(selectedCredentials || {}));
     
-    // Check if this is a renewal application (from URL parameter)
+    // Check if this is a renewal application (from URL parameter or button click)
     const urlParams = new URLSearchParams(window.location.search);
     const renewParam = urlParams.get('renew');
-    if (renewParam) {
+    const isRenewalFromForm = document.getElementById('applyForm').getAttribute('data-is-renewal') === 'true';
+    
+    if (renewParam || isRenewalFromForm) {
         formData.append('is_renewal', 'true');
     }
     
@@ -1096,15 +1137,23 @@ document.addEventListener('DOMContentLoaded', ()=>{
         return;
       }
 
-      // Success - clear renewal parameter from URL if present
-      const urlParams = new URLSearchParams(window.location.search);
-      if (urlParams.has('renew')) {
-        urlParams.delete('renew');
-        const newUrl = window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '');
-        window.history.replaceState({}, '', newUrl);
+      // Success - check if renewal and redirect accordingly
+      const isRenewal = urlParams.get('renew') || document.getElementById('applyForm').getAttribute('data-is-renewal') === 'true';
+      
+      if (isRenewal && data.redirect) {
+        // Redirect to applications page for renewal
+        closeApplication();
+        window.location.href = data.redirect;
+      } else {
+        // Clear renewal parameter from URL if present
+        if (urlParams.has('renew')) {
+          urlParams.delete('renew');
+          const newUrl = window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '');
+          window.history.replaceState({}, '', newUrl);
+        }
+        closeApplication();
+        location.reload();
       }
-      closeApplication();
-      location.reload();
     } catch(err){
       console.error('Application error:', err);
       closeApplication();
