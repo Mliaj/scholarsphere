@@ -44,7 +44,7 @@
         {% endif %}
       </div>
       <div class="sidebar-brand">Scholarsphere</div>
-      <div class="sidebar-subtitle">Provider Portal</div>
+      <div class="sidebar-subtitle">{% if user.role == 'provider_admin' %}Provider Admin Portal{% else %}Provider Staff Portal{% endif %}</div>
     </div>
     <nav class="sidebar-nav">
       <div class="nav-item" onclick="window.location.href='{{ url_for('provider.dashboard') }}'"><i class="fas fa-home"></i> Dashboard</div>
