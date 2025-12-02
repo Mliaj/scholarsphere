@@ -634,6 +634,73 @@ def review_application(application_id):
         
         # Logic for approval with slots
         if new_status == 'approved' and application.status != 'approved':
+            # Check if all required documents are provided
+            req_str = scholarship.requirements or ''
+            current_requirements = [r.strip() for r in req_str.split(',') if r.strip()]
+            
+            if current_requirements:
+                # Requirement label mappings
+                REQUIREMENT_MAPPINGS = {
+                    'photo_2x2': 'Recent 2x2 or passport-size photo',
+                    'valid_id': 'Valid School ID or any government-issued ID',
+                    'enrollment_cert': 'Certificate of Enrollment',
+                    'report_card': 'Report Card / Transcript of Records (TOR)',
+                    'good_moral': 'Certificate of Good Moral Character',
+                    'recommendation_letter': 'Recommendation Letter',
+                    'honors_awards': 'Honors or Awards Certificates',
+                    'indigency_cert': 'Certificate of Indigency',
+                    'itr': "Parents' or Guardians' Income Tax Return (ITR)",
+                    'proof_income': 'Proof of Income',
+                    'barangay_clearance': 'Barangay Clearance or Residency Certificate',
+                    'birth_cert': 'Birth Certificate (PSA or NSO)',
+                    'medical_cert': 'Medical Certificate'
+                }
+                
+                # Get linked files for this application
+                linked_files = ScholarshipApplicationFile.query.filter_by(application_id=application_id).all()
+                linked_map = {f.requirement_type: f.credential for f in linked_files if f.credential}
+                
+                # Check for missing documents
+                missing_docs = []
+                for req in current_requirements:
+                    if req not in linked_map:
+                        # Check if there's a loose credential match
+                        student = User.query.get(application.user_id)
+                        if student:
+                            from credential_matcher import CredentialMatcher
+                            loose_creds_orm = Credential.query.filter_by(user_id=student.id, is_active=True).order_by(Credential.upload_date.desc()).all()
+                            loose_creds_list = [{
+                                'credential_type': c.credential_type,
+                                'file_name': c.file_name,
+                                'file_path': c.file_path,
+                                'id': c.id,
+                                'is_verified': c.is_verified,
+                                'status': c.status,
+                                'upload_date': c.upload_date
+                            } for c in loose_creds_orm]
+                            matched_loose = CredentialMatcher.find_matching_credentials(current_requirements, loose_creds_list)
+                            if req not in matched_loose or not matched_loose[req]:
+                                missing_docs.append(req)
+                
+                if missing_docs:
+                    req_labels = [REQUIREMENT_MAPPINGS.get(req, req) for req in missing_docs]
+                    return jsonify({
+                        'success': False, 
+                        'error': f'Cannot approve: Missing required documents: {", ".join(req_labels)}'
+                    }), 400
+                
+                # Check if all provided documents are verified
+                unverified_docs = []
+                for f in linked_files:
+                    if f.credential and not f.credential.is_verified:
+                        req_label = REQUIREMENT_MAPPINGS.get(f.requirement_type, f.requirement_type)
+                        unverified_docs.append(req_label)
+            
+            if unverified_docs:
+                return jsonify({
+                    'success': False,
+                    'error': f'Cannot approve: Please verify all documents first. Unverified: {", ".join(unverified_docs)}'
+                }), 400
             # CRITICAL: Only one scholarship can be approved per student at a time
             # Find and reject/withdraw all other applications for this student
             from sqlalchemy import text as sql_text
@@ -1600,12 +1667,13 @@ def api_application_detail(id):
         
         cred_list = []
         
-        # Iterate requirements to build the list
+        # Iterate requirements to build the list - include ALL required documents
         for req in current_requirements:
             cred = linked_map.get(req)
             
-            if cred:
-                # Linked file exists
+            # Check if linked credential is active
+            if cred and cred.is_active:
+                # Linked file exists and is active
                 cred_list.append({
                     'id': cred.id,
                     'requirement_type': req,
@@ -1613,13 +1681,14 @@ def api_application_detail(id):
                     'file_path': cred.file_path,
                     'status': cred.status,
                     'is_verified': cred.is_verified,
-                    'is_active': cred.is_active
+                    'is_active': cred.is_active,
+                    'is_missing': False
                 })
             else:
-                # Check for loose match
+                # Linked credential doesn't exist or is inactive - check for loose match
                 matches = matched_loose.get(req, [])
                 if matches:
-                    # Use the best match (first one, as loose_creds is sorted DESC)
+                    # Use the best match (first one, as loose_creds is sorted DESC - newest first)
                     match = matches[0]
                     cred_list.append({
                         'id': match['id'],
@@ -1628,7 +1697,20 @@ def api_application_detail(id):
                         'file_path': match['file_path'],
                         'status': match['status'],
                         'is_verified': match['is_verified'],
-                        'is_active': True
+                        'is_active': True,
+                        'is_missing': False
+                    })
+                else:
+                    # Document is missing - add it to the list with missing flag
+                    cred_list.append({
+                        'id': None,
+                        'requirement_type': req,
+                        'file_name': None,
+                        'file_path': None,
+                        'status': None,
+                        'is_verified': False,
+                        'is_active': False,
+                        'is_missing': True
                     })
         
         # Also include any linked files that are NOT in current requirements (extra/old requirements)

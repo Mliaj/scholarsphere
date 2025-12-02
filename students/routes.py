@@ -1977,6 +1977,77 @@ def upload_student_credential():
                     "created_at": datetime.utcnow()
                 }
             )
+            
+            # Auto-link to pending applications if credential matches requirements
+            if cred_id:
+                try:
+                    from credential_matcher import CredentialMatcher
+                    
+                    # Get all pending applications for this student
+                    pending_apps = db.session.execute(
+                        text("""
+                            SELECT sa.id, sa.scholarship_id, s.requirements
+                            FROM scholarship_applications sa
+                            JOIN scholarships s ON sa.scholarship_id = s.id
+                            WHERE sa.user_id = :user_id 
+                            AND sa.status = 'pending' 
+                            AND sa.is_active = 1
+                        """),
+                        {"user_id": current_user.id}
+                    ).fetchall()
+                    
+                    # Get the uploaded credential info
+                    cred_info = {
+                        'credential_type': credential_type,
+                        'file_name': filename,
+                        'file_path': unique_filename,
+                        'id': cred_id,
+                        'is_verified': False,
+                        'status': 'uploaded',
+                        'upload_date': datetime.utcnow()
+                    }
+                    
+                    for app in pending_apps:
+                        app_id = app[0]
+                        scholarship_id = app[1]
+                        req_str = app[2] or ''
+                        requirements = [r.strip() for r in req_str.split(',') if r.strip()]
+                        
+                        if not requirements:
+                            continue
+                        
+                        # Check if credential matches any requirement
+                        matched_reqs = CredentialMatcher.find_matching_credentials(requirements, [cred_info])
+                        
+                        for req_type, matches in matched_reqs.items():
+                            if matches:
+                                # Check if requirement is already linked to this application
+                                existing_link = db.session.execute(
+                                    text("""
+                                        SELECT id FROM scholarship_application_files
+                                        WHERE application_id = :app_id AND requirement_type = :req_type
+                                    """),
+                                    {"app_id": app_id, "req_type": req_type}
+                                ).fetchone()
+                                
+                                if not existing_link:
+                                    # Auto-link the credential to the application
+                                    db.session.execute(
+                                        text("""
+                                            INSERT INTO scholarship_application_files 
+                                            (application_id, credential_id, requirement_type)
+                                            VALUES (:app_id, :cred_id, :req_type)
+                                        """),
+                                        {
+                                            "app_id": app_id,
+                                            "cred_id": cred_id,
+                                            "req_type": req_type
+                                        }
+                                    )
+                except Exception as e:
+                    # Don't fail upload if auto-linking fails
+                    print(f"Warning: Could not auto-link credential to applications: {e}")
+            
             db.session.commit()
             
             return jsonify({
@@ -2188,18 +2259,78 @@ def delete_credential(credential_id):
         credential_type = row[0]
         file_path_in_db = row[1]
 
+        # Check if this credential is linked to any applications
+        # If it's verified and linked, we need to notify providers that verification is needed again
+        linked_apps = db.session.execute(
+            text("""
+                SELECT saf.application_id, saf.requirement_type, c.is_verified, s.provider_id, s.title
+                FROM scholarship_application_files saf
+                JOIN credentials c ON saf.credential_id = c.id
+                JOIN scholarship_applications sa ON saf.application_id = sa.id
+                JOIN scholarships s ON sa.scholarship_id = s.id
+                WHERE saf.credential_id = :cred_id
+                AND sa.status = 'pending'
+                AND sa.is_active = 1
+            """),
+            {"cred_id": credential_id}
+        ).fetchall()
+        
         # Delete file
         file_path_full = os.path.join(current_app.root_path, CREDENTIALS_FOLDER, file_path_in_db)
         if os.path.exists(file_path_full):
             os.remove(file_path_full)
         
-        # Soft delete
+        # Soft delete credential
         db.session.execute(
             text("UPDATE credentials SET is_active = 0 WHERE id = :id"),
             {"id": credential_id}
         )
         
-        # Create notification
+        # Remove links to this credential from applications (so requirement shows as missing)
+        # This allows the student to upload a new credential which will be auto-linked
+        db.session.execute(
+            text("DELETE FROM scholarship_application_files WHERE credential_id = :cred_id"),
+            {"cred_id": credential_id}
+        )
+        
+        # Notify providers if a verified document was deleted
+        for app in linked_apps:
+            app_id = app[0]
+            req_type = app[1]
+            was_verified = app[2]
+            provider_id = app[3]
+            scholarship_title = app[4]
+            
+            if was_verified:
+                # Notify provider that verification is needed again
+                try:
+                    from credential_matcher import CredentialMatcher
+                    REQUIREMENT_MAPPINGS = CredentialMatcher.REQUIREMENT_MAPPINGS
+                    req_label = None
+                    for code, labels in REQUIREMENT_MAPPINGS.items():
+                        if code == req_type:
+                            req_label = labels[0] if labels else req_type
+                            break
+                    if not req_label:
+                        req_label = req_type
+                    
+                    db.session.execute(
+                        text("""
+                            INSERT INTO notifications (user_id, type, title, message, created_at, is_active)
+                            VALUES (:user_id, :type, :title, :message, :created_at, 1)
+                        """),
+                        {
+                            "user_id": provider_id,
+                            "type": 'document',
+                            "title": f'Document Replaced: {scholarship_title}',
+                            "message": f'A student has replaced a verified document ({req_label}). Please verify the new document.',
+                            "created_at": datetime.utcnow()
+                        }
+                    )
+                except Exception as e:
+                    print(f"Warning: Could not notify provider: {e}")
+        
+        # Create notification for student
         db.session.execute(
             text("""
                 INSERT INTO notifications (user_id, type, title, message, created_at, is_active)

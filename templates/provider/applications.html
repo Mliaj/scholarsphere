@@ -468,17 +468,35 @@ function viewApplication(applicationId) {
       if (data.success) {
         // Initialize verification state based on API data
         currentAppVerification.id = applicationId;
-        // Only count active credentials towards the total required for approval
-        currentAppVerification.total = (data.credentials) ? data.credentials.filter(c => c.is_active).length : 0;
-        currentAppVerification.verifiedCount = 0;
+        // Only count active, non-missing credentials towards the total required for approval
+        const validCredentials = (data.credentials) ? data.credentials.filter(c => c.is_active && !c.is_missing) : [];
+        currentAppVerification.total = validCredentials.length;
+        currentAppVerification.verifiedCount = validCredentials.filter(c => c.is_verified).length;
+        // Count missing documents
+        const missingCount = (data.credentials) ? data.credentials.filter(c => c.is_missing).length : 0;
 
         const content = document.getElementById('applicationDetailsContent');
         
-        let credentialsHtml = '<div><strong>No documents submitted yet.</strong></div>';
+        let credentialsHtml = '';
         
         if (data.credentials && data.credentials.length > 0) {
             const rows = data.credentials.map((cred) => {
                 const reqLabel = REQUIREMENT_MAPPINGS[cred.requirement_type] || cred.requirement_type;
+                
+                // Handle missing documents
+                if (cred.is_missing) {
+                    return `
+                      <div style="padding:1rem; background:#fff3cd; border:1px solid #ffc107; border-radius:8px; display:flex; justify-content:space-between; align-items:center;">
+                        <div>
+                          <strong>${reqLabel}</strong>
+                          <div style="font-size:0.9rem; color:#856404; font-weight:500;">Missing document</div>
+                        </div>
+                        <div style="display:flex; gap:0.5rem;">
+                          <span style="color:#856404; font-size:0.85rem; font-style:italic;">Not provided</span>
+                        </div>
+                      </div>
+                    `;
+                }
                 
                 // Handle deleted credentials
                 if (!cred.is_active) {
@@ -497,10 +515,6 @@ function viewApplication(applicationId) {
                 }
 
                 const isVerified = cred.is_verified; // Use the explicit boolean from backend
-                
-                if (isVerified) {
-                    currentAppVerification.verifiedCount++;
-                }
 
                 const btnHtml = isVerified 
                     ? `<button class="btn-sm btn-approve" disabled style="opacity:0.6; cursor:not-allowed;"><i class="fas fa-check-circle"></i> Verified</button>`
@@ -522,16 +536,22 @@ function viewApplication(applicationId) {
                 `;
             }).join('');
             
+            const statusText = missingCount > 0 
+                ? `Documents verified: <strong>${currentAppVerification.verifiedCount} of ${currentAppVerification.total}</strong> | Missing: <strong style="color:#dc3545;">${missingCount}</strong>`
+                : `Documents verified: <strong>${currentAppVerification.verifiedCount} of ${currentAppVerification.total}</strong>`;
+            
             credentialsHtml = `
               <div>
                 <h3 style="color:#003366; margin-bottom:1rem;">Submitted Documents</h3>
                 <div style="margin-bottom:0.75rem; font-size:0.9rem; color:#555;" id="docsStatus">
-                  Documents verified: <strong>${currentAppVerification.verifiedCount} of ${currentAppVerification.total}</strong>
+                  ${statusText}
                 </div>
                 <div style="display:grid; gap:0.75rem;">
                     ${rows}
                 </div>
               </div>`;
+        } else {
+            credentialsHtml = '<div><strong>No documents required for this scholarship.</strong></div>';
         }
 
         // Build Personal Information section
@@ -717,8 +737,9 @@ function verifyDocument(credentialId, btnId) {
 
 function reviewApplication(applicationId, action) {
   if (action === 'approve') {
-    // Check if documents are verified
+    // Check if documents are verified and all required documents are provided
     let needsVerification = false;
+    let hasMissingDocuments = false;
     
     // Always re-check verification status, especially if modal is open
     // If modal is open for this app, use live count (which may have been updated)
@@ -730,13 +751,19 @@ function reviewApplication(applicationId, action) {
             const verifiedButtons = modalContent.querySelectorAll('button[id^="verifyBtn-"]:disabled');
             const totalButtons = modalContent.querySelectorAll('button[id^="verifyBtn-"]');
             const activeCredentials = Array.from(totalButtons).filter(btn => {
-                // Check if parent container is not the deleted credential style
+                // Check if parent container is not the deleted credential style or missing document style
                 const parent = btn.closest('div[style*="background"]');
-                if (parent && parent.style.background.includes('#fff5f5')) {
-                    return false; // Deleted credential
+                if (parent) {
+                    if (parent.style.background.includes('#fff5f5') || parent.style.background.includes('#fff3cd')) {
+                        return false; // Deleted credential or missing document
+                    }
                 }
                 return true;
             }).length;
+            
+            // Check for missing documents (yellow background)
+            const missingDocs = modalContent.querySelectorAll('div[style*="#fff3cd"]');
+            hasMissingDocuments = missingDocs.length > 0;
             
             // Update counts based on actual DOM state
             currentAppVerification.verifiedCount = verifiedButtons.length;
@@ -751,11 +778,29 @@ function reviewApplication(applicationId, action) {
         viewApplication(applicationId);
         // Wait for modal to load, then check and highlight
         setTimeout(() => {
-            if (currentAppVerification.total > 0 && currentAppVerification.verifiedCount < currentAppVerification.total) {
+            const modalContent = document.getElementById('applicationDetailsContent');
+            if (modalContent) {
+                const missingDocs = modalContent.querySelectorAll('div[style*="#fff3cd"]');
+                hasMissingDocuments = missingDocs.length > 0;
+            }
+            
+            if (hasMissingDocuments) {
+                showNotification('Cannot approve: Some required documents are missing. Please wait for the student to submit all required documents.', 'error');
+            } else if (currentAppVerification.total > 0 && currentAppVerification.verifiedCount < currentAppVerification.total) {
                 highlightUnverifiedDocuments();
                 showNotification('Please verify all documents before approving. Unverified documents are highlighted below.', 'warning');
             }
         }, 500);
+        return;
+    }
+    
+    // Check for missing documents first
+    if (hasMissingDocuments) {
+        const modal = document.getElementById('applicationDetailsModal');
+        if (modal && modal.style.display === 'none') {
+            viewApplication(applicationId);
+        }
+        showNotification('Cannot approve: Some required documents are missing. Please wait for the student to submit all required documents.', 'error');
         return;
     }
     
