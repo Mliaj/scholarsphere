@@ -634,21 +634,121 @@ def review_application(application_id):
         
         # Logic for approval with slots
         if new_status == 'approved' and application.status != 'approved':
+            # Check if all required documents are provided
+            req_str = scholarship.requirements or ''
+            current_requirements = [r.strip() for r in req_str.split(',') if r.strip()]
+            
+            # Initialize unverified_docs outside the if block
+            unverified_docs = []
+            
+            if current_requirements:
+                # Requirement label mappings
+                REQUIREMENT_MAPPINGS = {
+                    'photo_2x2': 'Recent 2x2 or passport-size photo',
+                    'valid_id': 'Valid School ID or any government-issued ID',
+                    'enrollment_cert': 'Certificate of Enrollment',
+                    'report_card': 'Report Card / Transcript of Records (TOR)',
+                    'good_moral': 'Certificate of Good Moral Character',
+                    'recommendation_letter': 'Recommendation Letter',
+                    'honors_awards': 'Honors or Awards Certificates',
+                    'indigency_cert': 'Certificate of Indigency',
+                    'itr': "Parents' or Guardians' Income Tax Return (ITR)",
+                    'proof_income': 'Proof of Income',
+                    'barangay_clearance': 'Barangay Clearance or Residency Certificate',
+                    'birth_cert': 'Birth Certificate (PSA or NSO)',
+                    'medical_cert': 'Medical Certificate'
+                }
+                
+                # Get linked files for this application
+                linked_files = ScholarshipApplicationFile.query.filter_by(application_id=application_id).all()
+                linked_map = {f.requirement_type: f.credential for f in linked_files if f.credential}
+                
+                # Check for missing documents
+                missing_docs = []
+                for req in current_requirements:
+                    if req not in linked_map:
+                        # Check if there's a loose credential match
+                        student = User.query.get(application.user_id)
+                        if student:
+                            from credential_matcher import CredentialMatcher
+                            loose_creds_orm = Credential.query.filter_by(user_id=student.id, is_active=True).order_by(Credential.upload_date.desc()).all()
+                            loose_creds_list = [{
+                                'credential_type': c.credential_type,
+                                'file_name': c.file_name,
+                                'file_path': c.file_path,
+                                'id': c.id,
+                                'is_verified': c.is_verified,
+                                'status': c.status,
+                                'upload_date': c.upload_date
+                            } for c in loose_creds_orm]
+                            matched_loose = CredentialMatcher.find_matching_credentials(current_requirements, loose_creds_list)
+                            if req not in matched_loose or not matched_loose[req]:
+                                missing_docs.append(req)
+                
+                if missing_docs:
+                    req_labels = [REQUIREMENT_MAPPINGS.get(req, req) for req in missing_docs]
+                    return jsonify({
+                        'success': False, 
+                        'error': f'Cannot approve: Missing required documents: {", ".join(req_labels)}'
+                    }), 400
+                
+                # Check if all provided documents are verified
+                for f in linked_files:
+                    if f.credential and not f.credential.is_verified:
+                        req_label = REQUIREMENT_MAPPINGS.get(f.requirement_type, f.requirement_type)
+                        unverified_docs.append(req_label)
+            
+            # Only check unverified_docs if there were requirements
+            if unverified_docs:
+                return jsonify({
+                    'success': False,
+                    'error': f'Cannot approve: Please verify all documents first. Unverified: {", ".join(unverified_docs)}'
+                }), 400
+            # Check if this is a renewal application
+            is_renewal = application.is_renewal if hasattr(application, 'is_renewal') else False
+            original_application_id = application.original_application_id if hasattr(application, 'original_application_id') else None
+            
+            # If renewal is approved, archive the original application
+            if is_renewal and original_application_id:
+                original_app = ScholarshipApplication.query.get(original_application_id)
+                if original_app and original_app.status == 'approved' and original_app.is_active:
+                    original_app.status = 'archived'
+                    original_app.is_active = False
+                    original_app.reviewed_at = datetime.utcnow()
+                    original_app.reviewed_by = current_user.id
+                    
+                    # Update scholarship counts
+                    if scholarship:
+                        scholarship.approved_count = max(0, (scholarship.approved_count or 0) - 1)
+                        if scholarship.slots is not None:
+                            scholarship.slots += 1
+            
             # CRITICAL: Only one scholarship can be approved per student at a time
             # Find and reject/withdraw all other applications for this student
+            # EXCEPTION: Don't reject the original application if this is a renewal (already handled above)
             from sqlalchemy import text as sql_text
             
-            # Get all other applications for this student (excluding current one)
+            # Get all other applications for this student (excluding current one and original if renewal)
             other_applications = ScholarshipApplication.query.filter(
                 ScholarshipApplication.user_id == application.user_id,
                 ScholarshipApplication.id != application_id,
                 ScholarshipApplication.is_active == True
             ).all()
             
+            # Filter out original application if this is a renewal
+            if is_renewal and original_application_id:
+                other_applications = [app for app in other_applications if app.id != original_application_id]
+            
             for other_app in other_applications:
                 old_status = other_app.status
                 # Reject other approved or pending applications
+                # EXCEPTION: If this is a renewal rejection, don't reject the original approved application
+                # (it should remain active until semester expires)
                 if old_status in ['approved', 'pending']:
+                    # Skip rejecting original application if this renewal was rejected
+                    if is_renewal and new_status == 'rejected' and other_app.id == original_application_id:
+                        continue
+                    
                     other_app.status = 'rejected'
                     other_app.reviewed_at = datetime.utcnow()
                     other_app.reviewed_by = current_user.id
@@ -731,9 +831,18 @@ def review_application(application_id):
                 new_status=new_status
             )
             
-            # Create in-app notification for rejection
-            if new_status == 'rejected':
-                try:
+            # Create in-app notification for approval or rejection
+            try:
+                if new_status == 'approved':
+                    notification = Notification(
+                        user_id=student.id,
+                        type='approved',
+                        title=f'Application Approved: {scholarship.title}',
+                        message=f'Congratulations! Your application for {scholarship.title} has been approved.',
+                        created_at=datetime.utcnow(),
+                        is_active=True
+                    )
+                elif new_status == 'rejected':
                     notification = Notification(
                         user_id=student.id,
                         type='application',
@@ -742,10 +851,16 @@ def review_application(application_id):
                         created_at=datetime.utcnow(),
                         is_active=True
                     )
+                else:
+                    notification = None
+                
+                if notification:
                     db.session.add(notification)
                     db.session.commit()
-                except:
-                    pass  # Continue even if notification creation fails
+            except Exception as e:
+                db.session.rollback()
+                # Continue even if notification creation fails - don't break the approval process
+                print(f"Error creating notification: {e}")
         
         return jsonify({'success': True})
     return jsonify({'success': False, 'error': 'Invalid action'}), 400
@@ -1600,12 +1715,13 @@ def api_application_detail(id):
         
         cred_list = []
         
-        # Iterate requirements to build the list
+        # Iterate requirements to build the list - include ALL required documents
         for req in current_requirements:
             cred = linked_map.get(req)
             
-            if cred:
-                # Linked file exists
+            # Check if linked credential is active
+            if cred and cred.is_active:
+                # Linked file exists and is active
                 cred_list.append({
                     'id': cred.id,
                     'requirement_type': req,
@@ -1613,13 +1729,14 @@ def api_application_detail(id):
                     'file_path': cred.file_path,
                     'status': cred.status,
                     'is_verified': cred.is_verified,
-                    'is_active': cred.is_active
+                    'is_active': cred.is_active,
+                    'is_missing': False
                 })
             else:
-                # Check for loose match
+                # Linked credential doesn't exist or is inactive - check for loose match
                 matches = matched_loose.get(req, [])
                 if matches:
-                    # Use the best match (first one, as loose_creds is sorted DESC)
+                    # Use the best match (first one, as loose_creds is sorted DESC - newest first)
                     match = matches[0]
                     cred_list.append({
                         'id': match['id'],
@@ -1628,7 +1745,20 @@ def api_application_detail(id):
                         'file_path': match['file_path'],
                         'status': match['status'],
                         'is_verified': match['is_verified'],
-                        'is_active': True
+                        'is_active': True,
+                        'is_missing': False
+                    })
+                else:
+                    # Document is missing - add it to the list with missing flag
+                    cred_list.append({
+                        'id': None,
+                        'requirement_type': req,
+                        'file_name': None,
+                        'file_path': None,
+                        'status': None,
+                        'is_verified': False,
+                        'is_active': False,
+                        'is_missing': True
                     })
         
         # Also include any linked files that are NOT in current requirements (extra/old requirements)
@@ -1716,6 +1846,11 @@ def api_application_detail(id):
                 'updated_at': remark.updated_at.strftime('%Y-%m-%d %H:%M:%S') if remark.updated_at else None
             })
             
+        # Get renewal status
+        is_renewal = application.is_renewal if hasattr(application, 'is_renewal') else False
+        renewal_failed = application.renewal_failed if hasattr(application, 'renewal_failed') else False
+        original_application_id = application.original_application_id if hasattr(application, 'original_application_id') else None
+        
         return jsonify({
             'success': True,
             'application': {
@@ -1725,7 +1860,10 @@ def api_application_detail(id):
                 'student_id': student.student_id if student else '',
                 'scholarship_title': scholarship.title,
                 'date_applied': application.application_date.strftime('%Y-%m-%d'),
-                'status': application.status
+                'status': application.status,
+                'is_renewal': is_renewal,
+                'renewal_failed': renewal_failed,
+                'original_application_id': original_application_id
             },
             'credentials': cred_list,
             'family_background': family_background,

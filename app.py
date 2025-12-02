@@ -220,6 +220,9 @@ class ScholarshipApplication(db.Model):
     reviewed_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)  # admin who reviewed
     notes = db.Column(db.Text, nullable=True)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
+    is_renewal = db.Column(db.Boolean, nullable=False, default=False)  # True if this is a renewal application
+    renewal_failed = db.Column(db.Boolean, nullable=False, default=False)  # True if student failed to confirm renewal
+    original_application_id = db.Column(db.Integer, db.ForeignKey('scholarship_applications.id'), nullable=True)  # Link to original application
     
     # Relationships
     user = db.relationship('User', foreign_keys=[user_id], backref='scholarship_applications')
