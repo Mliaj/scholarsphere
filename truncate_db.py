@@ -36,6 +36,7 @@ db = SQLAlchemy(app)
 # Define tables to truncate in order (Child tables first to avoid FK constraint errors)
 TABLES = [
     'announcements',
+    'semester_expiration_notifications',
     'notifications',
     'schedule',
     'student_remarks',

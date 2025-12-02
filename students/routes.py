@@ -30,6 +30,14 @@ def dashboard():
         flash('Access denied. Student access required.', 'error')
         return redirect(url_for('index'))
     
+    # Check semester expirations (no cron job needed - checks on dashboard load)
+    try:
+        from semester_expiration_utils import check_student_semester_expirations
+        check_student_semester_expirations(current_user.id)
+    except Exception:
+        # Don't fail dashboard load if check fails
+        pass
+    
     # Get real data from database using raw SQL to avoid circular imports
     from flask import current_app
     db = current_app.extensions['sqlalchemy']
@@ -297,6 +305,14 @@ def applications():
     if current_user.role != 'student':
         flash('Access denied. Student access required.', 'error')
         return redirect(url_for('index'))
+    
+    # Check semester expirations (no cron job needed - checks on applications page load)
+    try:
+        from semester_expiration_utils import check_student_semester_expirations
+        check_student_semester_expirations(current_user.id)
+    except Exception:
+        # Don't fail page load if check fails
+        pass
     
     # Get actual applications from database using raw SQL
     from flask import current_app

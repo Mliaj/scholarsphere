@@ -125,6 +125,15 @@ def login():
             login_user(user, remember=remember)
             flash(f'Welcome back, {user.get_full_name()}!', 'success')
             
+            # Check semester expirations for students (no cron job needed)
+            if user.role == 'student':
+                try:
+                    from semester_expiration_utils import check_student_semester_expirations
+                    check_student_semester_expirations(user.id)
+                except Exception:
+                    # Don't fail login if check fails
+                    pass
+            
             # Determine redirect URL
             if user.role == 'student':
                 next_url = url_for('students.dashboard')

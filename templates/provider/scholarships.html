@@ -121,7 +121,7 @@
         {% endif %}
       </div>
       <div class="sidebar-brand">Scholarsphere</div>
-      <div class="sidebar-subtitle">Provider Portal</div>
+      <div class="sidebar-subtitle">{% if user.role == 'provider_admin' %}Provider Admin Portal{% else %}Provider Staff Portal{% endif %}</div>
     </div>
     <nav class="sidebar-nav">
       <div class="nav-item" onclick="window.location.href='{{ url_for('provider.dashboard') }}'"><i class="fas fa-home"></i> Dashboard</div>
@@ -1210,7 +1210,7 @@ window.addEventListener('profilePictureUpdated', function(e) {
 <div id="providerGuidelinesModal" style="display: none; position: fixed; z-index: 10000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); overflow: auto;">
     <div style="background: #fff; margin: 5% auto; padding: 0; border-radius: 15px; width: 90%; max-width: 700px; max-height: 85vh; display: flex; flex-direction: column; box-shadow: 0 8px 32px rgba(0,0,0,0.2);">
         <div style="padding: 1.5rem 2rem; border-bottom: 2px solid #e9ecef; display: flex; justify-content: space-between; align-items: center;">
-            <h2 style="margin: 0; color: #003366; font-size: 1.8rem;">Provider Portal Guidelines</h2>
+            <h2 style="margin: 0; color: #003366; font-size: 1.8rem;">{% if user.role == 'provider_admin' %}Provider Admin Portal{% else %}Provider Staff Portal{% endif %} Guidelines</h2>
             <button onclick="closeProviderGuidelinesModal()" style="background: none; border: none; font-size: 1.8rem; color: #666; cursor: pointer; padding: 0; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">&times;</button>
         </div>
         <div style="padding: 2rem; overflow-y: auto; flex: 1;">

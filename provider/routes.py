@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 from flask_login import login_required, current_user
-from app import db, User, Scholarship, ScholarshipApplication, Credential, Schedule, Notification, ScholarshipApplicationFile, Announcement, StudentRemark
+from app import db, User, Scholarship, ScholarshipApplication, Credential, Schedule, Notification, ScholarshipApplicationFile, Announcement, StudentRemark, ApplicationRemark
 from email_utils import send_email
 from werkzeug.security import check_password_hash, generate_password_hash
 from datetime import datetime # Import datetime here
@@ -617,7 +617,8 @@ def review_application(application_id):
     application = ScholarshipApplication.query.get_or_404(application_id)
     scholarship = Scholarship.query.get_or_404(application.scholarship_id)
 
-    if scholarship.provider_id != current_user.id:
+    provider_id = get_provider_id()
+    if scholarship.provider_id != provider_id:
         return jsonify({'error': 'Access denied'}), 403
 
     # Map imperative action to status
@@ -764,7 +765,8 @@ def send_broadcast_announcement(scholarship_id):
         return jsonify({'error': 'Title and message are required'}), 400
     
     scholarship = Scholarship.query.get_or_404(scholarship_id)
-    if scholarship.provider_id != current_user.id:
+    provider_id = get_provider_id()
+    if scholarship.provider_id != provider_id:
         return jsonify({'error': 'Access denied'}), 403
 
     # Build query
@@ -808,7 +810,7 @@ def send_broadcast_announcement(scholarship_id):
     # Record Announcement History
     filter_desc = f"Scholarship: {scholarship.code} ({status_filter.title() if status_filter else 'All'})"
     announcement = Announcement(
-        provider_id=current_user.id,
+        provider_id=provider_id,
         type='broadcast',
         recipient_filter=filter_desc,
         recipient_count=len(students),
@@ -837,7 +839,8 @@ def send_individual_announcement():
 
     # Find the student
     # We search for a student who has applied to ANY of this provider's scholarships
-    scholarships = Scholarship.query.filter_by(provider_id=current_user.id).all()
+    provider_id = get_provider_id()
+    scholarships = Scholarship.query.filter_by(provider_id=provider_id).all()
     scholarship_ids = [s.id for s in scholarships]
     
     if not scholarship_ids:
@@ -889,7 +892,7 @@ def send_individual_announcement():
 
     # Record History
     announcement = Announcement(
-        provider_id=current_user.id,
+        provider_id=provider_id,
         type='individual',
         recipient_filter=f"Student: {student.get_full_name()} ({student.student_id})",
         recipient_count=1,
@@ -917,7 +920,8 @@ def create_schedule(application_id):
     application = ScholarshipApplication.query.get_or_404(application_id)
     scholarship = Scholarship.query.get_or_404(application.scholarship_id)
 
-    if scholarship.provider_id != current_user.id:
+    provider_id = get_provider_id()
+    if scholarship.provider_id != provider_id:
         return jsonify({'error': 'Access denied'}), 403
 
     schedule = Schedule(
@@ -980,8 +984,9 @@ def review_credential(credential_id):
             return jsonify({'success': False, 'error': 'Credential not found'}), 404
 
         # Check that the provider has access to this student's application
+        provider_id = get_provider_id()
         application = ScholarshipApplication.query.join(Scholarship).filter(
-            Scholarship.provider_id == current_user.id,
+            Scholarship.provider_id == provider_id,
             ScholarshipApplication.user_id == credential.user_id
         ).first()
 
@@ -1696,9 +1701,10 @@ def api_application_detail(id):
             }
         
         # Get remarks made by current provider for this student
+        provider_id = get_provider_id()
         remarks = StudentRemark.query.filter_by(
             student_id=student.id,
-            provider_id=current_user.id
+            provider_id=provider_id
         ).order_by(StudentRemark.created_at.desc()).all()
         
         remarks_list = []
@@ -1744,7 +1750,7 @@ def api_get_student_remarks(student_id):
         if student.role != 'student':
             return jsonify({'success': False, 'error': 'Invalid student'}), 400
         
-        # Get remarks made by current provider for this student
+        # Get remarks made by current provider (admin or staff's admin) for this student
         remarks = StudentRemark.query.filter_by(
             student_id=student_id,
             provider_id=provider_id
@@ -1816,6 +1822,63 @@ def api_add_student_remark(student_id):
                 'remark_text': remark.remark_text,
                 'created_at': remark.created_at.strftime('%Y-%m-%d %H:%M:%S')
             }
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': f'Error adding remark: {str(e)}'}), 500
+
+@provider_bp.route('/api/add-remarks', methods=['POST'])
+@login_required
+def api_add_remarks():
+    """Add a remark to an application (ApplicationRemark)"""
+    try:
+        require_provider_role()
+        
+        provider_id = get_provider_id()
+        data = request.get_json()
+        application_id = data.get('application_id')
+        remark_text = data.get('remark_text', '').strip()
+        status = data.get('status', 'review')
+        
+        if not application_id or not remark_text:
+            return jsonify({'success': False, 'error': 'Application ID and remark text are required'}), 400
+        
+        # Verify application exists and belongs to provider
+        application = ScholarshipApplication.query.get_or_404(application_id)
+        scholarship = Scholarship.query.get(application.scholarship_id)
+        
+        if not scholarship or scholarship.provider_id != provider_id:
+            return jsonify({'success': False, 'error': 'Unauthorized access to this application'}), 403
+        
+        # Create ApplicationRemark
+        remark = ApplicationRemark(
+            application_id=application_id,
+            provider_id=provider_id,
+            remark_text=remark_text,
+            status=status
+        )
+        
+        db.session.add(remark)
+        
+        # Create in-app notification for the student
+        student = User.query.get(application.user_id)
+        if student:
+            provider_name = current_user.organization or current_user.get_full_name()
+            notification = Notification(
+                user_id=student.id,
+                type='info',
+                title=f'New Remark from {provider_name}',
+                message=f'A provider has added a remark to your application for {scholarship.title}.',
+                created_at=datetime.utcnow(),
+                is_active=True
+            )
+            db.session.add(notification)
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Remark added successfully'
         })
     except Exception as e:
         db.session.rollback()
