@@ -704,21 +704,51 @@ def review_application(application_id):
                     'success': False,
                     'error': f'Cannot approve: Please verify all documents first. Unverified: {", ".join(unverified_docs)}'
                 }), 400
+            # Check if this is a renewal application
+            is_renewal = application.is_renewal if hasattr(application, 'is_renewal') else False
+            original_application_id = application.original_application_id if hasattr(application, 'original_application_id') else None
+            
+            # If renewal is approved, archive the original application
+            if is_renewal and original_application_id:
+                original_app = ScholarshipApplication.query.get(original_application_id)
+                if original_app and original_app.status == 'approved' and original_app.is_active:
+                    original_app.status = 'archived'
+                    original_app.is_active = False
+                    original_app.reviewed_at = datetime.utcnow()
+                    original_app.reviewed_by = current_user.id
+                    
+                    # Update scholarship counts
+                    if scholarship:
+                        scholarship.approved_count = max(0, (scholarship.approved_count or 0) - 1)
+                        if scholarship.slots is not None:
+                            scholarship.slots += 1
+            
             # CRITICAL: Only one scholarship can be approved per student at a time
             # Find and reject/withdraw all other applications for this student
+            # EXCEPTION: Don't reject the original application if this is a renewal (already handled above)
             from sqlalchemy import text as sql_text
             
-            # Get all other applications for this student (excluding current one)
+            # Get all other applications for this student (excluding current one and original if renewal)
             other_applications = ScholarshipApplication.query.filter(
                 ScholarshipApplication.user_id == application.user_id,
                 ScholarshipApplication.id != application_id,
                 ScholarshipApplication.is_active == True
             ).all()
             
+            # Filter out original application if this is a renewal
+            if is_renewal and original_application_id:
+                other_applications = [app for app in other_applications if app.id != original_application_id]
+            
             for other_app in other_applications:
                 old_status = other_app.status
                 # Reject other approved or pending applications
+                # EXCEPTION: If this is a renewal rejection, don't reject the original approved application
+                # (it should remain active until semester expires)
                 if old_status in ['approved', 'pending']:
+                    # Skip rejecting original application if this renewal was rejected
+                    if is_renewal and new_status == 'rejected' and other_app.id == original_application_id:
+                        continue
+                    
                     other_app.status = 'rejected'
                     other_app.reviewed_at = datetime.utcnow()
                     other_app.reviewed_by = current_user.id
@@ -801,9 +831,18 @@ def review_application(application_id):
                 new_status=new_status
             )
             
-            # Create in-app notification for rejection
-            if new_status == 'rejected':
-                try:
+            # Create in-app notification for approval or rejection
+            try:
+                if new_status == 'approved':
+                    notification = Notification(
+                        user_id=student.id,
+                        type='approved',
+                        title=f'Application Approved: {scholarship.title}',
+                        message=f'Congratulations! Your application for {scholarship.title} has been approved.',
+                        created_at=datetime.utcnow(),
+                        is_active=True
+                    )
+                elif new_status == 'rejected':
                     notification = Notification(
                         user_id=student.id,
                         type='application',
@@ -812,10 +851,16 @@ def review_application(application_id):
                         created_at=datetime.utcnow(),
                         is_active=True
                     )
+                else:
+                    notification = None
+                
+                if notification:
                     db.session.add(notification)
                     db.session.commit()
-                except:
-                    pass  # Continue even if notification creation fails
+            except Exception as e:
+                db.session.rollback()
+                # Continue even if notification creation fails - don't break the approval process
+                print(f"Error creating notification: {e}")
         
         return jsonify({'success': True})
     return jsonify({'success': False, 'error': 'Invalid action'}), 400
@@ -1801,6 +1846,11 @@ def api_application_detail(id):
                 'updated_at': remark.updated_at.strftime('%Y-%m-%d %H:%M:%S') if remark.updated_at else None
             })
             
+        # Get renewal status
+        is_renewal = application.is_renewal if hasattr(application, 'is_renewal') else False
+        renewal_failed = application.renewal_failed if hasattr(application, 'renewal_failed') else False
+        original_application_id = application.original_application_id if hasattr(application, 'original_application_id') else None
+        
         return jsonify({
             'success': True,
             'application': {
@@ -1810,7 +1860,10 @@ def api_application_detail(id):
                 'student_id': student.student_id if student else '',
                 'scholarship_title': scholarship.title,
                 'date_applied': application.application_date.strftime('%Y-%m-%d'),
-                'status': application.status
+                'status': application.status,
+                'is_renewal': is_renewal,
+                'renewal_failed': renewal_failed,
+                'original_application_id': original_application_id
             },
             'credentials': cred_list,
             'family_background': family_background,

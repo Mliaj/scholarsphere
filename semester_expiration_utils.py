@@ -128,6 +128,15 @@ def process_expired_semester(scholarship, student):
     if has_notification_been_sent(scholarship.id, student.id, notification_type, semester_date):
         return False
     
+    # Check if there's a pending renewal application
+    pending_renewal = ScholarshipApplication.query.filter_by(
+        user_id=student.id,
+        scholarship_id=scholarship.id,
+        status='pending',
+        is_active=True,
+        is_renewal=True
+    ).first()
+    
     # Update application status
     application = ScholarshipApplication.query.filter_by(
         user_id=student.id,
@@ -137,10 +146,22 @@ def process_expired_semester(scholarship, student):
     ).first()
     
     if application:
-        application.status = 'archived'
-        application.is_active = False
-        application.reviewed_at = datetime.utcnow()
-        db.session.commit()
+        # If there's a pending renewal, check if provider approved it
+        if pending_renewal:
+            # Provider failed to renew - remove both applications
+            application.status = 'archived'
+            application.is_active = False
+            application.reviewed_at = datetime.utcnow()
+            # Also archive the renewal application
+            pending_renewal.status = 'archived'
+            pending_renewal.is_active = False
+            db.session.commit()
+        else:
+            # No renewal attempt - just archive the original
+            application.status = 'archived'
+            application.is_active = False
+            application.reviewed_at = datetime.utcnow()
+            db.session.commit()
     
     title = f"Scholarship Semester Expired: {scholarship.title}"
     message = f"The semester for your approved scholarship '{scholarship.title}' has expired. Your application has been removed from this scholarship."

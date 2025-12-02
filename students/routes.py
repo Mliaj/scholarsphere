@@ -323,7 +323,7 @@ def applications():
         text("""
             SELECT sa.id, sa.user_id, sa.scholarship_id, sa.status, sa.application_date, 
                    s.title, s.deadline, s.is_active as scholarship_is_active, s.status as scholarship_status,
-                   s.semester_date, s.code
+                   s.semester_date, s.code, sa.is_renewal, sa.renewal_failed
             FROM scholarship_applications sa
             JOIN scholarships s ON sa.scholarship_id = s.id
             WHERE sa.user_id = :user_id AND sa.is_active = 1
@@ -420,6 +420,8 @@ def applications():
                 semester_date = None
         
         scholarship_code = app[10] if len(app) > 10 else ''
+        is_renewal_app = bool(app[11]) if len(app) > 11 else False
+        renewal_failed = bool(app[12]) if len(app) > 12 else False
         
         applications_data.append({
             'id': f"APP-{app[0]:03d}",
@@ -433,7 +435,9 @@ def applications():
             'needs_renewal': needs_renewal,
             'semester_date': semester_date.strftime('%B %d, %Y') if semester_date else None,
             'days_until_expiration': days_until_expiration if days_until_expiration is not None else None,
-            'scholarship_code': scholarship_code
+            'scholarship_code': scholarship_code,
+            'is_renewal': is_renewal_app,
+            'renewal_failed': renewal_failed
         })
     
     return render_template('students/applications.html', applications=applications_data, user=current_user)
@@ -445,6 +449,10 @@ def scholarships():
     if current_user.role != 'student':
         flash('Access denied. Student access required.', 'error')
         return redirect(url_for('index'))
+    
+    # Check if this is a renewal redirect
+    renewal_scholarship_id = request.args.get('renew', type=int)
+    is_renewal = renewal_scholarship_id is not None
     
     # Get actual scholarships from database using raw SQL
     from flask import current_app
@@ -503,19 +511,36 @@ def scholarships():
     
     db.session.commit()
     
-    available_scholarships = db.session.execute(
-        text(
-            """
-            SELECT s.id, s.code, s.title, s.description, s.amount, s.deadline, s.requirements, u.organization,
-                   s.type, s.level, s.eligibility, s.program_course, s.additional_criteria, s.slots, s.contact_name, s.contact_email, s.contact_phone,
-                   s.is_expired_deadline, s.semester, s.school_year, s.semester_date, s.is_expired_semester
-            FROM scholarships s
-            LEFT JOIN users u ON s.provider_id = u.id
-            WHERE s.status IN ('active','approved') AND s.is_active = 1
-            ORDER BY s.deadline ASC
-            """
-        )
-    ).fetchall()
+    # Build query - filter by renewal scholarship if applicable
+    if is_renewal and renewal_scholarship_id:
+        available_scholarships = db.session.execute(
+            text(
+                """
+                SELECT s.id, s.code, s.title, s.description, s.amount, s.deadline, s.requirements, u.organization,
+                       s.type, s.level, s.eligibility, s.program_course, s.additional_criteria, s.slots, s.contact_name, s.contact_email, s.contact_phone,
+                       s.is_expired_deadline, s.semester, s.school_year, s.semester_date, s.is_expired_semester
+                FROM scholarships s
+                LEFT JOIN users u ON s.provider_id = u.id
+                WHERE s.id = :scholarship_id AND s.status IN ('active','approved') AND s.is_active = 1
+                ORDER BY s.deadline ASC
+                """
+            ),
+            {"scholarship_id": renewal_scholarship_id}
+        ).fetchall()
+    else:
+        available_scholarships = db.session.execute(
+            text(
+                """
+                SELECT s.id, s.code, s.title, s.description, s.amount, s.deadline, s.requirements, u.organization,
+                       s.type, s.level, s.eligibility, s.program_course, s.additional_criteria, s.slots, s.contact_name, s.contact_email, s.contact_phone,
+                       s.is_expired_deadline, s.semester, s.school_year, s.semester_date, s.is_expired_semester
+                FROM scholarships s
+                LEFT JOIN users u ON s.provider_id = u.id
+                WHERE s.status IN ('active','approved') AND s.is_active = 1
+                ORDER BY s.deadline ASC
+                """
+            )
+        ).fetchall()
 
     # Fetch all applications for the current user in one query
     user_applications = db.session.execute(
@@ -638,7 +663,12 @@ def scholarships():
             'semester_date': semester_date.strftime('%B %d, %Y') if semester_date else None
         })
     
-    return render_template('students/scholarships.html', scholarships=scholarships_data, user=current_user, today_date=today_date)
+    return render_template('students/scholarships.html', 
+                         scholarships=scholarships_data, 
+                         user=current_user, 
+                         today_date=today_date,
+                         is_renewal=is_renewal,
+                         renewal_scholarship_id=renewal_scholarship_id)
 
 @students_bp.route('/apply-scholarship/<int:scholarship_id>', methods=['POST'])
 @login_required
@@ -656,10 +686,16 @@ def apply_scholarship(scholarship_id):
         # Ensure current_time is always defined
         current_time = datetime.utcnow().isoformat()
         
+        # Check if this is a renewal application
+        is_renewal = False
+        original_application_id = None
+        
         # Get form data - handle both JSON and FormData
         if request.is_json:
             form_data = request.get_json()
             selected_credentials = form_data.get('selected_credentials', {})
+            is_renewal = form_data.get('is_renewal', False)
+            original_application_id = form_data.get('original_application_id')
         else:
             # Handle form data
             form_data = request.form.to_dict()
@@ -669,6 +705,34 @@ def apply_scholarship(scholarship_id):
                 selected_credentials = json.loads(credentials_str)
             except (json.JSONDecodeError, ValueError):
                 selected_credentials = {}
+            is_renewal = request.form.get('is_renewal', 'false').lower() == 'true'
+            original_app_id_str = request.form.get('original_application_id')
+            if original_app_id_str:
+                try:
+                    original_application_id = int(original_app_id_str)
+                except (ValueError, TypeError):
+                    original_application_id = None
+        
+        # If renewal, find the original approved application
+        if is_renewal:
+            original_app = db.session.execute(
+                text("""
+                    SELECT id FROM scholarship_applications
+                    WHERE user_id = :user_id 
+                    AND scholarship_id = :scholarship_id
+                    AND status = 'approved'
+                    AND is_active = 1
+                    ORDER BY application_date DESC
+                    LIMIT 1
+                """),
+                {"user_id": current_user.id, "scholarship_id": scholarship_id}
+            ).fetchone()
+            
+            if original_app:
+                original_application_id = original_app[0]
+            else:
+                # If no original app found, don't treat as renewal
+                is_renewal = False
         
         # Check if scholarship exists and is active
         today = datetime.utcnow().date()
@@ -752,22 +816,43 @@ def apply_scholarship(scholarship_id):
 
         # STRICT CHECK: Has the student EVER been approved for THIS scholarship?
         # Using lower() and trimming whitespace.
-        already_approved = db.session.execute(
-            text(
-                """
-                SELECT id, status FROM scholarship_applications
-                WHERE user_id = :user_id 
-                  AND scholarship_id = :scholarship_id 
-                  AND LOWER(TRIM(status)) = 'approved' 
-                  AND is_active = 1
-                LIMIT 1
-                """
-            ),
-            {"user_id": current_user.id, "scholarship_id": scholarship_id}
-        ).fetchone()
+        # EXCEPTION: Allow renewal applications
+        if not is_renewal:
+            already_approved = db.session.execute(
+                text(
+                    """
+                    SELECT id, status FROM scholarship_applications
+                    WHERE user_id = :user_id 
+                      AND scholarship_id = :scholarship_id 
+                      AND LOWER(TRIM(status)) = 'approved' 
+                      AND is_active = 1
+                    LIMIT 1
+                    """
+                ),
+                {"user_id": current_user.id, "scholarship_id": scholarship_id}
+            ).fetchone()
 
-        if already_approved:
-            return jsonify({'success': False, 'message': 'You have already been approved for this scholarship.'}), 400
+            if already_approved:
+                return jsonify({'success': False, 'message': 'You have already been approved for this scholarship.'}), 400
+        else:
+            # For renewals, check if there's already a pending renewal
+            existing_renewal = db.session.execute(
+                text(
+                    """
+                    SELECT id FROM scholarship_applications
+                    WHERE user_id = :user_id 
+                      AND scholarship_id = :scholarship_id 
+                      AND is_renewal = 1
+                      AND status = 'pending'
+                      AND is_active = 1
+                    LIMIT 1
+                    """
+                ),
+                {"user_id": current_user.id, "scholarship_id": scholarship_id}
+            ).fetchone()
+            
+            if existing_renewal:
+                return jsonify({'success': False, 'message': 'You already have a pending renewal application for this scholarship.'}), 400
 
         # Check for any PENDING application for this scholarship
         pending_application = db.session.execute(
@@ -788,17 +873,20 @@ def apply_scholarship(scholarship_id):
             return jsonify({'success': False, 'message': 'You already have a pending application for this scholarship.'}), 400
         
         # No existing row for this user/scholarship: create a brand new application
+        # Check if renewal columns exist before including them
         result = db.session.execute(
             text("""\
-                INSERT INTO scholarship_applications (user_id, scholarship_id, status, application_date, is_active)
-                VALUES (:user_id, :scholarship_id, :status, :application_date, :is_active)
+                INSERT INTO scholarship_applications (user_id, scholarship_id, status, application_date, is_active, is_renewal, original_application_id)
+                VALUES (:user_id, :scholarship_id, :status, :application_date, :is_active, :is_renewal, :original_application_id)
             """),
             {
                 "user_id": current_user.id,
                 "scholarship_id": scholarship_id,
                 "status": 'pending',
                 "application_date": current_time,
-                "is_active": 1
+                "is_active": 1,
+                "is_renewal": 1 if is_renewal else 0,
+                "original_application_id": original_application_id
             }
         )
         application_id = result.lastrowid
@@ -903,6 +991,40 @@ def apply_scholarship(scholarship_id):
 
         # Create notification for application submission (raw SQL)
         try:
+            if is_renewal:
+                # Renewal submission notification
+                notification_title = 'Renewal Application Submitted'
+                notification_message = 'Your scholarship renewal application has been submitted successfully. Please wait for provider review.'
+                
+                # Send email notification for renewal
+                try:
+                    from email_utils import send_email
+                    from flask import url_for
+                    scholarship_info = db.session.execute(
+                        text("SELECT title, code FROM scholarships WHERE id = :id"),
+                        {"id": scholarship_id}
+                    ).fetchone()
+                    
+                    if scholarship_info:
+                        scholarship_title = scholarship_info[0] or 'Scholarship'
+                        scholarship_code = scholarship_info[1] or ''
+                        dashboard_url = url_for('students.dashboard', _external=True)
+                        
+                        send_email(
+                            to=current_user.email,
+                            subject=notification_title,
+                            template='email/renewal_submitted.html',
+                            student_name=current_user.get_full_name(),
+                            scholarship_name=scholarship_title,
+                            scholarship_code=scholarship_code,
+                            dashboard_url=dashboard_url
+                        )
+                except Exception as e:
+                    print(f"Error sending renewal email: {e}")
+            else:
+                notification_title = 'Application Submitted'
+                notification_message = 'Your scholarship application has been submitted successfully.'
+            
             db.session.execute(
                 text("""
                     INSERT INTO notifications (user_id, type, title, message, created_at, is_active)
@@ -911,8 +1033,8 @@ def apply_scholarship(scholarship_id):
                 {
                     "user_id": current_user.id,
                     "type": 'application',
-                    "title": 'Application Submitted',
-                    "message": 'Your scholarship application has been submitted successfully.',
+                    "title": notification_title,
+                    "message": notification_message,
                     "created_at": datetime.utcnow()
                 }
             )
@@ -922,7 +1044,7 @@ def apply_scholarship(scholarship_id):
         
         return jsonify({
             'success': True,
-            'message': 'Application submitted successfully with credentials'
+            'message': 'Renewal application submitted successfully' if is_renewal else 'Application submitted successfully with credentials'
         })
         
     except Exception as e:
@@ -2401,6 +2523,56 @@ def delete_credential(credential_id):
     except Exception:
         db.session.rollback()
         return jsonify({'success': False, 'message': 'Failed to delete credential'}), 500
+
+@students_bp.route('/api/renewal-failed', methods=['POST'])
+@login_required
+def record_renewal_failure():
+    """Record that student failed to confirm renewal"""
+    if current_user.role != 'student':
+        return jsonify({'error': 'Access denied'}), 403
+    
+    try:
+        from flask import current_app
+        db = current_app.extensions['sqlalchemy']
+        data = request.get_json()
+        scholarship_id = data.get('scholarship_id')
+        
+        if not scholarship_id:
+            return jsonify({'success': False, 'message': 'Scholarship ID required'}), 400
+        
+        # Find the approved application for this scholarship
+        approved_app = db.session.execute(
+            text("""
+                SELECT id FROM scholarship_applications
+                WHERE user_id = :user_id 
+                AND scholarship_id = :scholarship_id
+                AND status = 'approved'
+                AND is_active = 1
+                ORDER BY application_date DESC
+                LIMIT 1
+            """),
+            {"user_id": current_user.id, "scholarship_id": scholarship_id}
+        ).fetchone()
+        
+        if approved_app:
+            # Mark renewal_failed flag
+            db.session.execute(
+                text("""
+                    UPDATE scholarship_applications
+                    SET renewal_failed = 1
+                    WHERE id = :app_id
+                """),
+                {"app_id": approved_app[0]}
+            )
+            db.session.commit()
+            return jsonify({'success': True, 'message': 'Renewal failure recorded'})
+        else:
+            return jsonify({'success': False, 'message': 'Approved application not found'}), 404
+            
+    except Exception as e:
+        if 'db' in locals():
+            db.session.rollback()
+        return jsonify({'success': False, 'message': f'Error: {str(e)}'}), 500
 
 @students_bp.route('/delete-award/<int:award_id>', methods=['DELETE'])
 @login_required

@@ -170,6 +170,12 @@ def main():
             'module': 'migrate_add_semester_expiration_notifications_table',
             'function': 'migrate',
             'description': 'Create semester_expiration_notifications table to track sent notifications'
+        },
+        {
+            'name': 'Renewal Tracking Fields',
+            'module': 'migrate_add_renewal_tracking',
+            'function': 'migrate',
+            'description': 'Add is_renewal, renewal_failed, and original_application_id columns to scholarship_applications table'
         }
     ]
     

@@ -637,10 +637,51 @@ function handleReplaceFile() {
 function closeAppModal(){ document.getElementById('appDetailsModal').style.display='none'; }
 
 function renewScholarship(scholarshipId, scholarshipCode) {
-    if (confirm('Are you sure you want to renew your scholarship application? This will create a new application for the same scholarship.')) {
-        // Redirect to scholarship page to apply again
-        window.location.href = `/students/scholarships`;
+    // Show confirmation modal
+    const modal = document.getElementById('renewalConfirmModal');
+    if (modal) {
+        modal.style.display = 'block';
+        // Store scholarship ID for the continue action
+        modal.setAttribute('data-scholarship-id', scholarshipId);
+        modal.setAttribute('data-scholarship-code', scholarshipCode);
     }
+}
+
+function closeRenewalModal() {
+    const modal = document.getElementById('renewalConfirmModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+function doNotRenew() {
+    // Record that student failed to renew
+    const modal = document.getElementById('renewalConfirmModal');
+    const scholarshipId = modal.getAttribute('data-scholarship-id');
+    
+    fetch('/students/api/renewal-failed', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            scholarship_id: scholarshipId
+        })
+    }).then(() => {
+        closeRenewalModal();
+    }).catch(err => {
+        console.error('Error recording renewal failure:', err);
+        closeRenewalModal();
+    });
+}
+
+function continueRenewal() {
+    const modal = document.getElementById('renewalConfirmModal');
+    const scholarshipId = modal.getAttribute('data-scholarship-id');
+    const scholarshipCode = modal.getAttribute('data-scholarship-code');
+    
+    // Redirect to browse scholarships page with renewal filter
+    window.location.href = `/students/scholarships?renew=${scholarshipId}`;
 }
 </script>
 {% endblock %}
@@ -743,6 +784,33 @@ function renewScholarship(scholarshipId, scholarshipCode) {
         <!-- Applications Grid -->
 <div class="applications-grid" id="applicationsGrid">
 
+<!-- Renewal Confirmation Modal -->
+<div id="renewalConfirmModal" class="modal" style="display:none; position:fixed; z-index:1001; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.5);">
+  <div class="modal-content" style="background:#fff; margin:10% auto; padding:0; border-radius:15px; width:90%; max-width:500px; box-shadow:0 10px 30px rgba(0,0,0,0.3);">
+    <div class="modal-header" style="padding:1.5rem; border-bottom:1px solid #e9ecef; background:#fff3cd; border-radius:15px 15px 0 0;">
+      <h2 class="modal-title" style="margin:0; font-size:1.5rem; color:#856404; font-weight:700;">
+        <i class="fas fa-exclamation-triangle" style="margin-right:0.5rem;"></i>Renew Scholarship?
+      </h2>
+    </div>
+    <div class="modal-body" style="padding:2rem;">
+      <p style="font-size:1rem; color:#333; margin-bottom:1.5rem; line-height:1.6;">
+        Are you sure you want to renew your scholarship application? This will create a new application for the same scholarship.
+      </p>
+      <p style="font-size:0.9rem; color:#666; margin-bottom:1.5rem;">
+        <strong>Note:</strong> If you choose not to renew, your scholarship will end when the semester expires.
+      </p>
+    </div>
+    <div class="modal-footer" style="padding:1.5rem; border-top:1px solid #e9ecef; background:#f8f9fa; border-radius:0 0 15px 15px; display:flex; justify-content:flex-end; gap:1rem;">
+      <button type="button" class="btn-modal secondary" onclick="doNotRenew()" style="padding:0.75rem 1.5rem; border:none; border-radius:8px; font-weight:600; cursor:pointer; background:#6c757d; color:#fff;">
+        Do Not Renew
+      </button>
+      <button type="button" class="btn-modal primary" onclick="continueRenewal()" style="padding:0.75rem 1.5rem; border:none; border-radius:8px; font-weight:600; cursor:pointer; background:#007bff; color:#fff;">
+        Continue
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- Application Details Modal -->
 <div id="appDetailsModal" class="modal" style="display:none; position:fixed; z-index:1000; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.5);">
   <div class="modal-content" style="background:#fff; margin:2% auto; padding:0; border-radius:15px; width:90%; max-width:800px; max-height:90vh; overflow:auto; box-shadow:0 10px 30px rgba(0,0,0,0.3);">
@@ -794,11 +862,30 @@ function renewScholarship(scholarshipId, scholarshipCode) {
                         </div>
                     </div>
                     <div class="application-title">{{ application.scholarship }}</div>
+                    {% if application.is_renewal %}
+                    <div style="margin-bottom: 1rem; padding: 0.75rem 1rem; background: #e7f3ff; border-left: 4px solid #007bff; border-radius: 6px;">
+                        <div style="font-weight: 600; color: #004085; font-size: 0.9rem;">
+                            <i class="fas fa-sync-alt" style="margin-right: 0.5rem;"></i>Waiting for Renewal
+                        </div>
+                        <div style="font-size: 0.85rem; color: #666; margin-top: 0.25rem;">
+                            This is a renewal application. Your current scholarship remains active until the provider reviews your renewal.
+                        </div>
+                    </div>
+                    {% elif application.renewal_failed %}
+                    <div style="margin-bottom: 1rem; padding: 0.75rem 1rem; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 6px;">
+                        <div style="font-weight: 600; color: #856404; font-size: 0.9rem;">
+                            <i class="fas fa-exclamation-circle" style="margin-right: 0.5rem;"></i>Renewal Not Confirmed
+                        </div>
+                        <div style="font-size: 0.85rem; color: #666; margin-top: 0.25rem;">
+                            You did not confirm the renewal. You can apply again normally when the semester expires.
+                        </div>
+                    </div>
+                    {% endif %}
                     <div class="application-info">
                         <div><strong>Applied:</strong> {{ application.date_applied }}</div>
                         <div><strong>Deadline:</strong> {{ application.deadline }}</div>
                         <div><strong>Status:</strong> {{ application.status }}</div>
-                        <div><strong>Type:</strong> Scholarship Application</div>
+                        <div><strong>Type:</strong> {% if application.is_renewal %}Renewal Application{% else %}Scholarship Application{% endif %}</div>
                         {% if application.status == 'Approved' %}
                         <div style="grid-column:1 / -1;">
                             <strong>Active Status:</strong> 

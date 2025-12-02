@@ -34,6 +34,8 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
 # Define tables to truncate in order (Child tables first to avoid FK constraint errors)
+# Note: scholarship_applications includes renewal tracking fields (is_renewal, renewal_failed, original_application_id)
+# The original_application_id is a self-referencing FK with ON DELETE SET NULL, so truncation order doesn't matter for it
 TABLES = [
     'announcements',
     'semester_expiration_notifications',
@@ -45,7 +47,7 @@ TABLES = [
     'academic_information',
     'application_personal_information',
     'scholarship_application_files',
-    'scholarship_applications',
+    'scholarship_applications',  # Includes renewal tracking fields
     'credentials',
     'awards',
     'scholarships',
