@@ -207,28 +207,36 @@ def check_student_semester_expirations(student_id):
             if days_until_expiration < 0:
                 process_expired_semester(scholarship, student)
             else:
-                # Check for advance notifications (only send if we're at or past the target date)
-                # This allows catching up if student hasn't logged in for a while
-                if days_until_expiration <= 30 and days_until_expiration > 14:
-                    # 1 month notification window
-                    notification_type = f"semester_expiring_30days"
-                    if not has_notification_been_sent(scholarship.id, student.id, notification_type, semester_date):
-                        send_advance_notification(scholarship, student, 30, semester_date)
-                elif days_until_expiration <= 14 and days_until_expiration > 7:
-                    # 2 weeks notification window
-                    notification_type = f"semester_expiring_14days"
-                    if not has_notification_been_sent(scholarship.id, student.id, notification_type, semester_date):
-                        send_advance_notification(scholarship, student, 14, semester_date)
-                elif days_until_expiration <= 7 and days_until_expiration > 3:
-                    # 1 week notification window
-                    notification_type = f"semester_expiring_7days"
-                    if not has_notification_been_sent(scholarship.id, student.id, notification_type, semester_date):
-                        send_advance_notification(scholarship, student, 7, semester_date)
-                elif days_until_expiration <= 3 and days_until_expiration > 0:
-                    # 3 days notification window
-                    notification_type = f"semester_expiring_3days"
+                # Send only the nearest/closest notification to avoid duplicates
+                # Check from closest to farthest and send only the first applicable one
+                notification_sent = False
+                
+                # 3 days notification - highest priority (closest to expiration)
+                if days_until_expiration <= 3 and days_until_expiration > 0:
+                    notification_type = "semester_expiring_3days"
                     if not has_notification_been_sent(scholarship.id, student.id, notification_type, semester_date):
                         send_advance_notification(scholarship, student, 3, semester_date)
+                        notification_sent = True
+                
+                # 1 week (7 days) notification
+                if not notification_sent and days_until_expiration <= 7 and days_until_expiration > 3:
+                    notification_type = "semester_expiring_7days"
+                    if not has_notification_been_sent(scholarship.id, student.id, notification_type, semester_date):
+                        send_advance_notification(scholarship, student, 7, semester_date)
+                        notification_sent = True
+                
+                # 2 weeks (14 days) notification
+                if not notification_sent and days_until_expiration <= 14 and days_until_expiration > 7:
+                    notification_type = "semester_expiring_14days"
+                    if not has_notification_been_sent(scholarship.id, student.id, notification_type, semester_date):
+                        send_advance_notification(scholarship, student, 14, semester_date)
+                        notification_sent = True
+                
+                # 1 month (30 days) notification - lowest priority (farthest from expiration)
+                if not notification_sent and days_until_expiration <= 30 and days_until_expiration > 14:
+                    notification_type = "semester_expiring_30days"
+                    if not has_notification_been_sent(scholarship.id, student.id, notification_type, semester_date):
+                        send_advance_notification(scholarship, student, 30, semester_date)
     except Exception:
         # Silently fail - don't break login/dashboard if check fails
         # In production, you might want to log this

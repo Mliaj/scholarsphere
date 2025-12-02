@@ -322,7 +322,8 @@ def applications():
     user_applications = db.session.execute(
         text("""
             SELECT sa.id, sa.user_id, sa.scholarship_id, sa.status, sa.application_date, 
-                   s.title, s.deadline, s.is_active as scholarship_is_active, s.status as scholarship_status
+                   s.title, s.deadline, s.is_active as scholarship_is_active, s.status as scholarship_status,
+                   s.semester_date, s.code
             FROM scholarship_applications sa
             JOIN scholarships s ON sa.scholarship_id = s.id
             WHERE sa.user_id = :user_id AND sa.is_active = 1
@@ -330,6 +331,9 @@ def applications():
         """),
         {"user_id": current_user.id}
     ).fetchall()
+    
+    from datetime import date
+    today = date.today()
     
     applications_data = []
     for app in user_applications:
@@ -374,6 +378,49 @@ def applications():
         if app_status == 'approved' and scholarship_is_active and scholarship_status != 'archived':
             is_active = True
         
+        # Check semester expiration for renewal
+        semester_date_val = app[9] if len(app) > 9 else None
+        semester_date = None
+        needs_renewal = False
+        days_until_expiration = None
+        
+        # Check renewal eligibility: must be approved and active, and have a semester date
+        if app_status == 'approved' and is_active and semester_date_val:
+            # Parse semester_date from various formats
+            try:
+                if isinstance(semester_date_val, str):
+                    try:
+                        semester_date = datetime.strptime(semester_date_val, '%Y-%m-%d').date()
+                    except (ValueError, TypeError):
+                        try:
+                            semester_date = datetime.fromisoformat(semester_date_val.replace('Z', '+00:00')).date()
+                        except (ValueError, TypeError):
+                            semester_date = None
+                elif isinstance(semester_date_val, date):
+                    # Already a date object
+                    semester_date = semester_date_val
+                elif hasattr(semester_date_val, 'date'):
+                    # datetime object - extract date
+                    semester_date = semester_date_val.date()
+                elif hasattr(semester_date_val, 'strftime'):
+                    # Might be a date-like object
+                    try:
+                        semester_date = semester_date_val.date() if hasattr(semester_date_val, 'date') else date.fromisoformat(str(semester_date_val))
+                    except:
+                        semester_date = None
+                
+                if semester_date:
+                    days_until_expiration = (semester_date - today).days
+                    # Show renewal if semester expires within 30 days (including today and up to 30 days)
+                    if 0 <= days_until_expiration <= 30:
+                        needs_renewal = True
+            except Exception as e:
+                # Silently handle parsing errors - don't break the page
+                print(f"Error parsing semester_date for application {app[0]}: {e}")
+                semester_date = None
+        
+        scholarship_code = app[10] if len(app) > 10 else ''
+        
         applications_data.append({
             'id': f"APP-{app[0]:03d}",
             'scholarship': app[5],
@@ -382,7 +429,11 @@ def applications():
             'deadline': deadline.strftime('%B %d, %Y') if deadline else 'No deadline',
             'scholarship_id': app[2],
             'application_id': app[0],
-            'is_active': is_active
+            'is_active': is_active,
+            'needs_renewal': needs_renewal,
+            'semester_date': semester_date.strftime('%B %d, %Y') if semester_date else None,
+            'days_until_expiration': days_until_expiration if days_until_expiration is not None else None,
+            'scholarship_code': scholarship_code
         })
     
     return render_template('students/applications.html', applications=applications_data, user=current_user)

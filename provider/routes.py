@@ -638,6 +638,9 @@ def review_application(application_id):
             req_str = scholarship.requirements or ''
             current_requirements = [r.strip() for r in req_str.split(',') if r.strip()]
             
+            # Initialize unverified_docs outside the if block
+            unverified_docs = []
+            
             if current_requirements:
                 # Requirement label mappings
                 REQUIREMENT_MAPPINGS = {
@@ -690,12 +693,12 @@ def review_application(application_id):
                     }), 400
                 
                 # Check if all provided documents are verified
-                unverified_docs = []
                 for f in linked_files:
                     if f.credential and not f.credential.is_verified:
                         req_label = REQUIREMENT_MAPPINGS.get(f.requirement_type, f.requirement_type)
                         unverified_docs.append(req_label)
             
+            # Only check unverified_docs if there were requirements
             if unverified_docs:
                 return jsonify({
                     'success': False,

@@ -321,6 +321,25 @@
         transform: translateY(-1px);
     }
 
+    .renewal-banner {
+        animation: pulse-gentle 2s infinite;
+    }
+
+    @keyframes pulse-gentle {
+        0%, 100% {
+            box-shadow: 0 2px 8px rgba(255, 199, 44, 0.3);
+        }
+        50% {
+            box-shadow: 0 4px 12px rgba(255, 199, 44, 0.5);
+        }
+    }
+
+    .btn-renew:hover {
+        background: #000 !important;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    }
+
     .empty-state {
         text-align: center;
         padding: 4rem 2rem;
@@ -616,6 +635,13 @@ function handleReplaceFile() {
 }
 
 function closeAppModal(){ document.getElementById('appDetailsModal').style.display='none'; }
+
+function renewScholarship(scholarshipId, scholarshipCode) {
+    if (confirm('Are you sure you want to renew your scholarship application? This will create a new application for the same scholarship.')) {
+        // Redirect to scholarship page to apply again
+        window.location.href = `/students/scholarships`;
+    }
+}
 </script>
 {% endblock %}
 
@@ -734,6 +760,33 @@ function closeAppModal(){ document.getElementById('appDetailsModal').style.displ
             {% if applications %}
                 {% for application in applications %}
                 <div class="application-card" data-status="{{ application.status|lower }}" data-title="{{ application.scholarship|lower }}" data-id="{{ application.id|lower }}">
+                    {% if application.needs_renewal %}
+                    <div class="renewal-banner" style="background: linear-gradient(135deg, #ffc72c 0%, #ff9800 100%); color: #212529; padding: 1rem 1.25rem; border-radius: 10px; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 8px rgba(255, 199, 44, 0.3);">
+                        <div style="flex: 1;">
+                            <div style="font-weight: 600; font-size: 1rem; margin-bottom: 0.25rem;">
+                                <i class="fas fa-exclamation-triangle" style="margin-right: 0.5rem;"></i>
+                                Your semester is almost up; renew now to keep your scholarship.
+                            </div>
+                            {% if application.days_until_expiration is not none %}
+                            <div style="font-size: 0.85rem; opacity: 0.9;">
+                                {% if application.days_until_expiration == 0 %}
+                                    Expires today
+                                {% elif application.days_until_expiration == 1 %}
+                                    Expires in 1 day
+                                {% else %}
+                                    Expires in {{ application.days_until_expiration }} days
+                                {% endif %}
+                                {% if application.semester_date %}
+                                    ({{ application.semester_date }})
+                                {% endif %}
+                            </div>
+                            {% endif %}
+                        </div>
+                        <button class="btn-renew" onclick="renewScholarship({{ application.scholarship_id }}, '{{ application.scholarship_code }}')" style="background: #212529; color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 8px; font-weight: 600; font-size: 0.9rem; cursor: pointer; transition: all 0.3s; white-space: nowrap; margin-left: 1rem;">
+                            <i class="fas fa-sync-alt" style="margin-right: 0.5rem;"></i>Renew
+                        </button>
+                    </div>
+                    {% endif %}
                     <div class="application-header">
                         <div class="application-id">{{ application.id }}</div>
                         <div class="application-status status-{{ application.status.lower().replace(' ', '-') }}">
