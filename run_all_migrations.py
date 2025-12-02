@@ -164,6 +164,12 @@ def main():
             'module': 'migrate_provider_roles_and_staff',
             'function': 'migrate',
             'description': 'Update provider roles to provider_admin and provider_staff, add managed_by field for staff relationship'
+        },
+        {
+            'name': 'Semester Expiration Notifications Table',
+            'module': 'migrate_add_semester_expiration_notifications_table',
+            'function': 'migrate',
+            'description': 'Create semester_expiration_notifications table to track sent notifications'
         }
     ]
     
