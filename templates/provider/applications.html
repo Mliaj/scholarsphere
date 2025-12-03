@@ -341,6 +341,7 @@
     <!-- Applications by Scholarship -->
     <div class="filter-bar" style="margin-bottom:1rem; display:flex; justify-content:space-between; gap:0.75rem; align-items:center; flex-wrap:wrap;">
       <div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap; flex:1;">
+        {% if user.role == 'provider_admin' %}
         <div style="position:relative; flex:1; min-width:250px; max-width:350px;">
           <label for="scholarshipSearch" style="font-size:0.9rem; color:#555; display:block; margin-bottom:0.25rem;">
             Search Scholarship:
@@ -351,6 +352,7 @@
           </div>
           <div id="scholarshipSuggestions" class="autocomplete-suggestions" style="display:none;"></div>
         </div>
+        {% endif %}
         <div style="position:relative; flex:1; min-width:250px; max-width:350px;">
           <label for="studentSearch" style="font-size:0.9rem; color:#555; display:block; margin-bottom:0.25rem;">
             Search Student:
@@ -1126,7 +1128,7 @@ function proceedWithReview(applicationId, action) {
 let selectedScholarshipId = null;
 let selectedStudentId = null;
 
-// Autocomplete functionality for scholarships
+// Autocomplete functionality for scholarships (only for provider_admin)
 function setupScholarshipAutocomplete() {
   const input = document.getElementById('scholarshipSearch');
   const suggestions = document.getElementById('scholarshipSuggestions');
@@ -1134,6 +1136,7 @@ function setupScholarshipAutocomplete() {
   let selectedIndex = -1;
   let currentSuggestions = [];
 
+  // Only setup if elements exist (provider_admin only)
   if (!input || !suggestions) return;
 
   input.addEventListener('input', function() {

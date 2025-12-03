@@ -125,7 +125,11 @@
 
     <!-- Search Bar -->
     <div class="search-bar-container">
-      <input type="text" id="scheduleSearch" placeholder="Search by student name, scholarship title, or code..." autocomplete="off">
+      {% if user.role == 'provider_admin' %}
+      <input type="text" id="scheduleSearch" placeholder="Search by student name, email, scholarship title, or code..." autocomplete="off">
+      {% else %}
+      <input type="text" id="scheduleSearch" placeholder="Search by student name or email..." autocomplete="off">
+      {% endif %}
     </div>
 
     <div class="table-container">
@@ -143,7 +147,7 @@
         <tbody>
           {% if applications %}
             {% for app in applications %}
-            <tr class="schedule-row" data-student-name="{{ app.student_name.lower() }}" data-scholarship-title="{{ app.scholarship_title.lower() }}" data-scholarship-code="{{ app.scholarship_code.lower() }}">
+            <tr class="schedule-row" data-student-name="{{ app.student_name.lower() }}" data-student-email="{{ app.student_email.lower() }}" data-scholarship-title="{{ app.scholarship_title.lower() }}" data-scholarship-code="{{ app.scholarship_code.lower() }}">
               <td>{{ app.application_id }}</td>
               <td><strong>{{ app.student_name }}</strong><br><small>{{ app.student_email }}</small></td>
               <td><strong>{{ app.scholarship_code }}</strong><br><small>{{ app.scholarship_title }}</small></td>
@@ -371,13 +375,28 @@ document.addEventListener('DOMContentLoaded', function() {
   function performSearch() {
     const query = searchInput.value.toLowerCase().trim();
     let visibleCount = 0;
+    const isProviderAdmin = {{ 'true' if user.role == 'provider_admin' else 'false' }};
     
     scheduleRows.forEach(row => {
       const studentName = row.getAttribute('data-student-name') || '';
+      const studentEmail = row.getAttribute('data-student-email') || '';
       const scholarshipTitle = row.getAttribute('data-scholarship-title') || '';
       const scholarshipCode = row.getAttribute('data-scholarship-code') || '';
       
-      if (query === '' || studentName.includes(query) || scholarshipTitle.includes(query) || scholarshipCode.includes(query)) {
+      let matches = false;
+      if (query === '') {
+        matches = true;
+      } else {
+        // Always search by student name and email
+        matches = studentName.includes(query) || studentEmail.includes(query);
+        
+        // Provider admin can also search by scholarship title and code
+        if (isProviderAdmin) {
+          matches = matches || scholarshipTitle.includes(query) || scholarshipCode.includes(query);
+        }
+      }
+      
+      if (matches) {
         row.style.display = '';
         if (query !== '') {
           visibleCount++;

@@ -182,6 +182,12 @@ def main():
             'module': 'migrate_add_next_last_semester_date',
             'function': 'main',
             'description': 'Add next_last_semester_date column to scholarships table for renewal tracking'
+        },
+        {
+            'name': 'Users - Staff Scholarship Type',
+            'module': 'migrate_add_staff_scholarship_type',
+            'function': 'migrate',
+            'description': 'Add scholarship_type column to users table for provider_staff assignment'
         }
     ]
     

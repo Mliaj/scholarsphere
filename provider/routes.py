@@ -39,6 +39,14 @@ def get_provider_id():
         return current_user.managed_by
     return current_user.id
 
+def get_scholarships_query(provider_id):
+    """Get scholarships query filtered by provider_id and staff's scholarship_type if applicable"""
+    query = Scholarship.query.filter_by(provider_id=provider_id)
+    # Filter by type if user is provider_staff with assigned type
+    if current_user.role == 'provider_staff' and current_user.scholarship_type:
+        query = query.filter_by(type=current_user.scholarship_type)
+    return query
+
 def notify_matching_students(scholarship):
     """Notify students whose course matches the scholarship's program_course"""
     if not scholarship.program_course or not scholarship.program_course.strip():
@@ -105,14 +113,16 @@ def dashboard():
     
     provider_id = get_provider_id()
     
+    # Get base query with type filtering for staff
+    base_query = get_scholarships_query(provider_id)
+    
     # Calculate dashboard stats
-    active_scholarships = Scholarship.query.filter(
-        Scholarship.provider_id == provider_id,
+    active_scholarships = base_query.filter(
         Scholarship.status.in_(['active', 'approved'])
     ).count()
-    draft_scholarships = Scholarship.query.filter_by(provider_id=provider_id, status='draft').count()
+    draft_scholarships = base_query.filter_by(status='draft').count()
     
-    scholarships = Scholarship.query.filter_by(provider_id=provider_id).all()
+    scholarships = base_query.all()
     scholarship_ids = [s.id for s in scholarships]
     
     total_applications = ScholarshipApplication.query.filter(
@@ -204,7 +214,7 @@ def applications():
         pass
     
     provider_id = get_provider_id()
-    scholarships = Scholarship.query.filter_by(provider_id=provider_id).all()
+    scholarships = get_scholarships_query(provider_id).all()
     
     total_applications = 0
     # Pre-process scholarships to attach application count and formatted applications if needed by template
@@ -253,7 +263,7 @@ def schedules():
     
     provider_id = get_provider_id()
     # Get applications to list for scheduling
-    scholarships = Scholarship.query.filter_by(provider_id=provider_id).all()
+    scholarships = get_scholarships_query(provider_id).all()
     scholarship_ids = [s.id for s in scholarships]
     
     raw_applications = ScholarshipApplication.query.filter(
@@ -294,7 +304,7 @@ def documents():
     require_provider_role()
     
     provider_id = get_provider_id()
-    scholarships = Scholarship.query.filter_by(provider_id=provider_id).all()
+    scholarships = get_scholarships_query(provider_id).all()
     scholarship_ids = [s.id for s in scholarships]
     
     # Get all applications for these scholarships
@@ -529,7 +539,8 @@ def generate_report_pdf():
     require_provider_role()
 
     # Get actual data
-    scholarships = Scholarship.query.filter_by(provider_id=current_user.id).all()
+    provider_id = get_provider_id()
+    scholarships = get_scholarships_query(provider_id).all()
     scholarship_ids = [s.id for s in scholarships]
     
     total_scholarships = len(scholarships)
@@ -1036,7 +1047,7 @@ def send_individual_announcement():
     # Find the student
     # We search for a student who has applied to ANY of this provider's scholarships
     provider_id = get_provider_id()
-    scholarships = Scholarship.query.filter_by(provider_id=provider_id).all()
+    scholarships = get_scholarships_query(provider_id).all()
     scholarship_ids = [s.id for s in scholarships]
     
     if not scholarship_ids:
@@ -1234,7 +1245,7 @@ def api_scholarships_list():
     require_provider_role()
     
     provider_id = get_provider_id()
-    scholarships = Scholarship.query.filter_by(provider_id=provider_id).all()
+    scholarships = get_scholarships_query(provider_id).all()
     data = []
     for s in scholarships:
         data.append({
@@ -1255,7 +1266,7 @@ def api_applications_list():
     require_provider_role()
     
     provider_id = get_provider_id()
-    scholarships = Scholarship.query.filter_by(provider_id=provider_id).all()
+    scholarships = get_scholarships_query(provider_id).all()
     scholarship_ids = [s.id for s in scholarships]
     
     applications = ScholarshipApplication.query.filter(
@@ -1287,12 +1298,12 @@ def api_scholarships_search():
         return jsonify([])
 
     # Find matching scholarships for this provider
-    scholarships = Scholarship.query.filter_by(provider_id=current_user.id)\
-        .filter(or_(
-            Scholarship.title.like(f"%{query}%"),
-            Scholarship.code.like(f"%{query}%")
-        ))\
-        .limit(10).all()
+    provider_id = get_provider_id()
+    base_query = get_scholarships_query(provider_id)
+    scholarships = base_query.filter(or_(
+        Scholarship.title.like(f"%{query}%"),
+        Scholarship.code.like(f"%{query}%")
+    )).limit(10).all()
         
     data = []
     for s in scholarships:
@@ -1318,7 +1329,7 @@ def api_students_search():
     if not query or len(query) < 2:
         return jsonify([])
 
-    scholarships = Scholarship.query.filter_by(provider_id=provider_id).all()
+    scholarships = get_scholarships_query(provider_id).all()
     scholarship_ids = [s.id for s in scholarships]
     
     if not scholarship_ids:
@@ -2341,11 +2352,37 @@ def staff_management():
             'last_name': staff.last_name,
             'email': staff.email,
             'organization': staff.organization or '',
+            'scholarship_type': staff.scholarship_type or None,
             'is_active': staff.is_active,
             'created_at': staff.created_at.strftime('%Y-%m-%d') if staff.created_at else ''
         })
     
     return render_template('provider/staff.html', user=current_user, staff_members=staff_data)
+
+@provider_bp.route('/api/scholarship-types', methods=['GET'])
+@login_required
+def get_scholarship_types():
+    """Get all unique scholarship types for this provider - Admin only"""
+    require_provider_admin()
+    
+    try:
+        # Get all unique scholarship types from provider's scholarships
+        types = db.session.execute(
+            text("""
+                SELECT DISTINCT type 
+                FROM scholarships 
+                WHERE provider_id = :provider_id 
+                AND type IS NOT NULL 
+                AND type != ''
+                ORDER BY type
+            """),
+            {"provider_id": current_user.id}
+        ).fetchall()
+        
+        type_list = [t[0] for t in types]
+        return jsonify({'success': True, 'types': type_list})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @provider_bp.route('/api/staff', methods=['POST'])
 @login_required
@@ -2363,6 +2400,23 @@ def create_staff():
     if User.query.filter_by(email=data['email']).first():
         return jsonify({'success': False, 'error': 'Email already exists'}), 400
     
+    # Validate scholarship_type if provided (must be from provider's scholarships)
+    scholarship_type = data.get('scholarship_type', '').strip()
+    if scholarship_type:
+        # Verify the type exists in provider's scholarships
+        type_exists = db.session.execute(
+            text("""
+                SELECT COUNT(*) 
+                FROM scholarships 
+                WHERE provider_id = :provider_id 
+                AND type = :scholarship_type
+            """),
+            {"provider_id": current_user.id, "scholarship_type": scholarship_type}
+        ).scalar() > 0
+        
+        if not type_exists:
+            return jsonify({'success': False, 'error': 'Invalid scholarship type'}), 400
+    
     try:
         # Use admin's organization automatically
         admin_organization = current_user.organization or ''
@@ -2374,6 +2428,7 @@ def create_staff():
             organization=admin_organization,
             role='provider_staff',
             managed_by=current_user.id,
+            scholarship_type=scholarship_type if scholarship_type else None,
             is_active=True
         )
         new_staff.set_password(data['password'])
@@ -2407,6 +2462,7 @@ def staff_detail(staff_id):
                 'last_name': staff.last_name,
                 'email': staff.email,
                 'organization': staff.organization or '',
+                'scholarship_type': staff.scholarship_type or '',
                 'is_active': staff.is_active
             }
         })
@@ -2423,6 +2479,24 @@ def staff_detail(staff_id):
                     return jsonify({'success': False, 'error': 'Email already taken'}), 400
                 staff.email = data['email']
             if 'organization' in data: staff.organization = data['organization']
+            if 'scholarship_type' in data:
+                scholarship_type = data['scholarship_type'].strip() if data['scholarship_type'] else None
+                # Validate scholarship_type if provided
+                if scholarship_type:
+                    # Verify the type exists in provider's scholarships
+                    type_exists = db.session.execute(
+                        text("""
+                            SELECT COUNT(*) 
+                            FROM scholarships 
+                            WHERE provider_id = :provider_id 
+                            AND type = :scholarship_type
+                        """),
+                        {"provider_id": current_user.id, "scholarship_type": scholarship_type}
+                    ).scalar() > 0
+                    
+                    if not type_exists:
+                        return jsonify({'success': False, 'error': 'Invalid scholarship type'}), 400
+                staff.scholarship_type = scholarship_type
             if 'password' in data and data['password']:
                 staff.set_password(data['password'])
             

@@ -83,6 +83,7 @@ class User(UserMixin, db.Model):
     course = db.Column(db.String(50), nullable=True)  # BSIT, BSCS, BSCE, etc.
     organization = db.Column(db.String(255), nullable=True)  # For providers
     managed_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)  # For provider_staff, links to provider_admin
+    scholarship_type = db.Column(db.String(100), nullable=True)  # For provider_staff, assigned scholarship type
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, onupdate=datetime.utcnow)
     is_active = db.Column(db.Boolean, nullable=False, default=True)

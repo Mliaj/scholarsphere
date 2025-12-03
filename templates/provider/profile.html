@@ -721,6 +721,20 @@ if (typeof window.openEditModal === 'undefined') {
           <div class="value">{{ manager.get_full_name() }} ({{ manager.email }})</div>
         </div>
         {% endif %}
+        {% if user.role == 'provider_staff' %}
+        <div class="info-item readonly">
+          <label><i class="fas fa-graduation-cap" style="margin-right: 0.5rem;"></i> Scholarship Type Assignment</label>
+          <div class="value">
+            {% if user.scholarship_type %}
+              <span style="background: #e7f3ff; color: #0066cc; padding: 0.25rem 0.6rem; border-radius: 12px; font-size: 0.9rem; font-weight: 600; display: inline-block;">
+                {{ user.scholarship_type }}
+              </span>
+            {% else %}
+              <span style="color: #999; font-style: italic;">Not assigned</span>
+            {% endif %}
+          </div>
+        </div>
+        {% endif %}
       </div>
 
       <div class="action-buttons">
