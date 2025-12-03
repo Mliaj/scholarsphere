@@ -16,7 +16,6 @@ students_bp = Blueprint('students', __name__)
 # Configuration for file uploads
 UPLOAD_FOLDER = 'static/uploads/profile_pictures'
 CREDENTIALS_FOLDER = 'static/uploads/credentials'
-AWARDS_FOLDER = 'static/uploads/awards'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf', 'doc', 'docx', 'jfif'}
 
 def allowed_file(filename):
@@ -252,68 +251,6 @@ def credentials():
     
     return render_template('students/credentials.html', credentials=credentials_list, user=current_user, scholarship_name=scholarship_name)
 
-@students_bp.route('/awards')
-@login_required
-def awards():
-    """Student awards page"""
-    if current_user.role != 'student':
-        flash('Access denied. Student access required.', 'error')
-        return redirect(url_for('index'))
-    
-    # Get actual awards from database using raw SQL
-    from flask import current_app
-    db = current_app.extensions['sqlalchemy']
-    
-    user_awards = db.session.execute(
-        text("SELECT * FROM awards WHERE user_id = :user_id AND is_active = 1 ORDER BY award_date DESC, upload_date DESC"),
-        {"user_id": current_user.id}
-    ).fetchall()
-    
-    # Convert to list of dictionaries for template compatibility
-    awards_list = []
-    for award in user_awards:
-        # Ensure upload_date is a proper datetime object
-        upload_date = award[9]
-        if upload_date is not None:
-            if isinstance(upload_date, str):
-                try:
-                    # Try different datetime formats
-                    if 'T' in upload_date:
-                        upload_date = datetime.fromisoformat(upload_date.replace('Z', '+00:00'))
-                    else:
-                        # Try parsing as date string
-                        upload_date = datetime.strptime(upload_date, '%Y-%m-%d %H:%M:%S')
-                except:
-                    try:
-                        # Try parsing as timestamp string
-                        upload_date = datetime.fromtimestamp(float(upload_date))
-                    except:
-                        upload_date = None
-            elif isinstance(upload_date, int):
-                # Convert timestamp to datetime
-                try:
-                    upload_date = datetime.fromtimestamp(upload_date)
-                except:
-                    upload_date = None
-            elif not isinstance(upload_date, datetime):
-                upload_date = None
-        
-        awards_list.append({
-            'id': award[0],
-            'user_id': award[1],
-            'award_type': award[2],
-            'award_title': award[3],
-            'file_name': award[4],
-            'file_path': award[5],
-            'file_size': award[6],
-            'academic_year': award[7],
-            'award_date': award[8],
-            'upload_date': upload_date,
-            'is_active': award[10]
-        })
-    
-    return render_template('students/awards.html', awards=awards_list, user=current_user)
-
 @students_bp.route('/applications')
 @login_required
 def applications():
@@ -342,7 +279,7 @@ def applications():
                    s.semester_date, s.code, sa.is_renewal, sa.renewal_failed, sa.reviewed_at, sa.notes, sa.is_active as application_is_active
             FROM scholarship_applications sa
             JOIN scholarships s ON sa.scholarship_id = s.id
-            WHERE sa.user_id = :user_id AND (sa.is_active = 1 OR (sa.is_renewal = 1 AND sa.status = 'approved'))
+            WHERE sa.user_id = :user_id AND (sa.is_active = 1 OR (sa.is_renewal = 1 AND sa.status = 'approved') OR sa.status = 'completed')
             ORDER BY sa.application_date DESC
         """),
         {"user_id": current_user.id}
@@ -1330,7 +1267,9 @@ def withdraw_application(application_id):
             return jsonify({'success': False, 'message': 'Application not found'}), 404
         
         current_status = (application[1] or '').lower()
-        if current_status != 'pending':
+        if current_status not in ['pending']:
+            if current_status == 'completed':
+                return jsonify({'success': False, 'message': 'Cannot withdraw a completed application'}), 400
             return jsonify({'success': False, 'message': 'Cannot withdraw application that has been reviewed'}), 400
         
         scholarship_id = application[2]
@@ -2472,136 +2411,6 @@ def view_credential(credential_id):
     from flask import send_file
     return send_file(file_path, as_attachment=False, mimetype=content_type)
 
-@students_bp.route('/upload-award', methods=['POST'])
-@login_required
-def upload_award():
-    """Upload student award"""
-    if current_user.role != 'student':
-        return jsonify({'error': 'Access denied'}), 403
-    
-    try:
-        award_type = request.form.get('award_type', '').strip()
-        award_title = request.form.get('award_title', '').strip()
-        academic_year = request.form.get('academic_year', '').strip()
-        award_date = request.form.get('award_date', '').strip()
-        file = request.files.get('file')
-        
-        if not all([award_type, award_title, academic_year, award_date]) or not file:
-            return jsonify({'success': False, 'message': 'Missing required fields'}), 400
-        
-        if file.filename == '':
-            return jsonify({'success': False, 'message': 'No file selected'}), 400
-        
-        if file and allowed_file(file.filename):
-            # Generate unique filename
-            filename = secure_filename(file.filename)
-            file_extension = filename.rsplit('.', 1)[1].lower()
-            unique_filename = f"{uuid.uuid4()}_{current_user.id}.{file_extension}"
-            
-            # Create upload directory if it doesn't exist (absolute path)
-            from flask import current_app
-            base_dir = os.path.join(current_app.root_path, AWARDS_FOLDER)
-            os.makedirs(base_dir, exist_ok=True)
-            
-            # Save file
-            file_path = os.path.join(base_dir, unique_filename)
-            file.save(file_path)
-            
-            # Get file size
-            file_size = os.path.getsize(file_path)
-            
-            # Save award to database (raw SQL)
-            db = current_app.extensions['sqlalchemy']
-            db.session.execute(
-                text("""
-                    INSERT INTO awards (user_id, award_type, award_title, file_name, file_path, file_size, academic_year, award_date, upload_date, is_active)
-                    VALUES (:user_id, :atype, :atitle, :fname, :fpath, :fsize, :ayear, :adate, :udate, 1)
-                """),
-                {
-                    "user_id": current_user.id,
-                    "atype": award_type,
-                    "atitle": award_title,
-                    "fname": filename,
-                    "fpath": unique_filename,
-                    "fsize": file_size,
-                    "ayear": academic_year,
-                    "adate": datetime.strptime(award_date, '%Y-%m-%d').date(),
-                    "udate": datetime.utcnow()
-                }
-            )
-
-            # Notify award upload
-            db.session.execute(
-                text("""
-                    INSERT INTO notifications (user_id, type, title, message, created_at, is_active)
-                    VALUES (:user_id, :type, :title, :message, :created_at, 1)
-                """),
-                {
-                    "user_id": current_user.id,
-                    "type": 'award',
-                    "title": 'Award Uploaded',
-                    "message": f'Award "{award_title}" has been uploaded.',
-                    "created_at": datetime.utcnow()
-                }
-            )
-            db.session.commit()
-            
-            return jsonify({
-                'success': True,
-                'message': 'Award uploaded successfully'
-            })
-            
-        else:
-            return jsonify({'success': False, 'message': 'Invalid file type'}), 400
-            
-    except ValueError as e:
-        return jsonify({'success': False, 'message': 'Invalid date format'}), 400
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'success': False, 'message': 'Failed to upload award'}), 500
-
-@students_bp.route('/view-award/<int:award_id>')
-@login_required
-def view_award(award_id):
-    """View award file"""
-    if current_user.role != 'student':
-        flash('Access denied. Student access required.', 'error')
-        return redirect(url_for('index'))
-    
-    from flask import current_app
-    db = current_app.extensions['sqlalchemy']
-    row = db.session.execute(
-        text("SELECT file_path FROM awards WHERE id = :id AND user_id = :uid AND is_active = 1"),
-        {"id": award_id, "uid": current_user.id}
-    ).fetchone()
-    
-    if not row:
-        flash('Award not found.', 'error')
-        return redirect(url_for('students.awards'))
-    
-    file_path = os.path.join(current_app.root_path, AWARDS_FOLDER, row[0])
-    
-    if not os.path.exists(file_path):
-        flash('File not found.', 'error')
-        return redirect(url_for('students.awards'))
-    
-    # Determine content type based on file extension
-    file_extension = row[0].rsplit('.', 1)[1].lower()
-    content_type_map = {
-        'pdf': 'application/pdf',
-        'jpg': 'image/jpeg',
-        'jpeg': 'image/jpeg',
-        'png': 'image/png',
-        'gif': 'image/gif',
-        'doc': 'application/msword',
-        'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-    }
-    
-    content_type = content_type_map.get(file_extension, 'application/octet-stream')
-    
-    from flask import send_file
-    return send_file(file_path, as_attachment=False, mimetype=content_type)
-
 @students_bp.route('/delete-credential/<int:credential_id>', methods=['DELETE'])
 @login_required
 def delete_credential(credential_id):
@@ -2762,41 +2571,3 @@ def record_renewal_failure():
         if 'db' in locals():
             db.session.rollback()
         return jsonify({'success': False, 'message': f'Error: {str(e)}'}), 500
-
-@students_bp.route('/delete-award/<int:award_id>', methods=['DELETE'])
-@login_required
-def delete_award(award_id):
-    """Delete award"""
-    if current_user.role != 'student':
-        return jsonify({'error': 'Access denied'}), 403
-    
-    try:
-        from flask import current_app
-        db = current_app.extensions['sqlalchemy']
-        row = db.session.execute(
-            text("SELECT file_path FROM awards WHERE id=:id AND user_id=:uid AND is_active=1"),
-            {"id": award_id, "uid": current_user.id}
-        ).fetchone()
-        if not row:
-            return jsonify({'success': False, 'message': 'Award not found'}), 404
-        
-        # Delete file from filesystem
-        file_path = os.path.join(current_app.root_path, AWARDS_FOLDER, row[0])
-        if os.path.exists(file_path):
-            os.remove(file_path)
-        
-        # Mark as inactive in database (soft delete)
-        db.session.execute(
-            text("UPDATE awards SET is_active = 0 WHERE id = :id"),
-            {"id": award_id}
-        )
-        db.session.commit()
-        
-        return jsonify({
-            'success': True,
-            'message': 'Award deleted successfully'
-        })
-        
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'success': False, 'message': 'Failed to delete award'}), 500

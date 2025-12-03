@@ -200,7 +200,6 @@ The application uses SQLAlchemy for database management. Tables are created auto
 - `GET /students/dashboard` - Student dashboard
 - `GET /students/profile` - Student profile
 - `GET /students/credentials` - Student credentials
-- `GET /students/awards` - Student awards
 - `GET /students/applications` - Student applications
 - `GET /students/scholarships` - Available scholarships
 

@@ -57,12 +57,6 @@ def main():
             'description': 'Add description, type, level, eligibility, slots, contact fields'
         },
         {
-            'name': 'Awards Table',
-            'module': 'migrate_awards_table',
-            'function': 'migrate_awards_table',
-            'description': 'Create awards table for student achievements'
-        },
-        {
             'name': 'Credentials - Status Column',
             'module': 'migrate_credentials_status',
             'function': 'migrate_credentials_status',

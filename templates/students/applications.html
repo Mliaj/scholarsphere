@@ -838,7 +838,7 @@ function continueRenewal() {
             {% if applications %}
                 {% for application in applications %}
                 <div class="application-card" data-status="{{ application.status|lower }}" data-title="{{ application.scholarship|lower }}" data-id="{{ application.id|lower }}">
-                    {% if application.needs_renewal and not application.has_approved_renewal %}
+                    {% if application.needs_renewal and not application.has_approved_renewal and application.status != 'Completed' %}
                     <div class="renewal-banner" style="background: linear-gradient(135deg, #ffc72c 0%, #ff9800 100%); color: #212529; padding: 1rem 1.25rem; border-radius: 10px; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 8px rgba(255, 199, 44, 0.3);">
                         <div style="flex: 1;">
                             <div style="font-weight: 600; font-size: 1rem; margin-bottom: 0.25rem;">
@@ -915,7 +915,7 @@ function continueRenewal() {
                         </div>
                         </div>
                         {% endif %}
-                    {% elif application.renewal_failed %}
+                    {% elif application.renewal_failed and application.status != 'Completed' %}
                     <div style="margin-bottom: 1rem; padding: 0.75rem 1rem; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 6px;">
                         <div style="font-weight: 600; color: #856404; font-size: 0.9rem;">
                             <i class="fas fa-exclamation-circle" style="margin-right: 0.5rem;"></i>Renewal Not Confirmed
@@ -958,7 +958,7 @@ function continueRenewal() {
 <button class="action-btn btn-view" onclick="openAppDetails({{ application.application_id }})">
                             <i class="fas fa-eye"></i> Review Application
                         </button>
-                        {% if application.status not in ['Approved', 'Rejected'] %}
+                        {% if application.status not in ['Approved', 'Rejected', 'Completed'] %}
                         <button class="action-btn btn-withdraw" onclick="withdrawApplication({{ application.application_id }})">
                             <i class="fas fa-times"></i>
                         </button>

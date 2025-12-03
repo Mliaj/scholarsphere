@@ -9,8 +9,7 @@ import os
 UPLOAD_DIRECTORIES = [
     'static/uploads',
     'static/uploads/profile_pictures',
-    'static/uploads/credentials',
-    'static/uploads/awards'
+    'static/uploads/credentials'
 ]
 
 def setup_directories():

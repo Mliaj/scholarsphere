@@ -132,25 +132,6 @@ class User(UserMixin, db.Model):
             return None
         return self.manager if self.manager and self.manager.role == 'provider_admin' else None
 
-# Award model for storing student achievements
-class Award(db.Model):
-    __tablename__ = 'awards'
-    
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    award_type = db.Column(db.String(100), nullable=False)  # e.g., 'Certificate', 'Participation', 'Deadlist', etc.
-    award_title = db.Column(db.String(255), nullable=False)  # Title of the award
-    file_name = db.Column(db.String(255), nullable=False)
-    file_path = db.Column(db.String(500), nullable=False)
-    file_size = db.Column(db.Integer)  # File size in bytes
-    academic_year = db.Column(db.String(20), nullable=True)  # e.g., '1st Year', '2nd Year', etc.
-    award_date = db.Column(db.Date, nullable=True)  # Date when award was received
-    upload_date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-    is_active = db.Column(db.Boolean, default=True)
-    
-    # Relationship
-    user = db.relationship('User', backref='awards')
-
 # Credential model for storing student documents
 class Credential(db.Model):
     __tablename__ = 'credentials'

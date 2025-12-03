@@ -23,7 +23,6 @@ This report verifies the database connection, relationships, routes, and migrati
 - ✓ `scholarships` (backref) - Provider's scholarships
 - ✓ `scholarship_applications` (backref) - User's applications
 - ✓ `credentials` (backref) - User's credentials
-- ✓ `awards` (backref) - User's awards
 - ✓ `notifications` (backref) - User's notifications
 
 ### Scholarship Model
