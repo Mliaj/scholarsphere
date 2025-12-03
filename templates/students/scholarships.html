@@ -1332,8 +1332,25 @@ function resetFilters() {
         <div class="section-title">Academic Information</div>
         <div class="form-grid">
           <div class="form-group"><label class="form-label">Latest General Average / GPA</label><input class="form-control" name="gpa"></div>
-          <div class="form-group"><label class="form-label">Current Semester</label><input class="form-control" name="semester"></div>
-          <div class="form-group"><label class="form-label">School Year</label><input class="form-control" name="school_year"></div>
+          <div class="form-group">
+            <label class="form-label">Current Semester</label>
+            <select class="form-control" name="semester" required>
+              <option value="">-- Select Semester --</option>
+              <option value="1st">1st</option>
+              <option value="2nd">2nd</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">School Year</label>
+            <select class="form-control" name="school_year" required>
+              <option value="">-- Select School Year --</option>
+              {% for i in range(2) %}
+                {% set start_year = current_year + i %}
+                <option value="{{ start_year }} - {{ start_year }}">{{ start_year }} - {{ start_year }}</option>
+                <option value="{{ start_year }} - {{ start_year + 1 }}">{{ start_year }} - {{ start_year + 1 }}</option>
+              {% endfor %}
+            </select>
+          </div>
         </div>
 
         <div class="section-title">Required Documents</div>

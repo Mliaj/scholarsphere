@@ -734,12 +734,15 @@ def scholarships():
             'semester_date': semester_date.strftime('%B %d, %Y') if semester_date else None
         })
     
+    current_year = datetime.utcnow().year
+    
     return render_template('students/scholarships.html', 
                          scholarships=scholarships_data, 
                          user=current_user, 
                          today_date=today_date,
                          is_renewal=is_renewal,
-                         renewal_scholarship_id=renewal_scholarship_id)
+                         renewal_scholarship_id=renewal_scholarship_id,
+                         current_year=current_year)
 
 @students_bp.route('/apply-scholarship/<int:scholarship_id>', methods=['POST'])
 @login_required
