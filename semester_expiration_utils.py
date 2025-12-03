@@ -160,9 +160,9 @@ def process_expired_semester(scholarship, student):
         # If there's an approved renewal or pending renewal, complete the old one and activate the renewal
         renewal = approved_renewal or pending_renewal
         if renewal:
-            # Mark old approved application as completed (keep it visible)
+            # Mark old approved application as completed
             application.status = 'completed'
-            application.is_active = True  # Keep active so it displays
+            application.is_active = False  # Mark as inactive since semester has expired
             application.reviewed_at = datetime.utcnow()
             
             # If renewal was pending, approve it now
@@ -220,7 +220,7 @@ def process_expired_semester(scholarship, student):
         else:
             # No renewal attempt - mark as completed and notify
             application.status = 'completed'
-            application.is_active = True  # Keep active so it displays
+            application.is_active = False  # Mark as inactive since semester has expired
             application.reviewed_at = datetime.utcnow()
             db.session.commit()
     
@@ -287,7 +287,7 @@ def check_student_semester_expirations(student_id):
             
             # Check if expired
             # Process expiration - this will handle pending renewals appropriately
-            if days_until_expiration < 0:
+            if days_until_expiration <= 0:
                 # Process expiration - this will approve pending renewals if they've been reviewed
                 process_expired_semester(scholarship, student)
             else:

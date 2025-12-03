@@ -232,7 +232,7 @@ def process_semester_expirations():
                 continue
             
             # Check if semester has expired
-            if days_until_expiration < 0:
+            if days_until_expiration <= 0:
                 # Semester has expired - remove student and notify
                 print(f"    Processing expired semester for student: {student.get_full_name()} ({student.email})")
                 if process_expired_semester(scholarship, student):
