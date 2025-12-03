@@ -2026,10 +2026,11 @@ def api_add_remarks():
 @login_required
 def api_scholarship_report_pdf(id):
     """Download PDF report for a specific scholarship (works for both active and archived)"""
-    require_provider_admin()
+    require_provider_role()
 
     scholarship = Scholarship.query.get_or_404(id)
-    if scholarship.provider_id != current_user.id:
+    provider_id = get_provider_id()
+    if scholarship.provider_id != provider_id:
         flash('Unauthorized', 'error')
         return redirect(url_for('provider.scholarships'))
 

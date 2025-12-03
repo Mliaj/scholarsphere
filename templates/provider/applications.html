@@ -1386,13 +1386,16 @@ function generatePDF() {
     // Generate PDF by redirecting to the PDF route
     window.location.href = `/provider/api/scholarship/${scholarshipId}/report-pdf`;
     
-    // Close modal after a short delay (to allow download to start)
+    // Reset button after a short delay (to allow download to start)
     setTimeout(() => {
-        closePDFModal();
         if (generateBtn) {
             generateBtn.disabled = false;
             generateBtn.innerHTML = '<i class="fas fa-download"></i> Generate & Download';
         }
+        // Close modal after button reset
+        setTimeout(() => {
+            closePDFModal();
+        }, 500);
     }, 1000);
 }
 
