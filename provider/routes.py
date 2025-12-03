@@ -817,23 +817,25 @@ def review_application(application_id):
             
             # CRITICAL: Only one scholarship can be approved per student at a time
             # Find and reject/withdraw all other applications for this student
-            # EXCEPTION: Don't reject renewals or the original application if this is a renewal
+            # EXCEPTION: Don't reject renewals (they can coexist with original approved application)
+            # EXCEPTION: Don't reject the original application if this is a renewal
             from sqlalchemy import text as sql_text
             
-            # Get all other applications for this student (excluding current one and original if renewal)
+            # Get all other applications for this student (excluding current one)
             other_applications = ScholarshipApplication.query.filter(
                 ScholarshipApplication.user_id == application.user_id,
                 ScholarshipApplication.id != application_id,
                 ScholarshipApplication.is_active == True
             ).all()
             
-            # Filter out original application and other renewals if this is a renewal
+            # ALWAYS filter out renewal applications - they can coexist with the original approved application
+            # Renewals should be protected regardless of what type of application is being approved
+            other_applications = [app for app in other_applications if not (hasattr(app, 'is_renewal') and app.is_renewal)]
+            
+            # If this is a renewal, also filter out the original application
+            # (the original should remain active until the semester expires)
             if is_renewal and original_application_id:
                 other_applications = [app for app in other_applications if app.id != original_application_id]
-            
-            # Also filter out other renewals (they can coexist with the old approved application)
-            if is_renewal:
-                other_applications = [app for app in other_applications if not (hasattr(app, 'is_renewal') and app.is_renewal)]
             
             for other_app in other_applications:
                 old_status = other_app.status
