@@ -100,32 +100,27 @@ def login():
             ).fetchone()
         
         if result:
-            user = User(
-                id=result[0],
-                first_name=result[1],
-                last_name=result[2],
-                email=result[3],
-                student_id=result[4],
-                birthday=result[5],
-                password_hash=result[6],
-                role=result[7],
-                profile_picture=result[8],
-                year_level=result[9],
-                course=result[10],
-                organization=result[11],
-                managed_by=result[12],
-                scholarship_type=result[13],
-                created_at=result[14],
-                updated_at=result[15],
-                is_active=result[16]
-            )
+            # Verify password from raw SQL result
+            password_hash = result[6]
+            if check_password_hash(password_hash, password):
+                # Password verified - now get the actual User object from database
+                # This ensures the object is properly tracked by SQLAlchemy
+                user_id = result[0]
+                from app import User as UserModel
+                user = UserModel.query.get(user_id)
+                
+                if user:
+                    remember = request.form.get('remember') == 'on'
+                    login_user(user, remember=remember)
+                    flash(f'Welcome back, {user.get_full_name()}!', 'success')
+                else:
+                    user = None
+            else:
+                user = None
         else:
             user = None
         
-        if user and user.check_password(password):
-            remember = request.form.get('remember') == 'on'
-            login_user(user, remember=remember)
-            flash(f'Welcome back, {user.get_full_name()}!', 'success')
+        if user:
             
             # Check semester expirations for students (no cron job needed)
             if user.role == 'student':
