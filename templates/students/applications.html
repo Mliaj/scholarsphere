@@ -942,7 +942,7 @@ function continueRenewal() {
                                 {% if application.is_active %}Active{% else %}Inactive{% endif %}
                             </span>
                         </div>
-                        {% if not application.is_active %}
+                        {% if not application.is_active and not application.is_renewal %}
                         <div style="grid-column:1 / -1; font-size:0.85rem; color:#856404; margin-top:0.5rem;">
                             This scholarship has been archived, so your application is no longer active.
                         </div>

@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, abort
 from flask_login import login_required, current_user
 from app import db, User, Scholarship, ScholarshipApplication, Credential, Schedule, Notification, ScholarshipApplicationFile, Announcement, StudentRemark, ApplicationRemark
 from email_utils import send_email
@@ -22,16 +22,16 @@ def is_provider_role():
     return current_user.is_authenticated and current_user.role in ('provider_admin', 'provider_staff')
 
 def require_provider_admin():
-    """Require provider admin access, redirect if not"""
+    """Require provider admin access, abort with 403 if not"""
     if not is_provider_admin():
         flash('Access denied. Provider admin access required.', 'error')
-        return redirect(url_for('provider.dashboard'))
+        abort(403)
 
 def require_provider_role():
-    """Require any provider role access, redirect if not"""
+    """Require any provider role access, abort with 403 if not"""
     if not is_provider_role():
         flash('Access denied. Provider access required.', 'error')
-        return redirect(url_for('index'))
+        abort(403)
 
 def get_provider_id():
     """Get the provider ID - for staff, return their manager's ID; for admin, return their own ID"""

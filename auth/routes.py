@@ -81,7 +81,7 @@ def login():
                 text("""
                     SELECT id, first_name, last_name, email, student_id, birthday, password_hash, 
                            role, profile_picture, year_level, course, organization, managed_by,
-                           created_at, updated_at, is_active, reset_token, reset_token_expires
+                           scholarship_type, created_at, updated_at, is_active, reset_token, reset_token_expires
                     FROM users WHERE student_id = :student_id
                 """),
                 {"student_id": identifier}
@@ -93,7 +93,7 @@ def login():
                 text("""
                     SELECT id, first_name, last_name, email, student_id, birthday, password_hash, 
                            role, profile_picture, year_level, course, organization, managed_by,
-                           created_at, updated_at, is_active, reset_token, reset_token_expires
+                           scholarship_type, created_at, updated_at, is_active, reset_token, reset_token_expires
                     FROM users WHERE LOWER(email) = :email
                 """),
                 {"email": email_lookup}
@@ -113,9 +113,11 @@ def login():
                 year_level=result[9],
                 course=result[10],
                 organization=result[11],
-                created_at=result[13],
-                updated_at=result[14],
-                is_active=result[15]
+                managed_by=result[12],
+                scholarship_type=result[13],
+                created_at=result[14],
+                updated_at=result[15],
+                is_active=result[16]
             )
         else:
             user = None
