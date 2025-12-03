@@ -104,6 +104,7 @@ def send_advance_notification(scholarship, student, days_before, semester_date):
     # Create in-app notification
     if create_notification(student.id, 'deadline', title, message):
         # Send email
+        email_sent = False
         try:
             from flask import url_for
             dashboard_url = url_for('students.dashboard', _external=True)
@@ -120,12 +121,19 @@ def send_advance_notification(scholarship, student, days_before, semester_date):
                 dashboard_url=dashboard_url,
                 scholarships_url=scholarships_url
             )
+            email_sent = True
         except Exception as e:
             print(f"Error sending email to {student.email}: {e}")
+            # Don't record notification as sent if email failed - allows retry on next run
         
-        # Record that notification was sent
-        record_notification_sent(scholarship.id, student.id, notification_type, semester_date)
-        return True
+        # Only record that notification was sent if email succeeded
+        # This allows retry if email fails while keeping the in-app notification
+        if email_sent:
+            record_notification_sent(scholarship.id, student.id, notification_type, semester_date)
+            return True
+        else:
+            # In-app notification was created but email failed - return False to allow retry
+            return False
     
     return False
 

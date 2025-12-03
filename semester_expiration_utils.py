@@ -97,6 +97,8 @@ def send_advance_notification(scholarship, student, days_before, semester_date):
         return False
     
     if create_notification(student.id, 'deadline', title, message):
+        # Send email
+        email_sent = False
         try:
             dashboard_url = url_for('students.dashboard', _external=True)
             scholarships_url = url_for('students.scholarships', _external=True)
@@ -112,11 +114,18 @@ def send_advance_notification(scholarship, student, days_before, semester_date):
                 dashboard_url=dashboard_url,
                 scholarships_url=scholarships_url
             )
+            email_sent = True
         except Exception:
-            pass  # Email failure shouldn't stop the process
+            pass  # Email failure shouldn't stop the process, but don't mark as sent
         
-        record_notification_sent(scholarship.id, student.id, notification_type, semester_date)
-        return True
+        # Only record that notification was sent if email succeeded
+        # This allows retry if email fails while keeping the in-app notification
+        if email_sent:
+            record_notification_sent(scholarship.id, student.id, notification_type, semester_date)
+            return True
+        else:
+            # In-app notification was created but email failed - return False to allow retry
+            return False
     
     return False
 
