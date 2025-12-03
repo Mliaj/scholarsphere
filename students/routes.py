@@ -16,7 +16,6 @@ students_bp = Blueprint('students', __name__)
 # Configuration for file uploads
 UPLOAD_FOLDER = 'static/uploads/profile_pictures'
 CREDENTIALS_FOLDER = 'static/uploads/credentials'
-AWARDS_FOLDER = 'static/uploads/awards'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf', 'doc', 'docx', 'jfif'}
 
 def allowed_file(filename):
@@ -131,6 +130,14 @@ def profile():
         flash('Access denied. Student access required.', 'error')
         return redirect(url_for('index'))
     
+    # Check semester expirations (no cron job needed - checks on page load)
+    try:
+        from semester_expiration_utils import check_student_semester_expirations
+        check_student_semester_expirations(current_user.id)
+    except Exception:
+        # Don't fail page load if check fails
+        pass
+    
     return render_template('students/profile.html', user=current_user)
 
 @students_bp.route('/credentials')
@@ -140,6 +147,14 @@ def credentials():
     if current_user.role != 'student':
         flash('Access denied. Student access required.', 'error')
         return redirect(url_for('index'))
+    
+    # Check semester expirations (no cron job needed - checks on page load)
+    try:
+        from semester_expiration_utils import check_student_semester_expirations
+        check_student_semester_expirations(current_user.id)
+    except Exception:
+        # Don't fail page load if check fails
+        pass
     
     # Get actual credentials from database using raw SQL
     from flask import current_app
@@ -236,68 +251,6 @@ def credentials():
     
     return render_template('students/credentials.html', credentials=credentials_list, user=current_user, scholarship_name=scholarship_name)
 
-@students_bp.route('/awards')
-@login_required
-def awards():
-    """Student awards page"""
-    if current_user.role != 'student':
-        flash('Access denied. Student access required.', 'error')
-        return redirect(url_for('index'))
-    
-    # Get actual awards from database using raw SQL
-    from flask import current_app
-    db = current_app.extensions['sqlalchemy']
-    
-    user_awards = db.session.execute(
-        text("SELECT * FROM awards WHERE user_id = :user_id AND is_active = 1 ORDER BY award_date DESC, upload_date DESC"),
-        {"user_id": current_user.id}
-    ).fetchall()
-    
-    # Convert to list of dictionaries for template compatibility
-    awards_list = []
-    for award in user_awards:
-        # Ensure upload_date is a proper datetime object
-        upload_date = award[9]
-        if upload_date is not None:
-            if isinstance(upload_date, str):
-                try:
-                    # Try different datetime formats
-                    if 'T' in upload_date:
-                        upload_date = datetime.fromisoformat(upload_date.replace('Z', '+00:00'))
-                    else:
-                        # Try parsing as date string
-                        upload_date = datetime.strptime(upload_date, '%Y-%m-%d %H:%M:%S')
-                except:
-                    try:
-                        # Try parsing as timestamp string
-                        upload_date = datetime.fromtimestamp(float(upload_date))
-                    except:
-                        upload_date = None
-            elif isinstance(upload_date, int):
-                # Convert timestamp to datetime
-                try:
-                    upload_date = datetime.fromtimestamp(upload_date)
-                except:
-                    upload_date = None
-            elif not isinstance(upload_date, datetime):
-                upload_date = None
-        
-        awards_list.append({
-            'id': award[0],
-            'user_id': award[1],
-            'award_type': award[2],
-            'award_title': award[3],
-            'file_name': award[4],
-            'file_path': award[5],
-            'file_size': award[6],
-            'academic_year': award[7],
-            'award_date': award[8],
-            'upload_date': upload_date,
-            'is_active': award[10]
-        })
-    
-    return render_template('students/awards.html', awards=awards_list, user=current_user)
-
 @students_bp.route('/applications')
 @login_required
 def applications():
@@ -323,10 +276,10 @@ def applications():
         text("""
             SELECT sa.id, sa.user_id, sa.scholarship_id, sa.status, sa.application_date, 
                    s.title, s.deadline, s.is_active as scholarship_is_active, s.status as scholarship_status,
-                   s.semester_date, s.code, sa.is_renewal, sa.renewal_failed
+                   s.semester_date, s.code, sa.is_renewal, sa.renewal_failed, sa.reviewed_at, sa.notes, sa.is_active as application_is_active
             FROM scholarship_applications sa
             JOIN scholarships s ON sa.scholarship_id = s.id
-            WHERE sa.user_id = :user_id AND sa.is_active = 1
+            WHERE sa.user_id = :user_id AND (sa.is_active = 1 OR (sa.is_renewal = 1 AND sa.status = 'approved') OR sa.status = 'completed')
             ORDER BY sa.application_date DESC
         """),
         {"user_id": current_user.id}
@@ -334,12 +287,16 @@ def applications():
     
     # Check for pending renewals per scholarship to disable renewal banner
     pending_renewals_map = {}
+    # Check for approved renewals per scholarship to hide banners
+    approved_renewals_map = {}
     for app in user_applications:
         scholarship_id = app[2]
         is_renewal = bool(app[11]) if len(app) > 11 else False
         status = app[3].lower() if app[3] else ''
         if is_renewal and status == 'pending':
             pending_renewals_map[scholarship_id] = True
+        elif is_renewal and status == 'approved':
+            approved_renewals_map[scholarship_id] = True
     
     from datetime import date
     today = date.today()
@@ -394,11 +351,14 @@ def applications():
         days_until_expiration = None
         
         # Check renewal eligibility: must be approved and active, and have a semester date
-        # EXCEPTION: Don't show renewal banner if there's already a pending renewal for this scholarship
+        # EXCEPTION: Don't show renewal banner if:
+        # 1. There's already a pending renewal for this scholarship
+        # 2. There's an approved renewal for this scholarship
         scholarship_id = app[2]
         has_pending_renewal = pending_renewals_map.get(scholarship_id, False)
-        
-        if app_status == 'approved' and is_active and semester_date_val and not has_pending_renewal:
+        has_approved_renewal = approved_renewals_map.get(scholarship_id, False)
+
+        if app_status == 'approved' and is_active and semester_date_val and not has_pending_renewal and not has_approved_renewal:
             # Parse semester_date from various formats
             try:
                 if isinstance(semester_date_val, str):
@@ -435,6 +395,40 @@ def applications():
         scholarship_code = app[10] if len(app) > 10 else ''
         is_renewal_app = bool(app[11]) if len(app) > 11 else False
         renewal_failed = bool(app[12]) if len(app) > 12 else False
+        reviewed_at = app[13] if len(app) > 13 else None
+        notes = app[14] if len(app) > 14 else None
+        application_is_active = bool(app[15]) if len(app) > 15 else True
+        
+        # Check if there's an approved renewal for this specific scholarship
+        has_approved_renewal_for_this = approved_renewals_map.get(scholarship_id, False)
+        
+        # For approved renewals: check if there's still an active non-renewal approved application
+        # If so, the renewal should be inactive (but still displayed)
+        is_renewal_inactive = False
+        if is_renewal_app and app_status == 'approved':
+            # Check if there's an active non-renewal approved application for this scholarship
+            active_non_renewal = db.session.execute(
+                text("""
+                    SELECT COUNT(*) 
+                    FROM scholarship_applications sa
+                    WHERE sa.user_id = :user_id 
+                      AND sa.scholarship_id = :scholarship_id
+                      AND sa.status = 'approved'
+                      AND sa.is_active = 1
+                      AND (sa.is_renewal = 0 OR sa.is_renewal IS NULL)
+                      AND sa.id != :current_app_id
+                """),
+                {
+                    "user_id": current_user.id,
+                    "scholarship_id": scholarship_id,
+                    "current_app_id": app[0]
+                }
+            ).scalar() or 0
+            
+            if active_non_renewal > 0:
+                is_renewal_inactive = True
+                # Override is_active to False for display purposes
+                is_active = False
         
         applications_data.append({
             'id': f"APP-{app[0]:03d}",
@@ -450,7 +444,11 @@ def applications():
             'days_until_expiration': days_until_expiration if days_until_expiration is not None else None,
             'scholarship_code': scholarship_code,
             'is_renewal': is_renewal_app,
-            'renewal_failed': renewal_failed
+            'renewal_failed': renewal_failed,
+            'has_approved_renewal': has_approved_renewal_for_this,
+            'reviewed_at': reviewed_at,
+            'notes': notes,
+            'is_renewal_inactive': is_renewal_inactive
         })
     
     return render_template('students/applications.html', applications=applications_data, user=current_user)
@@ -462,6 +460,14 @@ def scholarships():
     if current_user.role != 'student':
         flash('Access denied. Student access required.', 'error')
         return redirect(url_for('index'))
+    
+    # Check semester expirations (no cron job needed - checks on page load)
+    try:
+        from semester_expiration_utils import check_student_semester_expirations
+        check_student_semester_expirations(current_user.id)
+    except Exception:
+        # Don't fail page load if check fails
+        pass
     
     # Check if this is a renewal redirect
     renewal_scholarship_id = request.args.get('renew', type=int)
@@ -531,7 +537,7 @@ def scholarships():
                 """
                 SELECT s.id, s.code, s.title, s.description, s.amount, s.deadline, s.requirements, u.organization,
                        s.type, s.level, s.eligibility, s.program_course, s.additional_criteria, s.slots, s.contact_name, s.contact_email, s.contact_phone,
-                       s.is_expired_deadline, s.semester, s.school_year, s.semester_date, s.is_expired_semester
+                       s.is_expired_deadline, s.semester, s.school_year, s.semester_date, s.is_expired_semester, s.next_last_semester_date
                 FROM scholarships s
                 LEFT JOIN users u ON s.provider_id = u.id
                 WHERE s.id = :scholarship_id AND s.status IN ('active','approved') AND s.is_active = 1
@@ -546,7 +552,7 @@ def scholarships():
                 """
                 SELECT s.id, s.code, s.title, s.description, s.amount, s.deadline, s.requirements, u.organization,
                        s.type, s.level, s.eligibility, s.program_course, s.additional_criteria, s.slots, s.contact_name, s.contact_email, s.contact_phone,
-                       s.is_expired_deadline, s.semester, s.school_year, s.semester_date, s.is_expired_semester
+                       s.is_expired_deadline, s.semester, s.school_year, s.semester_date, s.is_expired_semester, s.next_last_semester_date
                 FROM scholarships s
                 LEFT JOIN users u ON s.provider_id = u.id
                 WHERE s.status IN ('active','approved') AND s.is_active = 1
@@ -683,6 +689,21 @@ def scholarships():
             elif hasattr(semester_date_val, 'strftime'):
                 semester_date = semester_date_val
         
+        # Parse next_last_semester_date for display
+        next_last_semester_date_val = scholarship[22] if len(scholarship) > 22 else None
+        next_last_semester_date = None
+        if next_last_semester_date_val:
+            if isinstance(next_last_semester_date_val, str):
+                try:
+                    next_last_semester_date = datetime.fromisoformat(next_last_semester_date_val.replace('Z','+00:00'))
+                except:
+                    try:
+                        next_last_semester_date = datetime.strptime(next_last_semester_date_val, '%Y-%m-%d')
+                    except:
+                        next_last_semester_date = None
+            elif hasattr(next_last_semester_date_val, 'strftime'):
+                next_last_semester_date = next_last_semester_date_val
+        
         # Check if scholarship matches student's course
         is_matching_course = False
         student_course = (current_user.course or '').strip().upper()
@@ -731,15 +752,19 @@ def scholarships():
             'is_expired_semester': is_expired_semester,
             'semester': scholarship[18] if len(scholarship) > 18 else '',
             'school_year': scholarship[19] if len(scholarship) > 19 else '',
-            'semester_date': semester_date.strftime('%B %d, %Y') if semester_date else None
+            'semester_date': semester_date.strftime('%B %d, %Y') if semester_date else None,
+            'next_last_semester_date': next_last_semester_date.strftime('%B %d, %Y') if next_last_semester_date else None
         })
+    
+    current_year = datetime.utcnow().year
     
     return render_template('students/scholarships.html', 
                          scholarships=scholarships_data, 
                          user=current_user, 
                          today_date=today_date,
                          is_renewal=is_renewal,
-                         renewal_scholarship_id=renewal_scholarship_id)
+                         renewal_scholarship_id=renewal_scholarship_id,
+                         current_year=current_year)
 
 @students_bp.route('/apply-scholarship/<int:scholarship_id>', methods=['POST'])
 @login_required
@@ -1242,7 +1267,9 @@ def withdraw_application(application_id):
             return jsonify({'success': False, 'message': 'Application not found'}), 404
         
         current_status = (application[1] or '').lower()
-        if current_status != 'pending':
+        if current_status not in ['pending']:
+            if current_status == 'completed':
+                return jsonify({'success': False, 'message': 'Cannot withdraw a completed application'}), 400
             return jsonify({'success': False, 'message': 'Cannot withdraw application that has been reviewed'}), 400
         
         scholarship_id = application[2]
@@ -1419,7 +1446,7 @@ def get_application_detail(application_id):
             text("""
                 SELECT sa.id, sa.status, sa.application_date, s.title, s.code, s.deadline,
                        s.type, s.level, s.eligibility, s.slots, s.contact_name, s.contact_email, s.contact_phone,
-                       s.requirements
+                       s.requirements, sa.is_renewal, s.next_last_semester_date
                 FROM scholarship_applications sa
                 JOIN scholarships s ON sa.scholarship_id = s.id
                 WHERE sa.id=:id AND sa.user_id=:uid AND sa.is_active=1
@@ -1484,6 +1511,26 @@ def get_application_detail(application_id):
                 "contact_number": personal_info[3] or ""
             }
             
+        # Get is_renewal flag and next_last_semester_date from app_row
+        is_renewal = bool(app_row[14]) if len(app_row) > 14 else False
+        next_last_semester_date_val = app_row[15] if len(app_row) > 15 else None
+        
+        # Format next_last_semester_date if it exists and is a renewal
+        next_last_semester_date_formatted = None
+        if is_renewal and next_last_semester_date_val:
+            try:
+                from datetime import datetime as dt
+                if isinstance(next_last_semester_date_val, str):
+                    next_last_semester_date_formatted = dt.strptime(next_last_semester_date_val, '%Y-%m-%d').strftime('%B %d, %Y')
+                elif hasattr(next_last_semester_date_val, 'strftime'):
+                    next_last_semester_date_formatted = next_last_semester_date_val.strftime('%B %d, %Y')
+            except Exception:
+                next_last_semester_date_formatted = None
+        
+        # Add next_last_semester_date to academic_information if it's a renewal
+        if is_renewal and next_last_semester_date_formatted and academic_information:
+            academic_information["next_last_semester_date"] = next_last_semester_date_formatted
+        
         # Get current requirements
         req_str = app_row[13] or ''
         current_requirements = [r.strip() for r in req_str.split(',') if r.strip()]
@@ -1694,7 +1741,8 @@ def get_application_detail(application_id):
             # Family Background, Academic Information, and Personal Information
             'family_background': family_background,
             'academic_information': academic_information,
-            'personal_information': personal_information
+            'personal_information': personal_information,
+            'is_renewal': is_renewal
         }
         return jsonify({'success': True, 'application': payload})
     except Exception as e:
@@ -2363,136 +2411,6 @@ def view_credential(credential_id):
     from flask import send_file
     return send_file(file_path, as_attachment=False, mimetype=content_type)
 
-@students_bp.route('/upload-award', methods=['POST'])
-@login_required
-def upload_award():
-    """Upload student award"""
-    if current_user.role != 'student':
-        return jsonify({'error': 'Access denied'}), 403
-    
-    try:
-        award_type = request.form.get('award_type', '').strip()
-        award_title = request.form.get('award_title', '').strip()
-        academic_year = request.form.get('academic_year', '').strip()
-        award_date = request.form.get('award_date', '').strip()
-        file = request.files.get('file')
-        
-        if not all([award_type, award_title, academic_year, award_date]) or not file:
-            return jsonify({'success': False, 'message': 'Missing required fields'}), 400
-        
-        if file.filename == '':
-            return jsonify({'success': False, 'message': 'No file selected'}), 400
-        
-        if file and allowed_file(file.filename):
-            # Generate unique filename
-            filename = secure_filename(file.filename)
-            file_extension = filename.rsplit('.', 1)[1].lower()
-            unique_filename = f"{uuid.uuid4()}_{current_user.id}.{file_extension}"
-            
-            # Create upload directory if it doesn't exist (absolute path)
-            from flask import current_app
-            base_dir = os.path.join(current_app.root_path, AWARDS_FOLDER)
-            os.makedirs(base_dir, exist_ok=True)
-            
-            # Save file
-            file_path = os.path.join(base_dir, unique_filename)
-            file.save(file_path)
-            
-            # Get file size
-            file_size = os.path.getsize(file_path)
-            
-            # Save award to database (raw SQL)
-            db = current_app.extensions['sqlalchemy']
-            db.session.execute(
-                text("""
-                    INSERT INTO awards (user_id, award_type, award_title, file_name, file_path, file_size, academic_year, award_date, upload_date, is_active)
-                    VALUES (:user_id, :atype, :atitle, :fname, :fpath, :fsize, :ayear, :adate, :udate, 1)
-                """),
-                {
-                    "user_id": current_user.id,
-                    "atype": award_type,
-                    "atitle": award_title,
-                    "fname": filename,
-                    "fpath": unique_filename,
-                    "fsize": file_size,
-                    "ayear": academic_year,
-                    "adate": datetime.strptime(award_date, '%Y-%m-%d').date(),
-                    "udate": datetime.utcnow()
-                }
-            )
-
-            # Notify award upload
-            db.session.execute(
-                text("""
-                    INSERT INTO notifications (user_id, type, title, message, created_at, is_active)
-                    VALUES (:user_id, :type, :title, :message, :created_at, 1)
-                """),
-                {
-                    "user_id": current_user.id,
-                    "type": 'award',
-                    "title": 'Award Uploaded',
-                    "message": f'Award "{award_title}" has been uploaded.',
-                    "created_at": datetime.utcnow()
-                }
-            )
-            db.session.commit()
-            
-            return jsonify({
-                'success': True,
-                'message': 'Award uploaded successfully'
-            })
-            
-        else:
-            return jsonify({'success': False, 'message': 'Invalid file type'}), 400
-            
-    except ValueError as e:
-        return jsonify({'success': False, 'message': 'Invalid date format'}), 400
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'success': False, 'message': 'Failed to upload award'}), 500
-
-@students_bp.route('/view-award/<int:award_id>')
-@login_required
-def view_award(award_id):
-    """View award file"""
-    if current_user.role != 'student':
-        flash('Access denied. Student access required.', 'error')
-        return redirect(url_for('index'))
-    
-    from flask import current_app
-    db = current_app.extensions['sqlalchemy']
-    row = db.session.execute(
-        text("SELECT file_path FROM awards WHERE id = :id AND user_id = :uid AND is_active = 1"),
-        {"id": award_id, "uid": current_user.id}
-    ).fetchone()
-    
-    if not row:
-        flash('Award not found.', 'error')
-        return redirect(url_for('students.awards'))
-    
-    file_path = os.path.join(current_app.root_path, AWARDS_FOLDER, row[0])
-    
-    if not os.path.exists(file_path):
-        flash('File not found.', 'error')
-        return redirect(url_for('students.awards'))
-    
-    # Determine content type based on file extension
-    file_extension = row[0].rsplit('.', 1)[1].lower()
-    content_type_map = {
-        'pdf': 'application/pdf',
-        'jpg': 'image/jpeg',
-        'jpeg': 'image/jpeg',
-        'png': 'image/png',
-        'gif': 'image/gif',
-        'doc': 'application/msword',
-        'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-    }
-    
-    content_type = content_type_map.get(file_extension, 'application/octet-stream')
-    
-    from flask import send_file
-    return send_file(file_path, as_attachment=False, mimetype=content_type)
-
 @students_bp.route('/delete-credential/<int:credential_id>', methods=['DELETE'])
 @login_required
 def delete_credential(credential_id):
@@ -2653,41 +2571,3 @@ def record_renewal_failure():
         if 'db' in locals():
             db.session.rollback()
         return jsonify({'success': False, 'message': f'Error: {str(e)}'}), 500
-
-@students_bp.route('/delete-award/<int:award_id>', methods=['DELETE'])
-@login_required
-def delete_award(award_id):
-    """Delete award"""
-    if current_user.role != 'student':
-        return jsonify({'error': 'Access denied'}), 403
-    
-    try:
-        from flask import current_app
-        db = current_app.extensions['sqlalchemy']
-        row = db.session.execute(
-            text("SELECT file_path FROM awards WHERE id=:id AND user_id=:uid AND is_active=1"),
-            {"id": award_id, "uid": current_user.id}
-        ).fetchone()
-        if not row:
-            return jsonify({'success': False, 'message': 'Award not found'}), 404
-        
-        # Delete file from filesystem
-        file_path = os.path.join(current_app.root_path, AWARDS_FOLDER, row[0])
-        if os.path.exists(file_path):
-            os.remove(file_path)
-        
-        # Mark as inactive in database (soft delete)
-        db.session.execute(
-            text("UPDATE awards SET is_active = 0 WHERE id = :id"),
-            {"id": award_id}
-        )
-        db.session.commit()
-        
-        return jsonify({
-            'success': True,
-            'message': 'Award deleted successfully'
-        })
-        
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'success': False, 'message': 'Failed to delete award'}), 500

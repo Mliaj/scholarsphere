@@ -97,6 +97,8 @@ def send_advance_notification(scholarship, student, days_before, semester_date):
         return False
     
     if create_notification(student.id, 'deadline', title, message):
+        # Send email
+        email_sent = False
         try:
             dashboard_url = url_for('students.dashboard', _external=True)
             scholarships_url = url_for('students.scholarships', _external=True)
@@ -112,11 +114,18 @@ def send_advance_notification(scholarship, student, days_before, semester_date):
                 dashboard_url=dashboard_url,
                 scholarships_url=scholarships_url
             )
+            email_sent = True
         except Exception:
-            pass  # Email failure shouldn't stop the process
+            pass  # Email failure shouldn't stop the process, but don't mark as sent
         
-        record_notification_sent(scholarship.id, student.id, notification_type, semester_date)
-        return True
+        # Only record that notification was sent if email succeeded
+        # This allows retry if email fails while keeping the in-app notification
+        if email_sent:
+            record_notification_sent(scholarship.id, student.id, notification_type, semester_date)
+            return True
+        else:
+            # In-app notification was created but email failed - return False to allow retry
+            return False
     
     return False
 
@@ -128,44 +137,104 @@ def process_expired_semester(scholarship, student):
     if has_notification_been_sent(scholarship.id, student.id, notification_type, semester_date):
         return False
     
-    # Check if there's a pending renewal application
+    # Check if there's an approved renewal application (renewals are now approved immediately)
+    approved_renewal = ScholarshipApplication.query.filter_by(
+        user_id=student.id,
+        scholarship_id=scholarship.id,
+        status='approved',
+        is_active=True,
+        is_renewal=True
+    ).first()
+    
+    # Also check for pending renewal (for backward compatibility with old data)
     pending_renewal = ScholarshipApplication.query.filter_by(
         user_id=student.id,
         scholarship_id=scholarship.id,
         status='pending',
         is_active=True,
         is_renewal=True
-    ).first()
+    ).filter(ScholarshipApplication.reviewed_at.isnot(None)).first()
     
-    # Find the old approved application
+    # Find the old approved application (non-renewal)
     application = ScholarshipApplication.query.filter_by(
         user_id=student.id,
         scholarship_id=scholarship.id,
         status='approved',
         is_active=True
-    ).first()
+    ).filter(
+        (ScholarshipApplication.is_renewal == False) | (ScholarshipApplication.is_renewal.is_(None))
+    ).order_by(ScholarshipApplication.application_date.desc()).first()
     
     if application:
-        # If there's a pending renewal, only remove the old approved application
-        # Keep the renewal application active for provider review
-        if pending_renewal:
-            # Archive only the old approved application
-            application.status = 'archived'
-            application.is_active = False
+        # If there's an approved renewal or pending renewal, complete the old one and activate the renewal
+        renewal = approved_renewal or pending_renewal
+        if renewal:
+            # Mark old approved application as completed
+            application.status = 'completed'
+            application.is_active = False  # Mark as inactive since semester has expired
             application.reviewed_at = datetime.utcnow()
-            # Keep renewal application active - don't touch it
+            
+            # If renewal was pending, approve it now
+            if renewal.status == 'pending':
+                renewal.status = 'approved'
+                renewal.reviewed_at = datetime.utcnow()
+                # Update scholarship counts (renewal becomes approved)
+                if scholarship.pending_count and scholarship.pending_count > 0:
+                    scholarship.pending_count = max(0, scholarship.pending_count - 1)
+                scholarship.approved_count = (scholarship.approved_count or 0) + 1
+            
+            # Update scholarship's semester_date to next_last_semester_date
+            # Store the old semester_date before updating
+            old_semester_date = scholarship.semester_date
+            
+            if scholarship.next_last_semester_date:
+                # Update the scholarship's semester_date to next_last_semester_date
+                scholarship.semester_date = scholarship.next_last_semester_date
+                # Clear next_last_semester_date as it's now the current semester_date
+                # Provider can set a new next_last_semester_date for the next renewal cycle
+                scholarship.next_last_semester_date = None
+            
+            # Tag renewal with "renewed" in notes and record semester transition
+            renewal_note = '[RENEWED] This application became active when the previous semester ended.'
+            semester_note = f'\n[Semester Transition] Previous semester ended: {old_semester_date.strftime("%B %d, %Y") if old_semester_date else "N/A"}. New semester date: {scholarship.semester_date.strftime("%B %d, %Y") if scholarship.semester_date else "N/A"}.'
+            
+            if renewal.notes:
+                renewal.notes = renewal.notes + '\n' + renewal_note + semester_note
+            else:
+                renewal.notes = renewal_note + semester_note
+            
             db.session.commit()
-            # Don't send expiration notification since renewal is pending
-            return False
+            
+            # Send notification about renewal activation
+            title = f"Renewal Activated: {scholarship.title}"
+            message = f"Your renewal for '{scholarship.title}' is now active. Your scholarship continues for the next semester."
+            
+            if create_notification(student.id, 'application', title, message):
+                try:
+                    formatted_date = scholarship.semester_date.strftime("%B %d, %Y") if scholarship.semester_date else "N/A"
+                    scholarships_url = url_for('students.scholarships', _external=True)
+                    send_email(
+                        to=student.email,
+                        subject=title,
+                        template='email/application_status.html',
+                        student_name=student.get_full_name(),
+                        scholarship_name=scholarship.title,
+                        new_status='approved'
+                    )
+                except Exception:
+                    pass
+            
+            # Don't send expiration notification since renewal was activated
+            return True
         else:
-            # No renewal attempt - archive the original application and notify
-            application.status = 'archived'
-            application.is_active = False
+            # No renewal attempt - mark as completed and notify
+            application.status = 'completed'
+            application.is_active = False  # Mark as inactive since semester has expired
             application.reviewed_at = datetime.utcnow()
             db.session.commit()
     
-    title = f"Scholarship Semester Expired: {scholarship.title}"
-    message = f"The semester for your approved scholarship '{scholarship.title}' has expired. Your application has been removed from this scholarship."
+    title = f"Scholarship Semester Completed: {scholarship.title}"
+    message = f"The semester for your approved scholarship '{scholarship.title}' has been completed. Your application status has been updated."
     
     if create_notification(student.id, 'deadline', title, message):
         try:
@@ -226,21 +295,10 @@ def check_student_semester_expirations(student_id):
             days_until_expiration = (semester_date - today).days
             
             # Check if expired
-            # EXCEPTION: Don't process expiration if there's a pending renewal application
-            # Renewal applications should persist even after semester expires
-            if days_until_expiration < 0:
-                # Check if there's a pending renewal first
-                pending_renewal = ScholarshipApplication.query.filter_by(
-                    user_id=student.id,
-                    scholarship_id=scholarship.id,
-                    status='pending',
-                    is_active=True,
-                    is_renewal=True
-                ).first()
-                
-                # Only process expiration if there's no pending renewal
-                if not pending_renewal:
-                    process_expired_semester(scholarship, student)
+            # Process expiration - this will handle pending renewals appropriately
+            if days_until_expiration <= 0:
+                # Process expiration - this will approve pending renewals if they've been reviewed
+                process_expired_semester(scholarship, student)
             else:
                 # Send only the nearest/closest notification to avoid duplicates
                 # Check from closest to farthest and send only the first applicable one
@@ -275,5 +333,28 @@ def check_student_semester_expirations(student_id):
     except Exception:
         # Silently fail - don't break login/dashboard if check fails
         # In production, you might want to log this
+        pass
+
+def check_all_students_semester_expirations():
+    """
+    Check and process semester expirations for all students
+    Called when provider visits pages to ensure renewals are processed
+    
+    This function:
+    - Gets all students with approved applications
+    - Checks semester expirations for each student
+    - Processes expired semesters and sends notifications
+    """
+    try:
+        from app import User
+        students = User.query.filter_by(role='student').all()
+        for student in students:
+            try:
+                check_student_semester_expirations(student.id)
+            except Exception:
+                # Continue with next student if one fails
+                pass
+    except Exception:
+        # Silently fail - don't break page load if check fails
         pass
 

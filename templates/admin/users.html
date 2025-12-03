@@ -782,7 +782,7 @@
                 </thead>
                 <tbody id="usersTableBody">
                     {% for user in users %}
-                    <tr data-user-id="{{ user.id }}">
+                    <tr data-user-id="{{ user.id }}" data-role="{{ user.role }}">
                         <td>
                             <div class="user-info">
                                 <div class="user-avatar-small">
@@ -942,13 +942,13 @@ function filterUsers() {
         const userData = row.querySelector('.user-details');
         const userName = userData.querySelector('h4').textContent.toLowerCase();
         const userEmail = userData.querySelector('p').textContent.toLowerCase();
-        const userRole = row.querySelector('.role-badge').textContent.toLowerCase();
+        const userRole = row.getAttribute('data-role'); // Get actual role value from data attribute
         const userStatus = row.querySelector('.status-badge').textContent.toLowerCase();
 
         const matchesSearch = userName.includes(searchTerm) || 
                             userEmail.includes(searchTerm) ||
                             (userData.querySelectorAll('p')[1] && userData.querySelectorAll('p')[1].textContent.includes(searchTerm));
-        const matchesRole = !roleFilter || userRole.includes(roleFilter);
+        const matchesRole = !roleFilter || userRole === roleFilter; // Exact match instead of includes
         const matchesStatus = !statusFilter || userStatus.includes(statusFilter);
 
         if (matchesSearch && matchesRole && matchesStatus) {

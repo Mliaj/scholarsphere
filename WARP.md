@@ -57,7 +57,6 @@ The application auto-creates tables on first run via SQLAlchemy in `app.py`/`run
   python migrate_database.py
   python migrate_add_deadline_to_scholarships.py
   python migrate_add_is_active.py
-  python migrate_awards_table.py
   python migrate_credentials_status.py
   python migrate_extend_scholarships_fields.py
   python migrate_update_scholarships_counts.py
@@ -156,7 +155,7 @@ Important implementation detail: this blueprint bypasses the ORM for performance
     - Credentials count.
     - Scholarship applications (total, approved).
     - Upcoming scholarship deadlines (this month/next month).
-  - CRUD for credentials and awards (upload/view/delete) under `/credentials`, `/awards`, `upload-*`, `delete-*`, `view-*` endpoints.
+  - CRUD for credentials (upload/view/delete) under `/credentials`, `upload-*`, `delete-*`, `view-*` endpoints.
   - Applying to scholarships (`/apply-scholarship/<int:scholarship_id>`) including linking selected credentials via the `scholarship_application_files` table.
     - Business rule: a student may apply again to the same scholarship if their previous application was **rejected** (the previous record is soft-deactivated before creating a new one).
   - Viewing and withdrawing applications, including associated schedules and provider remarks.

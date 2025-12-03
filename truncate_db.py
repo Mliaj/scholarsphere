@@ -49,7 +49,6 @@ TABLES = [
     'scholarship_application_files',
     'scholarship_applications',  # Includes renewal tracking fields
     'credentials',
-    'awards',
     'scholarships',
     'users'
 ]

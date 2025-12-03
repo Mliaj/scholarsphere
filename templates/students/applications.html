@@ -256,6 +256,11 @@
         color: #721c24;
     }
 
+    .status-completed {
+        background: #6c757d;
+        color: white;
+    }
+
     .application-title {
         font-size: 1.2rem;
         font-weight: 600;
@@ -566,6 +571,7 @@ function openAppDetails(appId){
               ${a.academic_information.latest_gpa ? `<div><strong>Latest GPA:</strong> ${a.academic_information.latest_gpa}</div>` : ''}
               ${a.academic_information.current_semester ? `<div><strong>Current Semester:</strong> ${a.academic_information.current_semester}</div>` : ''}
               ${a.academic_information.school_year ? `<div><strong>School Year:</strong> ${a.academic_information.school_year}</div>` : ''}
+              ${a.is_renewal && a.academic_information.next_last_semester_date ? `<div><strong>Next Last Semester Date:</strong> ${a.academic_information.next_last_semester_date}</div>` : ''}
             </div>
           </section>` : ''}
           <section>
@@ -778,6 +784,10 @@ function continueRenewal() {
                     <span class="stat-number">{{ applications|selectattr('status', 'equalto', 'Rejected')|list|length }}</span>
                     <div class="stat-label">Rejected</div>
                 </div>
+                <div class="stat-card" onclick="filterByStatus('completed')" style="cursor: pointer; transition: all 0.2s;">
+                    <span class="stat-number">{{ applications|selectattr('status', 'equalto', 'Completed')|list|length }}</span>
+                    <div class="stat-label">Completed</div>
+                </div>
             </div>
         </div>
 
@@ -828,7 +838,7 @@ function continueRenewal() {
             {% if applications %}
                 {% for application in applications %}
                 <div class="application-card" data-status="{{ application.status|lower }}" data-title="{{ application.scholarship|lower }}" data-id="{{ application.id|lower }}">
-                    {% if application.needs_renewal %}
+                    {% if application.needs_renewal and not application.has_approved_renewal and application.status != 'Completed' %}
                     <div class="renewal-banner" style="background: linear-gradient(135deg, #ffc72c 0%, #ff9800 100%); color: #212529; padding: 1rem 1.25rem; border-radius: 10px; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 8px rgba(255, 199, 44, 0.3);">
                         <div style="flex: 1;">
                             <div style="font-weight: 600; font-size: 1rem; margin-bottom: 0.25rem;">
@@ -862,25 +872,50 @@ function continueRenewal() {
                         </div>
                     </div>
                     <div class="application-title">{{ application.scholarship }}</div>
+                    {% if application.is_renewal and application.status == 'Approved' and not application.is_renewal_inactive %}
+                    <div style="margin-top: 0.5rem;">
+                        <span style="display: inline-block; background: linear-gradient(135deg, #007bff 0%, #0056b3 100%); color: white; padding: 0.25rem 0.6rem; border-radius: 12px; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">
+                            <i class="fas fa-sync-alt" style="margin-right: 0.25rem;"></i>Renewed
+                        </span>
+                    </div>
+                    {% endif %}
                     {% if application.is_renewal %}
-                    <div style="margin-bottom: 1rem; padding: 0.75rem 1rem; background: #e7f3ff; border-left: 4px solid #007bff; border-radius: 6px;">
+                        {% if application.status == 'Pending' or (application.status == 'Approved' and application.is_renewal_inactive) %}
+                        <div style="margin-bottom: 1rem; padding: 0.75rem 1rem; background: #e7f3ff; border-left: 4px solid #007bff; border-radius: 6px;">
                         <div style="font-weight: 600; color: #004085; font-size: 0.9rem;">
                             <i class="fas fa-sync-alt" style="margin-right: 0.5rem;"></i>
                             {% if application.status == 'Pending' %}
-                                Submitted Renewal Request
+                                {% if application.reviewed_at %}
+                                    Renewal Request Reviewed
+                                {% else %}
+                                    Submitted Renewal Request
+                                {% endif %}
+                            {% elif application.status == 'Approved' %}
+                                Renewed Application
                             {% else %}
                                 Waiting for Renewal
                             {% endif %}
                         </div>
                         <div style="font-size: 0.85rem; color: #666; margin-top: 0.25rem;">
                             {% if application.status == 'Pending' %}
-                                Your renewal request has been submitted and is pending provider review. Your current scholarship remains active until the provider reviews your renewal.
+                                {% if application.reviewed_at %}
+                                    Your renewal request has been reviewed by the provider. This will be approved and become your new active application when your current semester ends.
+                                {% else %}
+                                    Your renewal request has been submitted and is pending provider review. Your current scholarship remains active until the provider reviews your renewal.
+                                {% endif %}
+                            {% elif application.status == 'Approved' %}
+                                {% if application.is_renewal_inactive %}
+                                    Your renewal has been approved and will become active when your current semester ends. Your current application remains active until then.
+                                {% else %}
+                                    This application was automatically approved when the previous semester ended. This is your current active scholarship.
+                                {% endif %}
                             {% else %}
                                 This is a renewal application. Your current scholarship remains active until the provider reviews your renewal.
                             {% endif %}
                         </div>
-                    </div>
-                    {% elif application.renewal_failed %}
+                        </div>
+                        {% endif %}
+                    {% elif application.renewal_failed and application.status != 'Completed' %}
                     <div style="margin-bottom: 1rem; padding: 0.75rem 1rem; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 6px;">
                         <div style="font-weight: 600; color: #856404; font-size: 0.9rem;">
                             <i class="fas fa-exclamation-circle" style="margin-right: 0.5rem;"></i>Renewal Not Confirmed
@@ -907,7 +942,7 @@ function continueRenewal() {
                                 {% if application.is_active %}Active{% else %}Inactive{% endif %}
                             </span>
                         </div>
-                        {% if not application.is_active %}
+                        {% if not application.is_active and not application.is_renewal %}
                         <div style="grid-column:1 / -1; font-size:0.85rem; color:#856404; margin-top:0.5rem;">
                             This scholarship has been archived, so your application is no longer active.
                         </div>
@@ -923,7 +958,7 @@ function continueRenewal() {
 <button class="action-btn btn-view" onclick="openAppDetails({{ application.application_id }})">
                             <i class="fas fa-eye"></i> Review Application
                         </button>
-                        {% if application.status not in ['Approved', 'Rejected'] %}
+                        {% if application.status not in ['Approved', 'Rejected', 'Completed'] %}
                         <button class="action-btn btn-withdraw" onclick="withdrawApplication({{ application.application_id }})">
                             <i class="fas fa-times"></i>
                         </button>

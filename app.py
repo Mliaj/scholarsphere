@@ -83,6 +83,7 @@ class User(UserMixin, db.Model):
     course = db.Column(db.String(50), nullable=True)  # BSIT, BSCS, BSCE, etc.
     organization = db.Column(db.String(255), nullable=True)  # For providers
     managed_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)  # For provider_staff, links to provider_admin
+    scholarship_type = db.Column(db.String(100), nullable=True)  # For provider_staff, assigned scholarship type
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, onupdate=datetime.utcnow)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
@@ -131,25 +132,6 @@ class User(UserMixin, db.Model):
             return None
         return self.manager if self.manager and self.manager.role == 'provider_admin' else None
 
-# Award model for storing student achievements
-class Award(db.Model):
-    __tablename__ = 'awards'
-    
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    award_type = db.Column(db.String(100), nullable=False)  # e.g., 'Certificate', 'Participation', 'Deadlist', etc.
-    award_title = db.Column(db.String(255), nullable=False)  # Title of the award
-    file_name = db.Column(db.String(255), nullable=False)
-    file_path = db.Column(db.String(500), nullable=False)
-    file_size = db.Column(db.Integer)  # File size in bytes
-    academic_year = db.Column(db.String(20), nullable=True)  # e.g., '1st Year', '2nd Year', etc.
-    award_date = db.Column(db.Date, nullable=True)  # Date when award was received
-    upload_date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-    is_active = db.Column(db.Boolean, default=True)
-    
-    # Relationship
-    user = db.relationship('User', backref='awards')
-
 # Credential model for storing student documents
 class Credential(db.Model):
     __tablename__ = 'credentials'
@@ -192,6 +174,7 @@ class Scholarship(db.Model):
     semester = db.Column(db.String(50), nullable=True)  # e.g., "1st", "2nd"
     school_year = db.Column(db.String(50), nullable=True)  # e.g., "2025 - 2026"
     semester_date = db.Column(db.Date, nullable=True)
+    next_last_semester_date = db.Column(db.Date, nullable=True)
     is_expired_semester = db.Column(db.Boolean, nullable=False, default=False)
     amount = db.Column(db.String(100), nullable=True)  # e.g., "₱50,000 per semester"
     requirements = db.Column(db.Text, nullable=True)
@@ -214,7 +197,7 @@ class ScholarshipApplication(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     scholarship_id = db.Column(db.Integer, db.ForeignKey('scholarships.id'), nullable=False)
-    status = db.Column(db.String(20), nullable=False, default='pending')  # pending, approved, rejected, withdrawn, archived
+    status = db.Column(db.String(20), nullable=False, default='pending')  # pending, approved, rejected, withdrawn, archived, completed
     application_date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     reviewed_at = db.Column(db.DateTime, nullable=True)
     reviewed_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)  # admin who reviewed
@@ -227,6 +210,10 @@ class ScholarshipApplication(db.Model):
     # Relationships
     user = db.relationship('User', foreign_keys=[user_id], backref='scholarship_applications')
     reviewer = db.relationship('User', foreign_keys=[reviewed_by], backref='reviewed_applications')
+    original_application = db.relationship('ScholarshipApplication', 
+                                          foreign_keys=[original_application_id],
+                                          remote_side=[id],
+                                          backref='renewal_applications')
 
 # Scholarship Application Files model (linking applications to credentials)
 class ScholarshipApplicationFile(db.Model):

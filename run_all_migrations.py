@@ -57,12 +57,6 @@ def main():
             'description': 'Add description, type, level, eligibility, slots, contact fields'
         },
         {
-            'name': 'Awards Table',
-            'module': 'migrate_awards_table',
-            'function': 'migrate_awards_table',
-            'description': 'Create awards table for student achievements'
-        },
-        {
             'name': 'Credentials - Status Column',
             'module': 'migrate_credentials_status',
             'function': 'migrate_credentials_status',
@@ -176,6 +170,18 @@ def main():
             'module': 'migrate_add_renewal_tracking',
             'function': 'migrate',
             'description': 'Add is_renewal, renewal_failed, and original_application_id columns to scholarship_applications table'
+        },
+        {
+            'name': 'Scholarships - Next Last Semester Date',
+            'module': 'migrate_add_next_last_semester_date',
+            'function': 'main',
+            'description': 'Add next_last_semester_date column to scholarships table for renewal tracking'
+        },
+        {
+            'name': 'Users - Staff Scholarship Type',
+            'module': 'migrate_add_staff_scholarship_type',
+            'function': 'migrate',
+            'description': 'Add scholarship_type column to users table for provider_staff assignment'
         }
     ]
     

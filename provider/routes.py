@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, abort
 from flask_login import login_required, current_user
 from app import db, User, Scholarship, ScholarshipApplication, Credential, Schedule, Notification, ScholarshipApplicationFile, Announcement, StudentRemark, ApplicationRemark
 from email_utils import send_email
@@ -22,22 +22,30 @@ def is_provider_role():
     return current_user.is_authenticated and current_user.role in ('provider_admin', 'provider_staff')
 
 def require_provider_admin():
-    """Require provider admin access, redirect if not"""
+    """Require provider admin access, abort with 403 if not"""
     if not is_provider_admin():
         flash('Access denied. Provider admin access required.', 'error')
-        return redirect(url_for('provider.dashboard'))
+        abort(403)
 
 def require_provider_role():
-    """Require any provider role access, redirect if not"""
+    """Require any provider role access, abort with 403 if not"""
     if not is_provider_role():
         flash('Access denied. Provider access required.', 'error')
-        return redirect(url_for('index'))
+        abort(403)
 
 def get_provider_id():
     """Get the provider ID - for staff, return their manager's ID; for admin, return their own ID"""
     if current_user.role == 'provider_staff' and current_user.managed_by:
         return current_user.managed_by
     return current_user.id
+
+def get_scholarships_query(provider_id):
+    """Get scholarships query filtered by provider_id and staff's scholarship_type if applicable"""
+    query = Scholarship.query.filter_by(provider_id=provider_id)
+    # Filter by type if user is provider_staff with assigned type
+    if current_user.role == 'provider_staff' and current_user.scholarship_type:
+        query = query.filter_by(type=current_user.scholarship_type)
+    return query
 
 def notify_matching_students(scholarship):
     """Notify students whose course matches the scholarship's program_course"""
@@ -87,6 +95,10 @@ def notify_matching_students(scholarship):
                     }
                 )
     
+    # Commit all notifications to persist them in the database
+    if matching_count > 0:
+        db.session.commit()
+    
     return matching_count
 
 @provider_bp.route('/dashboard')
@@ -95,16 +107,26 @@ def dashboard():
     """Provider dashboard"""
     require_provider_role()
     
+    # Check semester expirations for all students (no cron job needed - checks on page load)
+    try:
+        from semester_expiration_utils import check_all_students_semester_expirations
+        check_all_students_semester_expirations()
+    except Exception:
+        # Don't fail page load if check fails
+        pass
+    
     provider_id = get_provider_id()
     
+    # Get base query with type filtering for staff
+    base_query = get_scholarships_query(provider_id)
+    
     # Calculate dashboard stats
-    active_scholarships = Scholarship.query.filter(
-        Scholarship.provider_id == provider_id,
+    active_scholarships = base_query.filter(
         Scholarship.status.in_(['active', 'approved'])
     ).count()
-    draft_scholarships = Scholarship.query.filter_by(provider_id=provider_id, status='draft').count()
+    draft_scholarships = base_query.filter_by(status='draft').count()
     
-    scholarships = Scholarship.query.filter_by(provider_id=provider_id).all()
+    scholarships = base_query.all()
     scholarship_ids = [s.id for s in scholarships]
     
     total_applications = ScholarshipApplication.query.filter(
@@ -146,6 +168,14 @@ def dashboard():
 def scholarships():
     """Provider scholarships page - Admin only"""
     require_provider_admin()
+    
+    # Check semester expirations for all students (no cron job needed - checks on page load)
+    try:
+        from semester_expiration_utils import check_all_students_semester_expirations
+        check_all_students_semester_expirations()
+    except Exception:
+        # Don't fail page load if check fails
+        pass
 
     all_scholarships = Scholarship.query.filter_by(provider_id=current_user.id).all()
     
@@ -179,8 +209,16 @@ def applications():
     """Provider applications page"""
     require_provider_role()
     
+    # Check semester expirations for all students (no cron job needed - checks on page load)
+    try:
+        from semester_expiration_utils import check_all_students_semester_expirations
+        check_all_students_semester_expirations()
+    except Exception:
+        # Don't fail page load if check fails
+        pass
+    
     provider_id = get_provider_id()
-    scholarships = Scholarship.query.filter_by(provider_id=provider_id).all()
+    scholarships = get_scholarships_query(provider_id).all()
     
     total_applications = 0
     # Pre-process scholarships to attach application count and formatted applications if needed by template
@@ -202,6 +240,7 @@ def applications():
             app.student_id = student.student_id if student else ""
             app.application_id = app.id
             app.date_applied = app.application_date.strftime('%Y-%m-%d')
+            app.is_renewal = app.is_renewal if hasattr(app, 'is_renewal') else False
             # Count files linked to this application
             app.file_count = ScholarshipApplicationFile.query.filter_by(application_id=app.id).count()
             
@@ -218,9 +257,17 @@ def schedules():
     """Provider schedules page"""
     require_provider_role()
     
+    # Check semester expirations for all students (no cron job needed - checks on page load)
+    try:
+        from semester_expiration_utils import check_all_students_semester_expirations
+        check_all_students_semester_expirations()
+    except Exception:
+        # Don't fail page load if check fails
+        pass
+    
     provider_id = get_provider_id()
     # Get applications to list for scheduling
-    scholarships = Scholarship.query.filter_by(provider_id=provider_id).all()
+    scholarships = get_scholarships_query(provider_id).all()
     scholarship_ids = [s.id for s in scholarships]
     
     raw_applications = ScholarshipApplication.query.filter(
@@ -240,7 +287,8 @@ def schedules():
             'scholarship_code': scholarship.code if scholarship else "",
             'scholarship_title': scholarship.title if scholarship else "",
             'status': app.status,
-            'date_applied': app.application_date.strftime('%Y-%m-%d')
+            'date_applied': app.application_date.strftime('%Y-%m-%d'),
+            'is_renewal': app.is_renewal if hasattr(app, 'is_renewal') else False
         })
     
     # Also fetch existing schedules if we want to show them (template might need update or we pass both)
@@ -260,7 +308,7 @@ def documents():
     require_provider_role()
     
     provider_id = get_provider_id()
-    scholarships = Scholarship.query.filter_by(provider_id=provider_id).all()
+    scholarships = get_scholarships_query(provider_id).all()
     scholarship_ids = [s.id for s in scholarships]
     
     # Get all applications for these scholarships
@@ -495,7 +543,8 @@ def generate_report_pdf():
     require_provider_role()
 
     # Get actual data
-    scholarships = Scholarship.query.filter_by(provider_id=current_user.id).all()
+    provider_id = get_provider_id()
+    scholarships = get_scholarships_query(provider_id).all()
     scholarship_ids = [s.id for s in scholarships]
     
     total_scholarships = len(scholarships)
@@ -634,6 +683,11 @@ def review_application(application_id):
         
         # Logic for approval with slots
         if new_status == 'approved' and application.status != 'approved':
+            # Check if this is a renewal application (for later use)
+            is_renewal = application.is_renewal if hasattr(application, 'is_renewal') else False
+            original_application_id = application.original_application_id if hasattr(application, 'original_application_id') else None
+            
+            # For ALL applications (including renewals), check document requirements
             # Check if all required documents are provided
             req_str = scholarship.requirements or ''
             current_requirements = [r.strip() for r in req_str.split(',') if r.strip()]
@@ -704,38 +758,82 @@ def review_application(application_id):
                     'success': False,
                     'error': f'Cannot approve: Please verify all documents first. Unverified: {", ".join(unverified_docs)}'
                 }), 400
-            # Check if this is a renewal application
-            is_renewal = application.is_renewal if hasattr(application, 'is_renewal') else False
-            original_application_id = application.original_application_id if hasattr(application, 'original_application_id') else None
             
-            # If renewal is approved, archive the original application
-            if is_renewal and original_application_id:
-                original_app = ScholarshipApplication.query.get(original_application_id)
-                if original_app and original_app.status == 'approved' and original_app.is_active:
-                    original_app.status = 'archived'
-                    original_app.is_active = False
-                    original_app.reviewed_at = datetime.utcnow()
-                    original_app.reviewed_by = current_user.id
+            # If this is a renewal application being approved, check next_last_semester_date
+            # and handle it differently (mark as approved immediately)
+            if is_renewal and new_status == 'approved':
+                # Check if next_last_semester_date is set for the scholarship
+                if not scholarship.next_last_semester_date:
+                    return jsonify({
+                        'success': False,
+                        'error': 'Cannot approve renewal: Please set the "Next Last Semester Date" for this scholarship first. Go to Manage Scholarships to update the scholarship details.',
+                        'error_type': 'missing_next_last_semester_date'
+                    }), 400
+                
+                # Mark renewal as approved immediately
+                # The old approved application stays approved until semester ends
+                application.reviewed_at = datetime.utcnow()
+                application.reviewed_by = current_user.id
+                application.status = 'approved'  # Mark as approved immediately
+                application.notes = (application.notes or '') + '\n[Renewal Approved - Will become active when current semester ends]'
+                
+                # Update scholarship counts (renewal is now approved)
+                if scholarship.pending_count and scholarship.pending_count > 0:
+                    scholarship.pending_count = max(0, scholarship.pending_count - 1)
+                scholarship.approved_count = (scholarship.approved_count or 0) + 1
+                
+                # Don't update slots yet - will be done when semester ends
+                # Skip the rest of approval logic for renewals (don't reject other applications)
+                db.session.commit()
+                
+                # Send notification to student
+                student = User.query.get(application.user_id)
+                if student:
+                    try:
+                        send_email(
+                            student.email,
+                            f'Renewal Approved: {scholarship.title}',
+                            'email/application_status.html',
+                            student_name=student.get_full_name(),
+                            scholarship_name=scholarship.title,
+                            new_status='approved'
+                        )
+                    except:
+                        pass
                     
-                    # Update scholarship counts
-                    if scholarship:
-                        scholarship.approved_count = max(0, (scholarship.approved_count or 0) - 1)
-                        if scholarship.slots is not None:
-                            scholarship.slots += 1
+                    # Create in-app notification
+                    notification = Notification(
+                        user_id=student.id,
+                        type='application',
+                        title=f'Renewal Approved: {scholarship.title}',
+                        message=f'Your renewal request for {scholarship.title} has been approved. It will become active when your current semester ends.',
+                        created_at=datetime.utcnow(),
+                        is_active=True
+                    )
+                    db.session.add(notification)
+                    db.session.commit()
+                
+                return jsonify({'success': True, 'message': 'Renewal has been approved. It will become active when the current semester ends.'})
             
             # CRITICAL: Only one scholarship can be approved per student at a time
             # Find and reject/withdraw all other applications for this student
-            # EXCEPTION: Don't reject the original application if this is a renewal (already handled above)
+            # EXCEPTION: Don't reject renewals (they can coexist with original approved application)
+            # EXCEPTION: Don't reject the original application if this is a renewal
             from sqlalchemy import text as sql_text
             
-            # Get all other applications for this student (excluding current one and original if renewal)
+            # Get all other applications for this student (excluding current one)
             other_applications = ScholarshipApplication.query.filter(
                 ScholarshipApplication.user_id == application.user_id,
                 ScholarshipApplication.id != application_id,
                 ScholarshipApplication.is_active == True
             ).all()
             
-            # Filter out original application if this is a renewal
+            # ALWAYS filter out renewal applications - they can coexist with the original approved application
+            # Renewals should be protected regardless of what type of application is being approved
+            other_applications = [app for app in other_applications if not (hasattr(app, 'is_renewal') and app.is_renewal)]
+            
+            # If this is a renewal, also filter out the original application
+            # (the original should remain active until the semester expires)
             if is_renewal and original_application_id:
                 other_applications = [app for app in other_applications if app.id != original_application_id]
             
@@ -955,7 +1053,7 @@ def send_individual_announcement():
     # Find the student
     # We search for a student who has applied to ANY of this provider's scholarships
     provider_id = get_provider_id()
-    scholarships = Scholarship.query.filter_by(provider_id=provider_id).all()
+    scholarships = get_scholarships_query(provider_id).all()
     scholarship_ids = [s.id for s in scholarships]
     
     if not scholarship_ids:
@@ -1153,7 +1251,7 @@ def api_scholarships_list():
     require_provider_role()
     
     provider_id = get_provider_id()
-    scholarships = Scholarship.query.filter_by(provider_id=provider_id).all()
+    scholarships = get_scholarships_query(provider_id).all()
     data = []
     for s in scholarships:
         data.append({
@@ -1174,7 +1272,7 @@ def api_applications_list():
     require_provider_role()
     
     provider_id = get_provider_id()
-    scholarships = Scholarship.query.filter_by(provider_id=provider_id).all()
+    scholarships = get_scholarships_query(provider_id).all()
     scholarship_ids = [s.id for s in scholarships]
     
     applications = ScholarshipApplication.query.filter(
@@ -1206,12 +1304,12 @@ def api_scholarships_search():
         return jsonify([])
 
     # Find matching scholarships for this provider
-    scholarships = Scholarship.query.filter_by(provider_id=current_user.id)\
-        .filter(or_(
-            Scholarship.title.like(f"%{query}%"),
-            Scholarship.code.like(f"%{query}%")
-        ))\
-        .limit(10).all()
+    provider_id = get_provider_id()
+    base_query = get_scholarships_query(provider_id)
+    scholarships = base_query.filter(or_(
+        Scholarship.title.like(f"%{query}%"),
+        Scholarship.code.like(f"%{query}%")
+    )).limit(10).all()
         
     data = []
     for s in scholarships:
@@ -1237,7 +1335,7 @@ def api_students_search():
     if not query or len(query) < 2:
         return jsonify([])
 
-    scholarships = Scholarship.query.filter_by(provider_id=provider_id).all()
+    scholarships = get_scholarships_query(provider_id).all()
     scholarship_ids = [s.id for s in scholarships]
     
     if not scholarship_ids:
@@ -1373,7 +1471,8 @@ def api_create_scholarship():
             # Semester and school year fields
             semester=data.get('semester', ''),
             school_year=data.get('school_year', ''),
-            semester_date=datetime.strptime(data['semester_date'], '%Y-%m-%d').date() if data.get('semester_date') else None
+            semester_date=datetime.strptime(data['semester_date'], '%Y-%m-%d').date() if data.get('semester_date') and str(data.get('semester_date', '')).strip() else None,
+            next_last_semester_date=datetime.strptime(data['next_last_semester_date'], '%Y-%m-%d').date() if data.get('next_last_semester_date') and str(data.get('next_last_semester_date', '')).strip() else None
         )
         
         db.session.add(new_scholarship)
@@ -1428,7 +1527,8 @@ def api_scholarship_detail(id):
                 'contact_phone': scholarship.contact_phone or '',
                 'semester': scholarship.semester or '',
                 'school_year': scholarship.school_year or '',
-                'semester_date': scholarship.semester_date.strftime('%Y-%m-%d') if scholarship.semester_date else ''
+                'semester_date': scholarship.semester_date.strftime('%Y-%m-%d') if scholarship.semester_date else '',
+                'next_last_semester_date': scholarship.next_last_semester_date.strftime('%Y-%m-%d') if scholarship.next_last_semester_date else ''
             }
         })
         
@@ -1458,10 +1558,14 @@ def api_scholarship_detail(id):
             # Semester and school year fields
             if 'semester' in data: scholarship.semester = data['semester']
             if 'school_year' in data: scholarship.school_year = data['school_year']
-            if 'semester_date' in data and data['semester_date']:
+            if 'semester_date' in data and data['semester_date'] and str(data['semester_date']).strip():
                 scholarship.semester_date = datetime.strptime(data['semester_date'], '%Y-%m-%d').date()
-            elif 'semester_date' in data and not data['semester_date']:
+            elif 'semester_date' in data:
                 scholarship.semester_date = None
+            if 'next_last_semester_date' in data and data['next_last_semester_date'] and str(data['next_last_semester_date']).strip():
+                scholarship.next_last_semester_date = datetime.strptime(data['next_last_semester_date'], '%Y-%m-%d').date()
+            elif 'next_last_semester_date' in data:
+                scholarship.next_last_semester_date = None
             
             # Notify matching students if:
             # 1. Status changed to approved/active (from draft or other status)
@@ -2026,10 +2130,11 @@ def api_add_remarks():
 @login_required
 def api_scholarship_report_pdf(id):
     """Download PDF report for a specific scholarship (works for both active and archived)"""
-    require_provider_admin()
+    require_provider_role()
 
     scholarship = Scholarship.query.get_or_404(id)
-    if scholarship.provider_id != current_user.id:
+    provider_id = get_provider_id()
+    if scholarship.provider_id != provider_id:
         flash('Unauthorized', 'error')
         return redirect(url_for('provider.scholarships'))
 
@@ -2253,11 +2358,37 @@ def staff_management():
             'last_name': staff.last_name,
             'email': staff.email,
             'organization': staff.organization or '',
+            'scholarship_type': staff.scholarship_type or None,
             'is_active': staff.is_active,
             'created_at': staff.created_at.strftime('%Y-%m-%d') if staff.created_at else ''
         })
     
     return render_template('provider/staff.html', user=current_user, staff_members=staff_data)
+
+@provider_bp.route('/api/scholarship-types', methods=['GET'])
+@login_required
+def get_scholarship_types():
+    """Get all unique scholarship types for this provider - Admin only"""
+    require_provider_admin()
+    
+    try:
+        # Get all unique scholarship types from provider's scholarships
+        types = db.session.execute(
+            text("""
+                SELECT DISTINCT type 
+                FROM scholarships 
+                WHERE provider_id = :provider_id 
+                AND type IS NOT NULL 
+                AND type != ''
+                ORDER BY type
+            """),
+            {"provider_id": current_user.id}
+        ).fetchall()
+        
+        type_list = [t[0] for t in types]
+        return jsonify({'success': True, 'types': type_list})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @provider_bp.route('/api/staff', methods=['POST'])
 @login_required
@@ -2275,6 +2406,23 @@ def create_staff():
     if User.query.filter_by(email=data['email']).first():
         return jsonify({'success': False, 'error': 'Email already exists'}), 400
     
+    # Validate scholarship_type if provided (must be from provider's scholarships)
+    scholarship_type = data.get('scholarship_type', '').strip()
+    if scholarship_type:
+        # Verify the type exists in provider's scholarships
+        type_exists = db.session.execute(
+            text("""
+                SELECT COUNT(*) 
+                FROM scholarships 
+                WHERE provider_id = :provider_id 
+                AND type = :scholarship_type
+            """),
+            {"provider_id": current_user.id, "scholarship_type": scholarship_type}
+        ).scalar() > 0
+        
+        if not type_exists:
+            return jsonify({'success': False, 'error': 'Invalid scholarship type'}), 400
+    
     try:
         # Use admin's organization automatically
         admin_organization = current_user.organization or ''
@@ -2286,6 +2434,7 @@ def create_staff():
             organization=admin_organization,
             role='provider_staff',
             managed_by=current_user.id,
+            scholarship_type=scholarship_type if scholarship_type else None,
             is_active=True
         )
         new_staff.set_password(data['password'])
@@ -2319,6 +2468,7 @@ def staff_detail(staff_id):
                 'last_name': staff.last_name,
                 'email': staff.email,
                 'organization': staff.organization or '',
+                'scholarship_type': staff.scholarship_type or '',
                 'is_active': staff.is_active
             }
         })
@@ -2335,6 +2485,24 @@ def staff_detail(staff_id):
                     return jsonify({'success': False, 'error': 'Email already taken'}), 400
                 staff.email = data['email']
             if 'organization' in data: staff.organization = data['organization']
+            if 'scholarship_type' in data:
+                scholarship_type = data['scholarship_type'].strip() if data['scholarship_type'] else None
+                # Validate scholarship_type if provided
+                if scholarship_type:
+                    # Verify the type exists in provider's scholarships
+                    type_exists = db.session.execute(
+                        text("""
+                            SELECT COUNT(*) 
+                            FROM scholarships 
+                            WHERE provider_id = :provider_id 
+                            AND type = :scholarship_type
+                        """),
+                        {"provider_id": current_user.id, "scholarship_type": scholarship_type}
+                    ).scalar() > 0
+                    
+                    if not type_exists:
+                        return jsonify({'success': False, 'error': 'Invalid scholarship type'}), 400
+                staff.scholarship_type = scholarship_type
             if 'password' in data and data['password']:
                 staff.set_password(data['password'])
             

@@ -173,14 +173,23 @@
     </div>
 
     <div class="table-container">
-      <div class="table-header">
+      <div class="table-header" style="display: flex; justify-content: space-between; align-items: center;">
         <h3>Staff Members</h3>
+        <div style="display: flex; align-items: center; gap: 1rem;">
+          <div style="position: relative;">
+            <input type="text" id="staffSearchInput" placeholder="Search by name or email..." 
+                   style="padding: 0.5rem 2.5rem 0.5rem 1rem; border: 1px solid #ddd; border-radius: 8px; font-size: 0.9rem; width: 300px;"
+                   onkeyup="filterStaffTable()">
+            <i class="fas fa-search" style="position: absolute; right: 1rem; top: 50%; transform: translateY(-50%); color: #666; pointer-events: none;"></i>
+          </div>
+        </div>
       </div>
       <table>
         <thead>
           <tr>
             <th>Staff Name</th>
             <th>Email</th>
+            <th>Assignment</th>
             <th>Status</th>
             <th>Created</th>
             <th>Actions</th>
@@ -189,9 +198,18 @@
         <tbody id="staffTableBody">
           {% if staff_members %}
             {% for staff in staff_members %}
-            <tr data-staff-id="{{ staff.id }}">
+            <tr data-staff-id="{{ staff.id }}" data-staff-name="{{ (staff.first_name + ' ' + staff.last_name)|lower }}" data-staff-email="{{ staff.email|lower }}">
               <td>{{ staff.first_name }} {{ staff.last_name }}</td>
               <td>{{ staff.email }}</td>
+              <td>
+                {% if staff.scholarship_type %}
+                  <span style="background: #e7f3ff; color: #0066cc; padding: 0.25rem 0.6rem; border-radius: 12px; font-size: 0.85rem; font-weight: 600;">
+                    {{ staff.scholarship_type }}
+                  </span>
+                {% else %}
+                  <span style="color: #999; font-style: italic;">Not assigned</span>
+                {% endif %}
+              </td>
               <td>
                 <span class="status {% if staff.is_active %}active{% else %}inactive{% endif %}">
                   {% if staff.is_active %}Active{% else %}Inactive{% endif %}
@@ -213,7 +231,7 @@
             {% endfor %}
           {% else %}
             <tr>
-              <td colspan="5" style="text-align: center; padding: 2rem; color: #666;">
+              <td colspan="6" style="text-align: center; padding: 2rem; color: #666;">
                 No staff members found. Create your first staff account to get started!
               </td>
             </tr>
@@ -273,6 +291,13 @@
           <input type="text" id="staffOrganization" name="organization" class="form-control" value="{{ user.organization or '' }}" readonly style="background: #f8f9fa; color: #6c757d; cursor: not-allowed;">
           <small style="color: #6c757d; font-size: 0.85rem; margin-top: 0.25rem; display: block;">Organization is automatically set from your profile</small>
         </div>
+        <div class="form-group">
+          <label for="staffScholarshipType" class="form-label">Scholarship Type Assignment *</label>
+          <select id="staffScholarshipType" name="scholarship_type" class="form-control" required>
+            <option value="">-- Select Scholarship Type --</option>
+          </select>
+          <small style="color: #6c757d; font-size: 0.85rem; margin-top: 0.25rem; display: block;">Staff can only work on one scholarship type. Select the type this staff member should have access to.</small>
+        </div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn-modal secondary" onclick="closeCreateStaffModal()">Cancel</button>
@@ -312,10 +337,17 @@
           <label for="editStaffOrganization" class="form-label">Organization</label>
           <input type="text" id="editStaffOrganization" name="organization" class="form-control">
         </div>
+        <div class="form-group">
+          <label for="editStaffScholarshipType" class="form-label">Scholarship Type Assignment *</label>
+          <select id="editStaffScholarshipType" name="scholarship_type" class="form-control" required>
+            <option value="">-- Select Scholarship Type --</option>
+          </select>
+          <small style="color: #6c757d; font-size: 0.85rem; margin-top: 0.25rem; display: block;">Staff can only work on one scholarship type. Select the type this staff member should have access to.</small>
+        </div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn-modal secondary" onclick="closeEditStaffModal()">Cancel</button>
-        <button type="submit" class="btn-modal primary">Update Staff</button>
+        <button type="submit" class="btn-modal primary" id="editStaffSubmitBtn">Update Staff</button>
       </div>
     </form>
   </div>
@@ -426,6 +458,9 @@ function openCreateStaffModal() {
   document.getElementById('staffPasswordStrengthText').textContent = '';
   document.getElementById('staffPasswordMatch').textContent = '';
   
+  // Load scholarship types
+  loadScholarshipTypes();
+  
   // Add event listeners for password fields
   document.getElementById('staffPassword').addEventListener('input', updatePasswordStrength);
   document.getElementById('staffConfirmPassword').addEventListener('input', checkPasswordMatch);
@@ -439,11 +474,50 @@ function closeEditStaffModal() {
   document.getElementById('editStaffModal').style.display = 'none';
 }
 
+// Load scholarship types for dropdowns
+function loadScholarshipTypes() {
+  fetch('/provider/api/scholarship-types')
+    .then(response => response.json())
+    .then(data => {
+      if (data.success && data.types) {
+        const createSelect = document.getElementById('staffScholarshipType');
+        const editSelect = document.getElementById('editStaffScholarshipType');
+        
+        // Clear existing options except the first one
+        while (createSelect.children.length > 1) {
+          createSelect.removeChild(createSelect.lastChild);
+        }
+        while (editSelect.children.length > 1) {
+          editSelect.removeChild(editSelect.lastChild);
+        }
+        
+        // Add types to both selects
+        data.types.forEach(type => {
+          const option1 = document.createElement('option');
+          option1.value = type;
+          option1.textContent = type;
+          createSelect.appendChild(option1);
+          
+          const option2 = document.createElement('option');
+          option2.value = type;
+          option2.textContent = type;
+          editSelect.appendChild(option2);
+        });
+      }
+    })
+    .catch(error => {
+      console.error('Error loading scholarship types:', error);
+    });
+}
+
 function viewStaff(id) {
   editStaff(id, true);
 }
 
 function editStaff(id, viewOnly = false) {
+  // Load scholarship types before opening modal
+  loadScholarshipTypes();
+  
   fetch(`/provider/api/staff/${id}`)
     .then(response => response.json())
     .then(data => {
@@ -453,18 +527,29 @@ function editStaff(id, viewOnly = false) {
         document.getElementById('editStaffLastName').value = data.staff.last_name;
         document.getElementById('editStaffEmail').value = data.staff.email;
         document.getElementById('editStaffOrganization').value = data.staff.organization || '';
+        document.getElementById('editStaffScholarshipType').value = data.staff.scholarship_type || '';
         document.getElementById('editStaffPassword').value = '';
         
         if (viewOnly) {
           document.getElementById('editStaffModalTitle').textContent = 'View Staff';
-          document.getElementById('editStaffForm').querySelectorAll('input, button[type="submit"]').forEach(el => {
-            if (el.type !== 'hidden') el.disabled = true;
+          // Disable all inputs and select, hide submit button
+          document.getElementById('editStaffForm').querySelectorAll('input, select').forEach(el => {
+            if (el.type !== 'hidden') {
+              el.disabled = true;
+              el.style.background = '#f8f9fa';
+              el.style.cursor = 'not-allowed';
+            }
           });
+          document.getElementById('editStaffSubmitBtn').style.display = 'none';
         } else {
           document.getElementById('editStaffModalTitle').textContent = 'Update Staff';
-          document.getElementById('editStaffForm').querySelectorAll('input, button[type="submit"]').forEach(el => {
+          // Enable all inputs and select, show submit button
+          document.getElementById('editStaffForm').querySelectorAll('input, select').forEach(el => {
             el.disabled = false;
+            el.style.background = '';
+            el.style.cursor = '';
           });
+          document.getElementById('editStaffSubmitBtn').style.display = 'block';
         }
         
         document.getElementById('editStaffModal').style.display = 'block';
@@ -612,6 +697,31 @@ window.addEventListener('click', function(e) {
   if (e.target === createModal) closeCreateStaffModal();
   if (e.target === editModal) closeEditStaffModal();
 });
+
+// Load scholarship types when page loads
+document.addEventListener('DOMContentLoaded', function() {
+  loadScholarshipTypes();
+});
+
+// Filter staff table by name or email
+function filterStaffTable() {
+  const input = document.getElementById('staffSearchInput');
+  const filter = input.value.toLowerCase();
+  const table = document.getElementById('staffTableBody');
+  const rows = table.getElementsByTagName('tr');
+  
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const name = row.getAttribute('data-staff-name') || '';
+    const email = row.getAttribute('data-staff-email') || '';
+    
+    if (name.includes(filter) || email.includes(filter)) {
+      row.style.display = '';
+    } else {
+      row.style.display = 'none';
+    }
+  }
+}
 </script>
 {% endblock %}
 

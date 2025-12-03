@@ -377,6 +377,11 @@
           <small style="color:#666; font-size:0.85rem;">Date when the semester ends</small>
         </div>
         <div class="form-group">
+          <label for="nextLastSemesterDate" class="form-label">Next Last Semester Date (Optional)</label>
+          <input type="date" id="nextLastSemesterDate" name="next_last_semester_date" class="form-control" min="{{ today_date }}" placeholder="Select next last semester date">
+          <small style="color:#666; font-size:0.85rem;">Date when the next semester ends (for renewal tracking)</small>
+        </div>
+        <div class="form-group">
           <label for="slots" class="form-label">Slots Offered</label>
           <input type="number" id="slots" name="slots" class="form-control" min="1" step="1" pattern="[0-9]*" inputmode="numeric" placeholder="e.g., 50">
         </div>
@@ -548,6 +553,11 @@
           <label for="editSemesterDate" class="form-label">Semester Date *</label>
           <input type="date" id="editSemesterDate" name="semester_date" class="form-control" min="{{ today_date }}" placeholder="Select semester end date" required>
           <small style="color:#666; font-size:0.85rem;">Date when the semester ends</small>
+        </div>
+        <div class="form-group">
+          <label for="editNextLastSemesterDate" class="form-label">Next Last Semester Date (Optional)</label>
+          <input type="date" id="editNextLastSemesterDate" name="next_last_semester_date" class="form-control" min="{{ today_date }}" placeholder="Select next last semester date">
+          <small style="color:#666; font-size:0.85rem;">Date when the next semester ends (for renewal tracking)</small>
         </div>
         <div class="form-group">
           <label for="editSlots" class="form-label">Slots Offered</label>
@@ -742,6 +752,7 @@ function editScholarship(id){
           }
         }
         document.getElementById('editSemesterDate').value = data.scholarship.semester_date || '';
+        document.getElementById('editNextLastSemesterDate').value = data.scholarship.next_last_semester_date || '';
         document.getElementById('editSlots').value = data.scholarship.slots || '';
         document.getElementById('editContactName').value = data.scholarship.contact_name || '';
         document.getElementById('editContactEmail').value = data.scholarship.contact_email || '';
@@ -914,6 +925,9 @@ document.getElementById('createScholarshipForm').addEventListener('submit', asyn
   if (other) chips.push(...other.split(',').map(s=>s.trim()).filter(Boolean));
   if (chips.length) reqs.push(...chips);
   data.requirements = reqs.join(',');
+  // Ensure next_last_semester_date is included even if empty
+  const nextLastSemesterDate = document.getElementById('nextLastSemesterDate').value.trim();
+  data.next_last_semester_date = nextLastSemesterDate || '';
   
   const btns = document.querySelectorAll('#createScholarshipForm .btn-modal.primary');
   btns.forEach(b=>{ b.disabled=true; b.textContent='Creating…'; });
@@ -972,6 +986,9 @@ document.getElementById('editScholarshipForm').addEventListener('submit', async 
   if (other) chips.push(...other.split(',').map(s=>s.trim()).filter(Boolean));
   if (chips.length) reqs.push(...chips);
   data.requirements = reqs.join(',');
+  // Ensure next_last_semester_date is included even if empty
+  const editNextLastSemesterDate = document.getElementById('editNextLastSemesterDate').value.trim();
+  data.next_last_semester_date = editNextLastSemesterDate || '';
   const id = data.id;
   
   const btns = document.querySelectorAll('#editScholarshipForm .btn-modal.primary');
