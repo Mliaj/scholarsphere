@@ -52,6 +52,20 @@
     .status.pending { background:#fff3cd; color:#856404; }
     .status.approved { background:#d4edda; color:#155724; }
     .status.rejected { background:#f8d7da; color:#721c24; }
+    
+    .renewal-badge {
+        display: inline-block;
+        background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+        color: white;
+        padding: 0.25rem 0.6rem;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        margin-left: 0.5rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
     .actions { display:flex; gap:.5rem; }
     .btn { padding:.5rem 1rem; border-radius:8px; border:none; cursor:pointer; font-weight:600; font-size:.9rem; }
     .btn.primary { background:#007bff; color:#fff; }
@@ -133,7 +147,12 @@
               <td>{{ app.application_id }}</td>
               <td><strong>{{ app.student_name }}</strong><br><small>{{ app.student_email }}</small></td>
               <td><strong>{{ app.scholarship_code }}</strong><br><small>{{ app.scholarship_title }}</small></td>
-              <td><span class="status {{ app.status.lower() }}">{{ app.status }}</span></td>
+              <td>
+                <span class="status {{ app.status.lower() }}">{{ app.status }}</span>
+                {% if app.is_renewal %}
+                <span class="renewal-badge"><i class="fas fa-sync-alt"></i> Renewal</span>
+                {% endif %}
+              </td>
               <td>{{ app.date_applied }}</td>
               <td>
                 <div class="actions" id="actions-{{ app.application_id_raw }}">

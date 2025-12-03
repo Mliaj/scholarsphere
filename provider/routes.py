@@ -95,6 +95,14 @@ def dashboard():
     """Provider dashboard"""
     require_provider_role()
     
+    # Check semester expirations for all students (no cron job needed - checks on page load)
+    try:
+        from semester_expiration_utils import check_all_students_semester_expirations
+        check_all_students_semester_expirations()
+    except Exception:
+        # Don't fail page load if check fails
+        pass
+    
     provider_id = get_provider_id()
     
     # Calculate dashboard stats
@@ -146,6 +154,14 @@ def dashboard():
 def scholarships():
     """Provider scholarships page - Admin only"""
     require_provider_admin()
+    
+    # Check semester expirations for all students (no cron job needed - checks on page load)
+    try:
+        from semester_expiration_utils import check_all_students_semester_expirations
+        check_all_students_semester_expirations()
+    except Exception:
+        # Don't fail page load if check fails
+        pass
 
     all_scholarships = Scholarship.query.filter_by(provider_id=current_user.id).all()
     
@@ -179,6 +195,14 @@ def applications():
     """Provider applications page"""
     require_provider_role()
     
+    # Check semester expirations for all students (no cron job needed - checks on page load)
+    try:
+        from semester_expiration_utils import check_all_students_semester_expirations
+        check_all_students_semester_expirations()
+    except Exception:
+        # Don't fail page load if check fails
+        pass
+    
     provider_id = get_provider_id()
     scholarships = Scholarship.query.filter_by(provider_id=provider_id).all()
     
@@ -202,6 +226,7 @@ def applications():
             app.student_id = student.student_id if student else ""
             app.application_id = app.id
             app.date_applied = app.application_date.strftime('%Y-%m-%d')
+            app.is_renewal = app.is_renewal if hasattr(app, 'is_renewal') else False
             # Count files linked to this application
             app.file_count = ScholarshipApplicationFile.query.filter_by(application_id=app.id).count()
             
@@ -217,6 +242,14 @@ def applications():
 def schedules():
     """Provider schedules page"""
     require_provider_role()
+    
+    # Check semester expirations for all students (no cron job needed - checks on page load)
+    try:
+        from semester_expiration_utils import check_all_students_semester_expirations
+        check_all_students_semester_expirations()
+    except Exception:
+        # Don't fail page load if check fails
+        pass
     
     provider_id = get_provider_id()
     # Get applications to list for scheduling
@@ -240,7 +273,8 @@ def schedules():
             'scholarship_code': scholarship.code if scholarship else "",
             'scholarship_title': scholarship.title if scholarship else "",
             'status': app.status,
-            'date_applied': app.application_date.strftime('%Y-%m-%d')
+            'date_applied': app.application_date.strftime('%Y-%m-%d'),
+            'is_renewal': app.is_renewal if hasattr(app, 'is_renewal') else False
         })
     
     # Also fetch existing schedules if we want to show them (template might need update or we pass both)
@@ -634,6 +668,11 @@ def review_application(application_id):
         
         # Logic for approval with slots
         if new_status == 'approved' and application.status != 'approved':
+            # Check if this is a renewal application (for later use)
+            is_renewal = application.is_renewal if hasattr(application, 'is_renewal') else False
+            original_application_id = application.original_application_id if hasattr(application, 'original_application_id') else None
+            
+            # For ALL applications (including renewals), check document requirements
             # Check if all required documents are provided
             req_str = scholarship.requirements or ''
             current_requirements = [r.strip() for r in req_str.split(',') if r.strip()]
@@ -704,28 +743,66 @@ def review_application(application_id):
                     'success': False,
                     'error': f'Cannot approve: Please verify all documents first. Unverified: {", ".join(unverified_docs)}'
                 }), 400
-            # Check if this is a renewal application
-            is_renewal = application.is_renewal if hasattr(application, 'is_renewal') else False
-            original_application_id = application.original_application_id if hasattr(application, 'original_application_id') else None
             
-            # If renewal is approved, archive the original application
-            if is_renewal and original_application_id:
-                original_app = ScholarshipApplication.query.get(original_application_id)
-                if original_app and original_app.status == 'approved' and original_app.is_active:
-                    original_app.status = 'archived'
-                    original_app.is_active = False
-                    original_app.reviewed_at = datetime.utcnow()
-                    original_app.reviewed_by = current_user.id
+            # If this is a renewal application being approved, check next_last_semester_date
+            # and handle it differently (mark as approved immediately)
+            if is_renewal and new_status == 'approved':
+                # Check if next_last_semester_date is set for the scholarship
+                if not scholarship.next_last_semester_date:
+                    return jsonify({
+                        'success': False,
+                        'error': 'Cannot approve renewal: Please set the "Next Last Semester Date" for this scholarship first. Go to Manage Scholarships to update the scholarship details.',
+                        'error_type': 'missing_next_last_semester_date'
+                    }), 400
+                
+                # Mark renewal as approved immediately
+                # The old approved application stays approved until semester ends
+                application.reviewed_at = datetime.utcnow()
+                application.reviewed_by = current_user.id
+                application.status = 'approved'  # Mark as approved immediately
+                application.notes = (application.notes or '') + '\n[Renewal Approved - Will become active when current semester ends]'
+                
+                # Update scholarship counts (renewal is now approved)
+                if scholarship.pending_count and scholarship.pending_count > 0:
+                    scholarship.pending_count = max(0, scholarship.pending_count - 1)
+                scholarship.approved_count = (scholarship.approved_count or 0) + 1
+                
+                # Don't update slots yet - will be done when semester ends
+                # Skip the rest of approval logic for renewals (don't reject other applications)
+                db.session.commit()
+                
+                # Send notification to student
+                student = User.query.get(application.user_id)
+                if student:
+                    try:
+                        send_email(
+                            student.email,
+                            f'Renewal Approved: {scholarship.title}',
+                            'email/application_status.html',
+                            student_name=student.get_full_name(),
+                            scholarship_name=scholarship.title,
+                            new_status='approved'
+                        )
+                    except:
+                        pass
                     
-                    # Update scholarship counts
-                    if scholarship:
-                        scholarship.approved_count = max(0, (scholarship.approved_count or 0) - 1)
-                        if scholarship.slots is not None:
-                            scholarship.slots += 1
+                    # Create in-app notification
+                    notification = Notification(
+                        user_id=student.id,
+                        type='application',
+                        title=f'Renewal Approved: {scholarship.title}',
+                        message=f'Your renewal request for {scholarship.title} has been approved. It will become active when your current semester ends.',
+                        created_at=datetime.utcnow(),
+                        is_active=True
+                    )
+                    db.session.add(notification)
+                    db.session.commit()
+                
+                return jsonify({'success': True, 'message': 'Renewal has been approved. It will become active when the current semester ends.'})
             
             # CRITICAL: Only one scholarship can be approved per student at a time
             # Find and reject/withdraw all other applications for this student
-            # EXCEPTION: Don't reject the original application if this is a renewal (already handled above)
+            # EXCEPTION: Don't reject renewals or the original application if this is a renewal
             from sqlalchemy import text as sql_text
             
             # Get all other applications for this student (excluding current one and original if renewal)
@@ -735,9 +812,13 @@ def review_application(application_id):
                 ScholarshipApplication.is_active == True
             ).all()
             
-            # Filter out original application if this is a renewal
+            # Filter out original application and other renewals if this is a renewal
             if is_renewal and original_application_id:
                 other_applications = [app for app in other_applications if app.id != original_application_id]
+            
+            # Also filter out other renewals (they can coexist with the old approved application)
+            if is_renewal:
+                other_applications = [app for app in other_applications if not (hasattr(app, 'is_renewal') and app.is_renewal)]
             
             for other_app in other_applications:
                 old_status = other_app.status
@@ -1373,7 +1454,8 @@ def api_create_scholarship():
             # Semester and school year fields
             semester=data.get('semester', ''),
             school_year=data.get('school_year', ''),
-            semester_date=datetime.strptime(data['semester_date'], '%Y-%m-%d').date() if data.get('semester_date') else None
+            semester_date=datetime.strptime(data['semester_date'], '%Y-%m-%d').date() if data.get('semester_date') and str(data.get('semester_date', '')).strip() else None,
+            next_last_semester_date=datetime.strptime(data['next_last_semester_date'], '%Y-%m-%d').date() if data.get('next_last_semester_date') and str(data.get('next_last_semester_date', '')).strip() else None
         )
         
         db.session.add(new_scholarship)
@@ -1428,7 +1510,8 @@ def api_scholarship_detail(id):
                 'contact_phone': scholarship.contact_phone or '',
                 'semester': scholarship.semester or '',
                 'school_year': scholarship.school_year or '',
-                'semester_date': scholarship.semester_date.strftime('%Y-%m-%d') if scholarship.semester_date else ''
+                'semester_date': scholarship.semester_date.strftime('%Y-%m-%d') if scholarship.semester_date else '',
+                'next_last_semester_date': scholarship.next_last_semester_date.strftime('%Y-%m-%d') if scholarship.next_last_semester_date else ''
             }
         })
         
@@ -1458,10 +1541,14 @@ def api_scholarship_detail(id):
             # Semester and school year fields
             if 'semester' in data: scholarship.semester = data['semester']
             if 'school_year' in data: scholarship.school_year = data['school_year']
-            if 'semester_date' in data and data['semester_date']:
+            if 'semester_date' in data and data['semester_date'] and str(data['semester_date']).strip():
                 scholarship.semester_date = datetime.strptime(data['semester_date'], '%Y-%m-%d').date()
-            elif 'semester_date' in data and not data['semester_date']:
+            elif 'semester_date' in data:
                 scholarship.semester_date = None
+            if 'next_last_semester_date' in data and data['next_last_semester_date'] and str(data['next_last_semester_date']).strip():
+                scholarship.next_last_semester_date = datetime.strptime(data['next_last_semester_date'], '%Y-%m-%d').date()
+            elif 'next_last_semester_date' in data:
+                scholarship.next_last_semester_date = None
             
             # Notify matching students if:
             # 1. Status changed to approved/active (from draft or other status)

@@ -734,6 +734,15 @@
                         {% if s.semester_date %}
                         <span><i class="fas fa-calendar-check"></i> Last Semester Date: {{ s.semester_date }}</span>
                         {% endif %}
+                        {% if is_renewal %}
+                        <span><i class="fas fa-calendar-plus"></i> 
+                            {% if s.next_last_semester_date %}
+                                Next Last Semester Date: {{ s.next_last_semester_date }}
+                            {% else %}
+                                Next Last Semester Date: No update on the next semester date
+                            {% endif %}
+                        </span>
+                        {% endif %}
                     </div>
 
                     {% if s.contact_name or s.contact_email or s.contact_phone %}

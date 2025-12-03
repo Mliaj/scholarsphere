@@ -192,6 +192,7 @@ class Scholarship(db.Model):
     semester = db.Column(db.String(50), nullable=True)  # e.g., "1st", "2nd"
     school_year = db.Column(db.String(50), nullable=True)  # e.g., "2025 - 2026"
     semester_date = db.Column(db.Date, nullable=True)
+    next_last_semester_date = db.Column(db.Date, nullable=True)
     is_expired_semester = db.Column(db.Boolean, nullable=False, default=False)
     amount = db.Column(db.String(100), nullable=True)  # e.g., "₱50,000 per semester"
     requirements = db.Column(db.Text, nullable=True)
@@ -214,7 +215,7 @@ class ScholarshipApplication(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     scholarship_id = db.Column(db.Integer, db.ForeignKey('scholarships.id'), nullable=False)
-    status = db.Column(db.String(20), nullable=False, default='pending')  # pending, approved, rejected, withdrawn, archived
+    status = db.Column(db.String(20), nullable=False, default='pending')  # pending, approved, rejected, withdrawn, archived, completed
     application_date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     reviewed_at = db.Column(db.DateTime, nullable=True)
     reviewed_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)  # admin who reviewed
@@ -227,6 +228,10 @@ class ScholarshipApplication(db.Model):
     # Relationships
     user = db.relationship('User', foreign_keys=[user_id], backref='scholarship_applications')
     reviewer = db.relationship('User', foreign_keys=[reviewed_by], backref='reviewed_applications')
+    original_application = db.relationship('ScholarshipApplication', 
+                                          foreign_keys=[original_application_id],
+                                          remote_side=[id],
+                                          backref='renewal_applications')
 
 # Scholarship Application Files model (linking applications to credentials)
 class ScholarshipApplicationFile(db.Model):

@@ -131,6 +131,14 @@ def profile():
         flash('Access denied. Student access required.', 'error')
         return redirect(url_for('index'))
     
+    # Check semester expirations (no cron job needed - checks on page load)
+    try:
+        from semester_expiration_utils import check_student_semester_expirations
+        check_student_semester_expirations(current_user.id)
+    except Exception:
+        # Don't fail page load if check fails
+        pass
+    
     return render_template('students/profile.html', user=current_user)
 
 @students_bp.route('/credentials')
@@ -140,6 +148,14 @@ def credentials():
     if current_user.role != 'student':
         flash('Access denied. Student access required.', 'error')
         return redirect(url_for('index'))
+    
+    # Check semester expirations (no cron job needed - checks on page load)
+    try:
+        from semester_expiration_utils import check_student_semester_expirations
+        check_student_semester_expirations(current_user.id)
+    except Exception:
+        # Don't fail page load if check fails
+        pass
     
     # Get actual credentials from database using raw SQL
     from flask import current_app
@@ -323,10 +339,10 @@ def applications():
         text("""
             SELECT sa.id, sa.user_id, sa.scholarship_id, sa.status, sa.application_date, 
                    s.title, s.deadline, s.is_active as scholarship_is_active, s.status as scholarship_status,
-                   s.semester_date, s.code, sa.is_renewal, sa.renewal_failed
+                   s.semester_date, s.code, sa.is_renewal, sa.renewal_failed, sa.reviewed_at, sa.notes, sa.is_active as application_is_active
             FROM scholarship_applications sa
             JOIN scholarships s ON sa.scholarship_id = s.id
-            WHERE sa.user_id = :user_id AND sa.is_active = 1
+            WHERE sa.user_id = :user_id AND (sa.is_active = 1 OR (sa.is_renewal = 1 AND sa.status = 'approved'))
             ORDER BY sa.application_date DESC
         """),
         {"user_id": current_user.id}
@@ -334,12 +350,16 @@ def applications():
     
     # Check for pending renewals per scholarship to disable renewal banner
     pending_renewals_map = {}
+    # Check for approved renewals per scholarship to hide banners
+    approved_renewals_map = {}
     for app in user_applications:
         scholarship_id = app[2]
         is_renewal = bool(app[11]) if len(app) > 11 else False
         status = app[3].lower() if app[3] else ''
         if is_renewal and status == 'pending':
             pending_renewals_map[scholarship_id] = True
+        elif is_renewal and status == 'approved':
+            approved_renewals_map[scholarship_id] = True
     
     from datetime import date
     today = date.today()
@@ -394,11 +414,14 @@ def applications():
         days_until_expiration = None
         
         # Check renewal eligibility: must be approved and active, and have a semester date
-        # EXCEPTION: Don't show renewal banner if there's already a pending renewal for this scholarship
+        # EXCEPTION: Don't show renewal banner if:
+        # 1. There's already a pending renewal for this scholarship
+        # 2. There's an approved renewal for this scholarship
         scholarship_id = app[2]
         has_pending_renewal = pending_renewals_map.get(scholarship_id, False)
-        
-        if app_status == 'approved' and is_active and semester_date_val and not has_pending_renewal:
+        has_approved_renewal = approved_renewals_map.get(scholarship_id, False)
+
+        if app_status == 'approved' and is_active and semester_date_val and not has_pending_renewal and not has_approved_renewal:
             # Parse semester_date from various formats
             try:
                 if isinstance(semester_date_val, str):
@@ -435,6 +458,40 @@ def applications():
         scholarship_code = app[10] if len(app) > 10 else ''
         is_renewal_app = bool(app[11]) if len(app) > 11 else False
         renewal_failed = bool(app[12]) if len(app) > 12 else False
+        reviewed_at = app[13] if len(app) > 13 else None
+        notes = app[14] if len(app) > 14 else None
+        application_is_active = bool(app[15]) if len(app) > 15 else True
+        
+        # Check if there's an approved renewal for this specific scholarship
+        has_approved_renewal_for_this = approved_renewals_map.get(scholarship_id, False)
+        
+        # For approved renewals: check if there's still an active non-renewal approved application
+        # If so, the renewal should be inactive (but still displayed)
+        is_renewal_inactive = False
+        if is_renewal_app and app_status == 'approved':
+            # Check if there's an active non-renewal approved application for this scholarship
+            active_non_renewal = db.session.execute(
+                text("""
+                    SELECT COUNT(*) 
+                    FROM scholarship_applications sa
+                    WHERE sa.user_id = :user_id 
+                      AND sa.scholarship_id = :scholarship_id
+                      AND sa.status = 'approved'
+                      AND sa.is_active = 1
+                      AND (sa.is_renewal = 0 OR sa.is_renewal IS NULL)
+                      AND sa.id != :current_app_id
+                """),
+                {
+                    "user_id": current_user.id,
+                    "scholarship_id": scholarship_id,
+                    "current_app_id": app[0]
+                }
+            ).scalar() or 0
+            
+            if active_non_renewal > 0:
+                is_renewal_inactive = True
+                # Override is_active to False for display purposes
+                is_active = False
         
         applications_data.append({
             'id': f"APP-{app[0]:03d}",
@@ -450,7 +507,11 @@ def applications():
             'days_until_expiration': days_until_expiration if days_until_expiration is not None else None,
             'scholarship_code': scholarship_code,
             'is_renewal': is_renewal_app,
-            'renewal_failed': renewal_failed
+            'renewal_failed': renewal_failed,
+            'has_approved_renewal': has_approved_renewal_for_this,
+            'reviewed_at': reviewed_at,
+            'notes': notes,
+            'is_renewal_inactive': is_renewal_inactive
         })
     
     return render_template('students/applications.html', applications=applications_data, user=current_user)
@@ -462,6 +523,14 @@ def scholarships():
     if current_user.role != 'student':
         flash('Access denied. Student access required.', 'error')
         return redirect(url_for('index'))
+    
+    # Check semester expirations (no cron job needed - checks on page load)
+    try:
+        from semester_expiration_utils import check_student_semester_expirations
+        check_student_semester_expirations(current_user.id)
+    except Exception:
+        # Don't fail page load if check fails
+        pass
     
     # Check if this is a renewal redirect
     renewal_scholarship_id = request.args.get('renew', type=int)
@@ -531,7 +600,7 @@ def scholarships():
                 """
                 SELECT s.id, s.code, s.title, s.description, s.amount, s.deadline, s.requirements, u.organization,
                        s.type, s.level, s.eligibility, s.program_course, s.additional_criteria, s.slots, s.contact_name, s.contact_email, s.contact_phone,
-                       s.is_expired_deadline, s.semester, s.school_year, s.semester_date, s.is_expired_semester
+                       s.is_expired_deadline, s.semester, s.school_year, s.semester_date, s.is_expired_semester, s.next_last_semester_date
                 FROM scholarships s
                 LEFT JOIN users u ON s.provider_id = u.id
                 WHERE s.id = :scholarship_id AND s.status IN ('active','approved') AND s.is_active = 1
@@ -546,7 +615,7 @@ def scholarships():
                 """
                 SELECT s.id, s.code, s.title, s.description, s.amount, s.deadline, s.requirements, u.organization,
                        s.type, s.level, s.eligibility, s.program_course, s.additional_criteria, s.slots, s.contact_name, s.contact_email, s.contact_phone,
-                       s.is_expired_deadline, s.semester, s.school_year, s.semester_date, s.is_expired_semester
+                       s.is_expired_deadline, s.semester, s.school_year, s.semester_date, s.is_expired_semester, s.next_last_semester_date
                 FROM scholarships s
                 LEFT JOIN users u ON s.provider_id = u.id
                 WHERE s.status IN ('active','approved') AND s.is_active = 1
@@ -683,6 +752,21 @@ def scholarships():
             elif hasattr(semester_date_val, 'strftime'):
                 semester_date = semester_date_val
         
+        # Parse next_last_semester_date for display
+        next_last_semester_date_val = scholarship[22] if len(scholarship) > 22 else None
+        next_last_semester_date = None
+        if next_last_semester_date_val:
+            if isinstance(next_last_semester_date_val, str):
+                try:
+                    next_last_semester_date = datetime.fromisoformat(next_last_semester_date_val.replace('Z','+00:00'))
+                except:
+                    try:
+                        next_last_semester_date = datetime.strptime(next_last_semester_date_val, '%Y-%m-%d')
+                    except:
+                        next_last_semester_date = None
+            elif hasattr(next_last_semester_date_val, 'strftime'):
+                next_last_semester_date = next_last_semester_date_val
+        
         # Check if scholarship matches student's course
         is_matching_course = False
         student_course = (current_user.course or '').strip().upper()
@@ -731,7 +815,8 @@ def scholarships():
             'is_expired_semester': is_expired_semester,
             'semester': scholarship[18] if len(scholarship) > 18 else '',
             'school_year': scholarship[19] if len(scholarship) > 19 else '',
-            'semester_date': semester_date.strftime('%B %d, %Y') if semester_date else None
+            'semester_date': semester_date.strftime('%B %d, %Y') if semester_date else None,
+            'next_last_semester_date': next_last_semester_date.strftime('%B %d, %Y') if next_last_semester_date else None
         })
     
     current_year = datetime.utcnow().year
@@ -1422,7 +1507,7 @@ def get_application_detail(application_id):
             text("""
                 SELECT sa.id, sa.status, sa.application_date, s.title, s.code, s.deadline,
                        s.type, s.level, s.eligibility, s.slots, s.contact_name, s.contact_email, s.contact_phone,
-                       s.requirements
+                       s.requirements, sa.is_renewal, s.next_last_semester_date
                 FROM scholarship_applications sa
                 JOIN scholarships s ON sa.scholarship_id = s.id
                 WHERE sa.id=:id AND sa.user_id=:uid AND sa.is_active=1
@@ -1487,6 +1572,26 @@ def get_application_detail(application_id):
                 "contact_number": personal_info[3] or ""
             }
             
+        # Get is_renewal flag and next_last_semester_date from app_row
+        is_renewal = bool(app_row[14]) if len(app_row) > 14 else False
+        next_last_semester_date_val = app_row[15] if len(app_row) > 15 else None
+        
+        # Format next_last_semester_date if it exists and is a renewal
+        next_last_semester_date_formatted = None
+        if is_renewal and next_last_semester_date_val:
+            try:
+                from datetime import datetime as dt
+                if isinstance(next_last_semester_date_val, str):
+                    next_last_semester_date_formatted = dt.strptime(next_last_semester_date_val, '%Y-%m-%d').strftime('%B %d, %Y')
+                elif hasattr(next_last_semester_date_val, 'strftime'):
+                    next_last_semester_date_formatted = next_last_semester_date_val.strftime('%B %d, %Y')
+            except Exception:
+                next_last_semester_date_formatted = None
+        
+        # Add next_last_semester_date to academic_information if it's a renewal
+        if is_renewal and next_last_semester_date_formatted and academic_information:
+            academic_information["next_last_semester_date"] = next_last_semester_date_formatted
+        
         # Get current requirements
         req_str = app_row[13] or ''
         current_requirements = [r.strip() for r in req_str.split(',') if r.strip()]
@@ -1697,7 +1802,8 @@ def get_application_detail(application_id):
             # Family Background, Academic Information, and Personal Information
             'family_background': family_background,
             'academic_information': academic_information,
-            'personal_information': personal_information
+            'personal_information': personal_information,
+            'is_renewal': is_renewal
         }
         return jsonify({'success': True, 'application': payload})
     except Exception as e:

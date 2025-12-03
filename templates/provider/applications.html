@@ -47,8 +47,92 @@
     .application-status { padding:0.4rem 0.8rem; border-radius:20px; font-weight:600; font-size:0.85rem; }
     .application-status.pending { background:#fff3cd; color:#856404; }
     .application-status.approved { background:#d4edda; color:#155724; }
-.application-status.rejected { background:#f8d7da; color:#721c24; }
+    .application-status.rejected { background:#f8d7da; color:#721c24; }
     .application-status.withdrawn { background:#e2e3e5; color:#495057; }
+    .application-status.completed { background:#6c757d; color:white; }
+    
+    .renewal-badge {
+        display: inline-block;
+        background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+        color: white;
+        padding: 0.25rem 0.6rem;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        margin-left: 0.5rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    /* Error Notification Styles */
+    .error-notification {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+        color: white;
+        padding: 1rem 1.5rem;
+        border-radius: 10px;
+        box-shadow: 0 4px 20px rgba(220, 53, 69, 0.4);
+        z-index: 10000;
+        max-width: 500px;
+        animation: slideInRight 0.3s ease;
+        display: flex;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+    
+    .error-notification-icon {
+        font-size: 1.5rem;
+        flex-shrink: 0;
+    }
+    
+    .error-notification-content {
+        flex: 1;
+    }
+    
+    .error-notification-title {
+        font-weight: 700;
+        font-size: 1rem;
+        margin-bottom: 0.5rem;
+    }
+    
+    .error-notification-message {
+        font-size: 0.9rem;
+        line-height: 1.5;
+        opacity: 0.95;
+    }
+    
+    .error-notification-close {
+        background: none;
+        border: none;
+        color: white;
+        font-size: 1.5rem;
+        cursor: pointer;
+        padding: 0;
+        width: 24px;
+        height: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0.8;
+        transition: opacity 0.2s;
+    }
+    
+    .error-notification-close:hover {
+        opacity: 1;
+    }
+    
+    @keyframes slideInRight {
+        from {
+            transform: translateX(100%);
+            opacity: 0;
+        }
+        to {
+            transform: translateX(0);
+            opacity: 1;
+        }
+    }
     
     .application-meta { display:flex; gap:1.5rem; font-size:0.9rem; color:#666; margin-top:0.5rem; }
     .application-actions { display:flex; gap:0.5rem; }
@@ -312,7 +396,7 @@
           {% if scholarship.display_applications %}
           <div class="applications-list">
             {% for app in scholarship.display_applications %}
-            <div class="application-item" data-status="{{ app.status.lower() }}" data-student-name="{{ app.student_name|lower }}" data-student-email="{{ app.student_email|lower }}" data-student-id="{{ app.student_id|lower if app.student_id else '' }}" data-user-id="{{ app.user_id }}" data-scholarship-id="{{ scholarship.id }}">
+            <div class="application-item" data-status="{{ app.status.lower() }}" data-student-name="{{ app.student_name|lower }}" data-student-email="{{ app.student_email|lower }}" data-student-id="{{ app.student_id|lower if app.student_id else '' }}" data-user-id="{{ app.user_id }}" data-scholarship-id="{{ scholarship.id }}" data-is-renewal="{{ 'true' if app.is_renewal else 'false' }}">
               <div class="application-header">
                 <div class="student-info">
                   <h4>{{ app.student_name }}</h4>
@@ -330,7 +414,7 @@
                     <i class="fas fa-comment"></i> Remarks
                   </button>
                   {% if app.status.lower() == 'pending' %}
-                  <button class="btn-sm btn-approve" onclick="reviewApplication({{ app.application_id }}, 'approve')">
+                  <button class="btn-sm btn-approve" onclick="reviewApplication({{ app.application_id }}, 'approve', {{ 'true' if app.is_renewal else 'false' }})" data-application-id="{{ app.application_id }}" data-is-renewal="{{ 'true' if app.is_renewal else 'false' }}">
                     <i class="fas fa-check"></i> Approve
                   </button>
                   <button class="btn-sm btn-reject" onclick="reviewApplication({{ app.application_id }}, 'reject')">
@@ -341,7 +425,17 @@
               </div>
               <div class="application-meta">
                 <span><i class="fas fa-calendar"></i> Applied: {{ app.date_applied }}</span>
-                <span><i class="fas fa-file-alt"></i> Documents: {{ app.file_count }} file(s)</span>
+                <span><i class="fas fa-file-alt"></i> Documents: {{ app.file_count }} file(s)
+                  {% if app.is_renewal %}
+                  <span class="renewal-badge"><i class="fas fa-sync-alt"></i> Renewal</span>
+                  {% endif %}
+                </span>
+                {% if app.is_renewal and scholarship.next_last_semester_date %}
+                <span style="color: #666; font-size: 0.9rem;">
+                  <i class="fas fa-calendar-check"></i> 
+                  Next last semester date to be updated: {{ scholarship.next_last_semester_date.strftime('%B %d, %Y') }}
+                </span>
+                {% endif %}
               </div>
             </div>
             {% endfor %}
@@ -735,92 +829,137 @@ function verifyDocument(credentialId, btnId) {
   });
 }
 
-function reviewApplication(applicationId, action) {
+function reviewApplication(applicationId, action, isRenewalParam) {
   if (action === 'approve') {
     // Check if documents are verified and all required documents are provided
+    // Renewals go through the same document validation as regular applications
     let needsVerification = false;
     let hasMissingDocuments = false;
     
     // Always re-check verification status, especially if modal is open
-    // If modal is open for this app, use live count (which may have been updated)
+    // If modal is open for this app, fetch fresh data from API to ensure accuracy
     if (currentAppVerification.id === applicationId) {
-        // Re-count verified documents from the DOM to ensure accuracy
-        const modalContent = document.getElementById('applicationDetailsContent');
-        if (modalContent) {
-            // Count verified buttons (disabled verify buttons are verified)
-            const verifiedButtons = modalContent.querySelectorAll('button[id^="verifyBtn-"]:disabled');
-            const totalButtons = modalContent.querySelectorAll('button[id^="verifyBtn-"]');
-            const activeCredentials = Array.from(totalButtons).filter(btn => {
-                // Check if parent container is not the deleted credential style or missing document style
-                const parent = btn.closest('div[style*="background"]');
-                if (parent) {
-                    if (parent.style.background.includes('#fff5f5') || parent.style.background.includes('#fff3cd')) {
-                        return false; // Deleted credential or missing document
-                    }
-                }
-                return true;
-            }).length;
-            
-            // Check for missing documents (yellow background)
-            const missingDocs = modalContent.querySelectorAll('div[style*="#fff3cd"]');
-            hasMissingDocuments = missingDocs.length > 0;
-            
-            // Update counts based on actual DOM state
-            currentAppVerification.verifiedCount = verifiedButtons.length;
-            currentAppVerification.total = activeCredentials;
-        }
-        
-        if (currentAppVerification.total > 0 && currentAppVerification.verifiedCount < currentAppVerification.total) {
-            needsVerification = true;
-        }
-    } else {
-        // Modal not open - open it first and check verification status
-        viewApplication(applicationId);
-        // Wait for modal to load, then check and highlight
-        setTimeout(() => {
-            const modalContent = document.getElementById('applicationDetailsContent');
-            if (modalContent) {
-                const missingDocs = modalContent.querySelectorAll('div[style*="#fff3cd"]');
-                hasMissingDocuments = missingDocs.length > 0;
-            }
-            
-            if (hasMissingDocuments) {
+        // Modal is open - fetch fresh data to check documents
+        console.log('Modal already open, fetching fresh data for:', applicationId);
+        fetch(`/provider/api/application/${applicationId}`)
+          .then(response => response.json())
+          .then(data => {
+            if (data.success) {
+              // Update verification state from API data
+              const validCredentials = (data.credentials) ? data.credentials.filter(c => c.is_active && !c.is_missing) : [];
+              currentAppVerification.total = validCredentials.length;
+              currentAppVerification.verifiedCount = validCredentials.filter(c => c.is_verified).length;
+              const missingCount = (data.credentials) ? data.credentials.filter(c => c.is_missing).length : 0;
+              
+              console.log('Document check (modal open):', {
+                total: currentAppVerification.total,
+                verified: currentAppVerification.verifiedCount,
+                missing: missingCount
+              });
+              
+              hasMissingDocuments = missingCount > 0;
+              needsVerification = currentAppVerification.total > 0 && currentAppVerification.verifiedCount < currentAppVerification.total;
+              
+              // Check for blocking issues
+              if (hasMissingDocuments) {
                 showNotification('Cannot approve: Some required documents are missing. Please wait for the student to submit all required documents.', 'error');
-            } else if (currentAppVerification.total > 0 && currentAppVerification.verifiedCount < currentAppVerification.total) {
+                return;
+              }
+              
+              if (needsVerification) {
                 highlightUnverifiedDocuments();
                 showNotification('Please verify all documents before approving. Unverified documents are highlighted below.', 'warning');
+                return;
+              }
+              
+              // If no blocking issues, proceed with confirmation
+              const appDetailsModal = document.getElementById('applicationDetailsModal');
+              if (appDetailsModal) {
+                appDetailsModal.style.display = 'none';
+              }
+              
+              const actionText = action === 'approve' ? 'approve' : 'reject';
+              if (confirm(`Are you sure you want to ${actionText} this application? This action cannot be undone.`)) {
+                proceedWithReview(applicationId, action);
+              }
+            } else {
+              showNotification('Error loading application details: ' + (data.error || 'Unknown error'), 'error');
             }
-        }, 500);
-        return;
+          })
+          .catch(error => {
+            console.error('Error fetching application:', error);
+            showNotification('Error loading application details', 'error');
+          });
+        return; // Return early, confirmation will happen in fetch callback
+    } else {
+        // Modal not open - fetch application data first, then check documents
+        fetch(`/provider/api/application/${applicationId}`)
+          .then(response => response.json())
+          .then(data => {
+            if (data.success) {
+              // Initialize verification state from API data
+              currentAppVerification.id = applicationId;
+              const validCredentials = (data.credentials) ? data.credentials.filter(c => c.is_active && !c.is_missing) : [];
+              currentAppVerification.total = validCredentials.length;
+              currentAppVerification.verifiedCount = validCredentials.filter(c => c.is_verified).length;
+              const missingCount = (data.credentials) ? data.credentials.filter(c => c.is_missing).length : 0;
+              
+              hasMissingDocuments = missingCount > 0;
+              needsVerification = currentAppVerification.total > 0 && currentAppVerification.verifiedCount < currentAppVerification.total;
+              
+              // Check for blocking issues
+              if (hasMissingDocuments) {
+                // Open modal to show missing documents
+                viewApplication(applicationId);
+                setTimeout(() => {
+                  showNotification('Cannot approve: Some required documents are missing. Please wait for the student to submit all required documents.', 'error');
+                }, 300);
+                return;
+              }
+              
+              if (needsVerification) {
+                // Open modal to highlight unverified documents
+                viewApplication(applicationId);
+                setTimeout(() => {
+                  highlightUnverifiedDocuments();
+                  showNotification('Please verify all documents before approving. Unverified documents are highlighted below.', 'warning');
+                }, 300);
+                return;
+              }
+              
+              // If no blocking issues, proceed directly with confirmation (don't open view modal)
+              // Make sure application details modal is closed
+              const appDetailsModal = document.getElementById('applicationDetailsModal');
+              if (appDetailsModal) {
+                appDetailsModal.style.display = 'none';
+              }
+              
+              const actionText = action === 'approve' ? 'approve' : 'reject';
+              if (confirm(`Are you sure you want to ${actionText} this application? This action cannot be undone.`)) {
+                proceedWithReview(applicationId, action);
+              }
+            } else {
+              showNotification('Error loading application details: ' + (data.error || 'Unknown error'), 'error');
+            }
+          })
+          .catch(error => {
+            console.error('Error:', error);
+            showNotification('Error loading application details', 'error');
+          });
+        return; // Exit early - confirmation will happen in fetch callback
     }
     
-    // Check for missing documents first
-    if (hasMissingDocuments) {
-        const modal = document.getElementById('applicationDetailsModal');
-        if (modal && modal.style.display === 'none') {
-            viewApplication(applicationId);
-        }
-        showNotification('Cannot approve: Some required documents are missing. Please wait for the student to submit all required documents.', 'error');
-        return;
-    }
-    
-    // If documents need verification, ensure modal is displayed and highlighted
-    if (needsVerification) {
-        // Ensure modal is open (should already be open, but just in case)
-        const modal = document.getElementById('applicationDetailsModal');
-        if (modal && modal.style.display === 'none') {
-            viewApplication(applicationId);
-            setTimeout(() => {
-                highlightUnverifiedDocuments();
-            }, 300);
-        } else {
-            highlightUnverifiedDocuments();
-        }
-        showNotification('Please verify all documents before approving. Unverified documents are highlighted below.', 'warning');
-        return;
-    }
+    // This code should not be reached if modal was open (we return early above)
+    // But keeping it as fallback for edge cases
+    console.warn('Unexpected code path - modal check should have returned early');
   }
 
+  // Make sure application details modal is closed before showing confirmation
+  const appDetailsModal = document.getElementById('applicationDetailsModal');
+  if (appDetailsModal) {
+    appDetailsModal.style.display = 'none';
+  }
+  
   const actionText = action === 'approve' ? 'approve' : 'reject';
   if (confirm(`Are you sure you want to ${actionText} this application? This action cannot be undone.`)) {
     proceedWithReview(applicationId, action);
@@ -871,29 +1010,115 @@ function highlightUnverifiedDocuments() {
   }
 }
 
+function showNotification(message, type) {
+  // type can be 'success', 'error', 'warning', 'info'
+  // For now, use alert for simple notifications or showErrorNotification for errors
+  if (type === 'error') {
+    showErrorNotification('Error', message);
+  } else {
+    // Use alert for other types (success, warning, info)
+    alert(message);
+  }
+}
+
+function showErrorNotification(title, message) {
+  // Remove any existing error notifications
+  const existing = document.querySelector('.error-notification');
+  if (existing) {
+    existing.remove();
+  }
+  
+  // Create error notification element
+  const notification = document.createElement('div');
+  notification.className = 'error-notification';
+  notification.innerHTML = `
+    <div class="error-notification-icon">
+      <i class="fas fa-exclamation-triangle"></i>
+    </div>
+    <div class="error-notification-content">
+      <div class="error-notification-title">${title}</div>
+      <div class="error-notification-message">${message}</div>
+    </div>
+    <button class="error-notification-close" onclick="this.parentElement.remove()">
+      <i class="fas fa-times"></i>
+    </button>
+  `;
+  
+  document.body.appendChild(notification);
+  
+  // Auto-remove after 8 seconds
+  setTimeout(() => {
+    if (notification.parentElement) {
+      notification.style.animation = 'slideInRight 0.3s ease reverse';
+      setTimeout(() => notification.remove(), 300);
+    }
+  }, 8000);
+}
+
 function proceedWithReview(applicationId, action) {
+  console.log('Proceeding with review:', { applicationId, action });
+  
   fetch(`/provider/api/application/${applicationId}/review`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: action })
   })
-    .then(response => response.json())
+    .then(async response => {
+      console.log('Response status:', response.status);
+      // Always try to parse JSON first
+      const data = await response.json();
+      console.log('Response data:', data);
+      
+      // Check if response is ok (status 200-299)
+      if (!response.ok) {
+        // Throw error with the actual error message from the response
+        const error = new Error(data.error || 'Request failed');
+        error.error_type = data.error_type;
+        throw error;
+      }
+      
+      return data;
+    })
     .then(data => {
+      console.log('Success data:', data);
       if (data.success) {
+        // Close application details modal if it's open
+        const appDetailsModal = document.getElementById('applicationDetailsModal');
+        if (appDetailsModal) {
+          appDetailsModal.style.display = 'none';
+        }
+        
         const body = document.getElementById('reviewConfirmBody');
+        const resultText = action === 'approve' ? (data.message || 'Approved') : 'Rejected';
         body.innerHTML = `<div style="display:grid; gap:.75rem;">
           <div><strong>Application:</strong> APP-${String(applicationId).padStart(3,'0')}</div>
-          <div><strong>Result:</strong> ${action==='approve'?'Approved':'Rejected'}</div>
+          <div><strong>Result:</strong> ${resultText}</div>
           <div>The student has been notified.</div>
         </div>`;
         document.getElementById('reviewConfirmModal').style.display = 'block';
       } else {
-        showNotification('Error: ' + (data.error || 'Unknown error'), 'error');
+        // Check if it's the missing next_last_semester_date error
+        if (data.error_type === 'missing_next_last_semester_date' || (data.error && data.error.includes('Next Last Semester Date'))) {
+          showErrorNotification(
+            'Cannot Approve Renewal',
+            data.error
+          );
+        } else {
+          showErrorNotification('Error', data.error || 'Unknown error occurred');
+        }
       }
     })
     .catch(error => {
-      console.error('Error:', error);
-      showNotification('Error processing application.', 'error');
+      console.error('Error in proceedWithReview:', error);
+      // Check if it's a renewal-related error
+      if (error.error_type === 'missing_next_last_semester_date' || (error.message && error.message.includes('Next Last Semester Date'))) {
+        showErrorNotification(
+          'Cannot Approve Renewal',
+          error.message
+        );
+      } else {
+        showErrorNotification('Error', error.message || 'An error occurred while processing your request.');
+      }
     });
 }
 

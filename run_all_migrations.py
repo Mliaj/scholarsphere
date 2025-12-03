@@ -176,6 +176,12 @@ def main():
             'module': 'migrate_add_renewal_tracking',
             'function': 'migrate',
             'description': 'Add is_renewal, renewal_failed, and original_application_id columns to scholarship_applications table'
+        },
+        {
+            'name': 'Scholarships - Next Last Semester Date',
+            'module': 'migrate_add_next_last_semester_date',
+            'function': 'main',
+            'description': 'Add next_last_semester_date column to scholarships table for renewal tracking'
         }
     ]
     
