@@ -95,6 +95,10 @@ def notify_matching_students(scholarship):
                     }
                 )
     
+    # Commit all notifications to persist them in the database
+    if matching_count > 0:
+        db.session.commit()
+    
     return matching_count
 
 @provider_bp.route('/dashboard')
