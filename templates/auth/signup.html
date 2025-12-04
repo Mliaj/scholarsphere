@@ -93,7 +93,8 @@
     .uc-auth-card input[type="text"],
     .uc-auth-card input[type="email"],
     .uc-auth-card input[type="password"],
-    .uc-auth-card input[type="date"] {
+    .uc-auth-card input[type="date"],
+    .uc-auth-card select {
         width: 100%;
         padding: 0.75rem 1rem;
         border: 2px solid #e1e5e9;
@@ -111,7 +112,8 @@
     .uc-auth-card input[type="date"] { 
         max-width: 260px; 
     }
-    .uc-auth-card input:focus {
+    .uc-auth-card input:focus,
+    .uc-auth-card select:focus {
         border-color: #0072ce;
         outline: none;
     }
@@ -229,6 +231,29 @@
                     <input type="date" id="birthday" name="birthday" required>
                 </div>
                 <div class="form-group">
+                    <label for="course">Course</label>
+                    <select id="course" name="course" required>
+                        <option value="">Select Course</option>
+                        <option value="BSIT">Bachelor of Science in Information Technology (BSIT)</option>
+                        <option value="BSCS">Bachelor of Science in Computer Science (BSCS)</option>
+                        <option value="BSCE">Bachelor of Science in Computer Engineering (BSCE)</option>
+                        <option value="BSIS">Bachelor of Science in Information Systems (BSIS)</option>
+                        <option value="BSCPE">Bachelor of Science in Computer Engineering (BSCPE)</option>
+                        <option value="BSEMC">Bachelor of Science in Entertainment and Multimedia Computing (BSEMC)</option>
+                        <option value="BSA">Bachelor of Science in Accountancy (BSA)</option>
+                        <option value="BSBA">Bachelor of Science in Business Administration (BSBA)</option>
+                        <option value="BSHM">Bachelor of Science in Hospitality Management (BSHM)</option>
+                        <option value="BSTM">Bachelor of Science in Tourism Management (BSTM)</option>
+                        <option value="BSED">Bachelor of Science in Education (BSED)</option>
+                        <option value="BSN">Bachelor of Science in Nursing (BSN)</option>
+                        <option value="BSMT">Bachelor of Science in Medical Technology (BSMT)</option>
+                        <option value="BSPSY">Bachelor of Science in Psychology (BSPSY)</option>
+                        <option value="__OTHER__">Other</option>
+                    </select>
+                    <input type="text" id="courseOther" name="course_other" class="form-control" placeholder="Enter course: Bachelor of [Course Name] ([ABBREVIATION])" style="margin-top: 0.5rem; display: none;" pattern="^Bachelor of .+ \([A-Z]+\)$" title="Format: Bachelor of [Course Name] ([ABBREVIATION]) - Example: Bachelor of Science in Information Technology (BSIT)">
+                    <small id="courseOtherHelp" style="display: none; color: #666; font-size: 0.85rem; margin-top: 0.25rem;">Format: Bachelor of [Course Name] ([ABBREVIATION]) - Example: Bachelor of Science in Information Technology (BSIT)</small>
+                </div>
+                <div class="form-group">
                     <label for="password">Password</label>
                     <div class="password-input-container">
                         <input type="password" id="password" name="password" required autocomplete="new-password">
@@ -323,6 +348,66 @@ window.onclick = function(event) {
         closeStudentGuidelinesModal();
     }
 }
+
+// Course select handler
+document.addEventListener('DOMContentLoaded', function() {
+    const courseSelect = document.getElementById('course');
+    const courseOther = document.getElementById('courseOther');
+    const courseOtherHelp = document.getElementById('courseOtherHelp');
+    const signupForm = document.getElementById('studentSignupForm');
+    
+    if (courseSelect && courseOther) {
+        courseSelect.addEventListener('change', function() {
+            if (this.value === '__OTHER__') {
+                courseOther.style.display = '';
+                courseOtherHelp.style.display = '';
+                courseOther.required = true;
+            } else {
+                courseOther.style.display = 'none';
+                courseOtherHelp.style.display = 'none';
+                courseOther.required = false;
+                courseOther.value = '';
+            }
+        });
+        
+        // Validate custom course format on input
+        courseOther.addEventListener('input', function() {
+            const pattern = /^Bachelor of .+ \([A-Z]+\)$/;
+            if (this.value && !pattern.test(this.value)) {
+                this.setCustomValidity('Format must be: Bachelor of [Course Name] ([ABBREVIATION]) - Example: Bachelor of Science in Information Technology (BSIT)');
+            } else {
+                this.setCustomValidity('');
+            }
+        });
+        
+        // Handle form submission
+        if (signupForm) {
+            signupForm.addEventListener('submit', function(e) {
+                if (courseSelect.value === '__OTHER__') {
+                    if (!courseOther.value.trim()) {
+                        e.preventDefault();
+                        alert('Please enter a custom course name.');
+                        return false;
+                    }
+                    // Validate format
+                    const pattern = /^Bachelor of .+ \([A-Z]+\)$/;
+                    if (!pattern.test(courseOther.value.trim())) {
+                        e.preventDefault();
+                        alert('Course format must be: Bachelor of [Course Name] ([ABBREVIATION]) - Example: Bachelor of Science in Information Technology (BSIT)');
+                        return false;
+                    }
+                    // Replace the course value with the custom value
+                    const hiddenInput = document.createElement('input');
+                    hiddenInput.type = 'hidden';
+                    hiddenInput.name = 'course';
+                    hiddenInput.value = courseOther.value.trim();
+                    this.appendChild(hiddenInput);
+                    courseSelect.disabled = true; // Prevent sending the __OTHER__ value
+                }
+            });
+        }
+    }
+});
 </script>
 {% endblock %}
 

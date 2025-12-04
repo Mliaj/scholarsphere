@@ -406,11 +406,14 @@
     }
 
     .profile-field input, .profile-field select {
-        padding: 0.75rem;
+        width: 100%;
+        padding: 0.75rem 1rem;
         border: 2px solid #e1e5e9;
         border-radius: 8px;
-        font-size: 1rem;
+        font-size: 1.08rem;
+        background: #f8f9fa;
         transition: border-color 0.3s;
+        box-sizing: border-box;
     }
 
     .profile-field input:focus, .profile-field select:focus {
@@ -642,7 +645,7 @@
                 </div>
                 <div class="profile-field">
                     <label>Course</label>
-                    <select name="course" required>
+                    <select name="course" id="courseSelect" required>
                         <option value="">Select Course</option>
                         <option value="BSIT" {% if user.course == 'BSIT' %}selected{% endif %}>Bachelor of Science in Information Technology (BSIT)</option>
                         <option value="BSCS" {% if user.course == 'BSCS' %}selected{% endif %}>Bachelor of Science in Computer Science (BSCS)</option>
@@ -658,8 +661,10 @@
                         <option value="BSN" {% if user.course == 'BSN' %}selected{% endif %}>Bachelor of Science in Nursing (BSN)</option>
                         <option value="BSMT" {% if user.course == 'BSMT' %}selected{% endif %}>Bachelor of Science in Medical Technology (BSMT)</option>
                         <option value="BSPSY" {% if user.course == 'BSPSY' %}selected{% endif %}>Bachelor of Science in Psychology (BSPSY)</option>
-                        <option value="Other" {% if user.course == 'Other' %}selected{% endif %}>Other</option>
+                        <option value="__OTHER__" {% if user.course and user.course not in ['BSIT', 'BSCS', 'BSCE', 'BSIS', 'BSCPE', 'BSEMC', 'BSA', 'BSBA', 'BSHM', 'BSTM', 'BSED', 'BSN', 'BSMT', 'BSPSY'] %}selected{% endif %}>Other</option>
                     </select>
+                    <input type="text" id="courseOther" name="course_other" placeholder="Enter course: Bachelor of [Course Name] ([ABBREVIATION])" style="margin-top: 0.5rem; display: none;" pattern="^Bachelor of .+ \([A-Z]+\)$" title="Format: Bachelor of [Course Name] ([ABBREVIATION]) - Example: Bachelor of Science in Information Technology (BSIT)">
+                    <small id="courseOtherHelp" style="display: none; color: #666; font-size: 0.85rem; margin-top: 0.25rem;">Format: Bachelor of [Course Name] ([ABBREVIATION]) - Example: Bachelor of Science in Information Technology (BSIT)</small>
                 </div>
             </div>
             <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">Save Changes</button>
@@ -828,11 +833,81 @@ function previewPhoto(input) {
     }
 }
 
+// Course select handler
+document.addEventListener('DOMContentLoaded', function() {
+    const courseSelect = document.getElementById('courseSelect');
+    const courseOther = document.getElementById('courseOther');
+    const courseOtherHelp = document.getElementById('courseOtherHelp');
+    
+    if (courseSelect && courseOther) {
+        // Check if user has a custom course value
+        const predefinedCourses = ['BSIT', 'BSCS', 'BSCE', 'BSIS', 'BSCPE', 'BSEMC', 'BSA', 'BSBA', 'BSHM', 'BSTM', 'BSED', 'BSN', 'BSMT', 'BSPSY'];
+        const currentCourse = courseSelect.value;
+        const userCourse = '{{ user.course or "" }}';
+        
+        if (userCourse && !predefinedCourses.includes(userCourse)) {
+            // User has a custom course, show the input and populate it
+            courseSelect.value = '__OTHER__';
+            courseOther.value = userCourse;
+            courseOther.style.display = '';
+            courseOtherHelp.style.display = '';
+            courseOther.required = true;
+        }
+        
+        courseSelect.addEventListener('change', function() {
+            if (this.value === '__OTHER__') {
+                courseOther.style.display = '';
+                courseOtherHelp.style.display = '';
+                courseOther.required = true;
+            } else {
+                courseOther.style.display = 'none';
+                courseOtherHelp.style.display = 'none';
+                courseOther.required = false;
+                courseOther.value = '';
+            }
+        });
+        
+        // Validate custom course format on input
+        courseOther.addEventListener('input', function() {
+            const pattern = /^Bachelor of .+ \([A-Z]+\)$/;
+            if (this.value && !pattern.test(this.value)) {
+                this.setCustomValidity('Format must be: Bachelor of [Course Name] ([ABBREVIATION]) - Example: Bachelor of Science in Information Technology (BSIT)');
+            } else {
+                this.setCustomValidity('');
+            }
+        });
+    }
+});
+
 // Form submission
 document.getElementById('profileForm').addEventListener('submit', function(e) {
     e.preventDefault();
     
+    const courseSelect = document.getElementById('courseSelect');
+    const courseOther = document.getElementById('courseOther');
+    
+    // If "Other" is selected, use the custom course value
+    if (courseSelect && courseSelect.value === '__OTHER__') {
+        if (!courseOther || !courseOther.value.trim()) {
+            showNotification('Please enter a custom course name.', 'error');
+            e.stopPropagation();
+            return false;
+        }
+        // Validate format
+        const pattern = /^Bachelor of .+ \([A-Z]+\)$/;
+        if (!pattern.test(courseOther.value.trim())) {
+            showNotification('Course format must be: Bachelor of [Course Name] ([ABBREVIATION]) - Example: Bachelor of Science in Information Technology (BSIT)', 'error');
+            e.stopPropagation();
+            return false;
+        }
+    }
+    
     const formData = new FormData(this);
+    
+    // Override course value if "Other" is selected
+    if (courseSelect && courseSelect.value === '__OTHER__' && courseOther) {
+        formData.set('course', courseOther.value.trim());
+    }
     
     // Show loading state
     const submitBtn = this.querySelector('button[type="submit"]');

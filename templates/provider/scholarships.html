@@ -325,19 +325,24 @@
               <select id="eligProgramSelect" class="form-control">
                 <option value="">Select program</option>
                 <option>All Programs</option>
-                <option>BSIT</option>
-                <option>BSCS</option>
-                <option>Engineering</option>
-                <option>Education</option>
-                <option>Nursing</option>
-                <option>Business Administration</option>
-                <option>Accountancy</option>
-                <option>Hospitality Management</option>
-                <option>Maritime</option>
-                <option>Architecture</option>
+                <option value="BSIT">Bachelor of Science in Information Technology (BSIT)</option>
+                <option value="BSCS">Bachelor of Science in Computer Science (BSCS)</option>
+                <option value="BSCE">Bachelor of Science in Computer Engineering (BSCE)</option>
+                <option value="BSIS">Bachelor of Science in Information Systems (BSIS)</option>
+                <option value="BSCPE">Bachelor of Science in Computer Engineering (BSCPE)</option>
+                <option value="BSEMC">Bachelor of Science in Entertainment and Multimedia Computing (BSEMC)</option>
+                <option value="BSA">Bachelor of Science in Accountancy (BSA)</option>
+                <option value="BSBA">Bachelor of Science in Business Administration (BSBA)</option>
+                <option value="BSHM">Bachelor of Science in Hospitality Management (BSHM)</option>
+                <option value="BSTM">Bachelor of Science in Tourism Management (BSTM)</option>
+                <option value="BSED">Bachelor of Science in Education (BSED)</option>
+                <option value="BSN">Bachelor of Science in Nursing (BSN)</option>
+                <option value="BSMT">Bachelor of Science in Medical Technology (BSMT)</option>
+                <option value="BSPSY">Bachelor of Science in Psychology (BSPSY)</option>
                 <option value="__OTHER__">Other…</option>
               </select>
-              <input type="text" id="eligProgramOther" class="form-control" placeholder="Enter custom program" style="margin-top:.5rem; display:none;">
+              <input type="text" id="eligProgramOther" class="form-control" placeholder="Enter course: Bachelor of [Course Name] ([ABBREVIATION])" style="margin-top:.5rem; display:none;" pattern="^Bachelor of .+ \([A-Z]+\)$" title="Format: Bachelor of [Course Name] ([ABBREVIATION]) - Example: Bachelor of Science in Information Technology (BSIT)">
+              <small id="eligProgramOtherHelp" style="display: none; color: #666; font-size: 0.85rem; margin-top: 0.25rem;">Format: Bachelor of [Course Name] ([ABBREVIATION]) - Example: Bachelor of Science in Information Technology (BSIT)</small>
             </div>
           </div>
           <div class="form-group" style="margin-top:.5rem;">
@@ -503,19 +508,24 @@
               <select id="editEligProgramSelect" class="form-control">
                 <option value="">Select program</option>
                 <option>All Programs</option>
-                <option>BSIT</option>
-                <option>BSCS</option>
-                <option>Engineering</option>
-                <option>Education</option>
-                <option>Nursing</option>
-                <option>Business Administration</option>
-                <option>Accountancy</option>
-                <option>Hospitality Management</option>
-                <option>Maritime</option>
-                <option>Architecture</option>
+                <option value="BSIT">Bachelor of Science in Information Technology (BSIT)</option>
+                <option value="BSCS">Bachelor of Science in Computer Science (BSCS)</option>
+                <option value="BSCE">Bachelor of Science in Computer Engineering (BSCE)</option>
+                <option value="BSIS">Bachelor of Science in Information Systems (BSIS)</option>
+                <option value="BSCPE">Bachelor of Science in Computer Engineering (BSCPE)</option>
+                <option value="BSEMC">Bachelor of Science in Entertainment and Multimedia Computing (BSEMC)</option>
+                <option value="BSA">Bachelor of Science in Accountancy (BSA)</option>
+                <option value="BSBA">Bachelor of Science in Business Administration (BSBA)</option>
+                <option value="BSHM">Bachelor of Science in Hospitality Management (BSHM)</option>
+                <option value="BSTM">Bachelor of Science in Tourism Management (BSTM)</option>
+                <option value="BSED">Bachelor of Science in Education (BSED)</option>
+                <option value="BSN">Bachelor of Science in Nursing (BSN)</option>
+                <option value="BSMT">Bachelor of Science in Medical Technology (BSMT)</option>
+                <option value="BSPSY">Bachelor of Science in Psychology (BSPSY)</option>
                 <option value="__OTHER__">Other…</option>
               </select>
-              <input type="text" id="editEligProgramOther" class="form-control" placeholder="Enter custom program" style="margin-top:.5rem; display:none;">
+              <input type="text" id="editEligProgramOther" class="form-control" placeholder="Enter course: Bachelor of [Course Name] ([ABBREVIATION])" style="margin-top:.5rem; display:none;" pattern="^Bachelor of .+ \([A-Z]+\)$" title="Format: Bachelor of [Course Name] ([ABBREVIATION]) - Example: Bachelor of Science in Information Technology (BSIT)">
+              <small id="editEligProgramOtherHelp" style="display: none; color: #666; font-size: 0.85rem; margin-top: 0.25rem;">Format: Bachelor of [Course Name] ([ABBREVIATION]) - Example: Bachelor of Science in Information Technology (BSIT)</small>
             </div>
           </div>
           <div class="form-group" style="margin-top:.5rem;">
@@ -772,19 +782,22 @@ function editScholarship(id){
         document.getElementById('editEligGpaText').value = data.scholarship.eligibility || '';  // Minimum GPA from eligibility column
         const programCourse = data.scholarship.program_course || '';
         if (programCourse) {
-          const knownPrograms = ['All Programs', 'BSIT', 'BSCS', 'Engineering', 'Education', 'Nursing', 'Business Administration', 'Accountancy', 'Hospitality Management', 'Maritime', 'Architecture'];
+          const knownPrograms = ['All Programs', 'BSIT', 'BSCS', 'BSCE', 'BSIS', 'BSCPE', 'BSEMC', 'BSA', 'BSBA', 'BSHM', 'BSTM', 'BSED', 'BSN', 'BSMT', 'BSPSY'];
           if (knownPrograms.includes(programCourse)) {
             document.getElementById('editEligProgramSelect').value = programCourse;
             document.getElementById('editEligProgramOther').style.display = 'none';
+            document.getElementById('editEligProgramOtherHelp').style.display = 'none';
             document.getElementById('editEligProgramOther').value = '';
           } else {
             document.getElementById('editEligProgramSelect').value = '__OTHER__';
             document.getElementById('editEligProgramOther').style.display = '';
+            document.getElementById('editEligProgramOtherHelp').style.display = '';
             document.getElementById('editEligProgramOther').value = programCourse;
           }
         } else {
           document.getElementById('editEligProgramSelect').value = '';
           document.getElementById('editEligProgramOther').style.display = 'none';
+          document.getElementById('editEligProgramOtherHelp').style.display = 'none';
         }
         document.getElementById('editEligNotes').value = data.scholarship.additional_criteria || '';
         // Pre-check requirements checkboxes using raw requirements
@@ -904,7 +917,20 @@ document.getElementById('createScholarshipForm').addEventListener('submit', asyn
   const gpaSel = document.getElementById('eligGpaText').value.trim();
   data.minimum_gpa = gpaSel;  // This will be stored in eligibility column
   let progVal = document.getElementById('eligProgramSelect').value;
-  if(progVal === '__OTHER__') progVal = document.getElementById('eligProgramOther').value.trim();
+  if(progVal === '__OTHER__') {
+    const customCourse = document.getElementById('eligProgramOther').value.trim();
+    if (!customCourse) {
+      showNotification('Please enter a custom course name.', 'error');
+      return;
+    }
+    // Validate format
+    const pattern = /^Bachelor of .+ \([A-Z]+\)$/;
+    if (!pattern.test(customCourse)) {
+      showNotification('Course format must be: Bachelor of [Course Name] ([ABBREVIATION]) - Example: Bachelor of Science in Information Technology (BSIT)', 'error');
+      return;
+    }
+    progVal = customCourse;
+  }
   data.program_course = progVal || '';
   data.additional_criteria = document.getElementById('eligNotes').value.trim() || '';
   // Handle school year (combine start and end)
@@ -967,7 +993,20 @@ document.getElementById('editScholarshipForm').addEventListener('submit', async 
   const egpaSel = document.getElementById('editEligGpaText').value.trim();
   data.minimum_gpa = egpaSel;  // This will be stored in eligibility column
   let eprogVal = document.getElementById('editEligProgramSelect').value;
-  if(eprogVal === '__OTHER__') eprogVal = document.getElementById('editEligProgramOther').value.trim();
+  if(eprogVal === '__OTHER__') {
+    const customCourse = document.getElementById('editEligProgramOther').value.trim();
+    if (!customCourse) {
+      showNotification('Please enter a custom course name.', 'error');
+      return;
+    }
+    // Validate format
+    const pattern = /^Bachelor of .+ \([A-Z]+\)$/;
+    if (!pattern.test(customCourse)) {
+      showNotification('Course format must be: Bachelor of [Course Name] ([ABBREVIATION]) - Example: Bachelor of Science in Information Technology (BSIT)', 'error');
+      return;
+    }
+    eprogVal = customCourse;
+  }
   data.program_course = eprogVal || '';
   data.additional_criteria = document.getElementById('editEligNotes').value.trim() || '';
   // Handle school year (combine start and end)
@@ -1076,7 +1115,26 @@ document.getElementById('scholarshipType').addEventListener('change', function()
 
 document.getElementById('eligProgramSelect').addEventListener('change', function(){
   const show = this.value === '__OTHER__';
-  document.getElementById('eligProgramOther').style.display = show ? '' : 'none';
+  const otherInput = document.getElementById('eligProgramOther');
+  const helpText = document.getElementById('eligProgramOtherHelp');
+  otherInput.style.display = show ? '' : 'none';
+  helpText.style.display = show ? '' : 'none';
+  if (show) {
+    otherInput.required = true;
+  } else {
+    otherInput.required = false;
+    otherInput.value = '';
+  }
+});
+
+// Validate custom course format
+document.getElementById('eligProgramOther').addEventListener('input', function() {
+  const pattern = /^Bachelor of .+ \([A-Z]+\)$/;
+  if (this.value && !pattern.test(this.value)) {
+    this.setCustomValidity('Format must be: Bachelor of [Course Name] ([ABBREVIATION]) - Example: Bachelor of Science in Information Technology (BSIT)');
+  } else {
+    this.setCustomValidity('');
+  }
 });
 
 document.getElementById('editScholarshipType').addEventListener('change', function(){
@@ -1086,7 +1144,26 @@ document.getElementById('editScholarshipType').addEventListener('change', functi
 
 document.getElementById('editEligProgramSelect').addEventListener('change', function(){
   const show = this.value === '__OTHER__';
-  document.getElementById('editEligProgramOther').style.display = show ? '' : 'none';
+  const otherInput = document.getElementById('editEligProgramOther');
+  const helpText = document.getElementById('editEligProgramOtherHelp');
+  otherInput.style.display = show ? '' : 'none';
+  helpText.style.display = show ? '' : 'none';
+  if (show) {
+    otherInput.required = true;
+  } else {
+    otherInput.required = false;
+    otherInput.value = '';
+  }
+});
+
+// Validate custom course format for edit form
+document.getElementById('editEligProgramOther').addEventListener('input', function() {
+  const pattern = /^Bachelor of .+ \([A-Z]+\)$/;
+  if (this.value && !pattern.test(this.value)) {
+    this.setCustomValidity('Format must be: Bachelor of [Course Name] ([ABBREVIATION]) - Example: Bachelor of Science in Information Technology (BSIT)');
+  } else {
+    this.setCustomValidity('');
+  }
 });
 
 // Check for session alerts on load
