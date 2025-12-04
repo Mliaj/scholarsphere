@@ -110,12 +110,16 @@ document.addEventListener('DOMContentLoaded', function() {
   };
 
   // Pie: Application Status Breakdown
-  const totalApps = Math.max(1, (statusCounts.pending || 0) + (statusCounts.approved || 0) + (statusCounts.disapproved || 0));
+  // Use pie_chart_total if available, otherwise calculate from status counts
+  const pieChartTotal = totals.pie_chart_total !== undefined 
+    ? totals.pie_chart_total 
+    : Math.max(1, (statusCounts.pending || 0) + (statusCounts.approved || 0) + (statusCounts.disapproved || 0));
+  const totalApps = Math.max(1, pieChartTotal);
   const statusLabels = ['Pending', 'Approved', 'Rejected'];
   const statusValues = [
-    ((statusCounts.pending||0) / totalApps) * 100,
-    ((statusCounts.approved||0) / totalApps) * 100,
-    ((statusCounts.disapproved||0) / totalApps) * 100
+    totalApps > 0 ? ((statusCounts.pending||0) / totalApps) * 100 : 0,
+    totalApps > 0 ? ((statusCounts.approved||0) / totalApps) * 100 : 0,
+    totalApps > 0 ? ((statusCounts.disapproved||0) / totalApps) * 100 : 0
   ];
   
   const pieCtx = document.getElementById('applicationsPie');

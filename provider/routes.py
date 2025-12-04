@@ -2594,29 +2594,50 @@ def reports():
         if not scholarship_ids:
             # Return empty data if no scholarships
             return render_template('provider/reports.html', data={
-                'totals': {'total_applications': 0},
+                'totals': {
+                    'total_applications': 0,
+                    'pie_chart_total': 0
+                },
                 'top_scholarships': [],
-                'status_counts': {'pending': 0, 'approved': 0, 'disapproved': 0}
+                'status_counts': {
+                    'pending': 0,
+                    'approved': 0,
+                    'disapproved': 0,
+                    'withdrawn': 0,
+                    'archived': 0,
+                    'completed': 0
+                }
             }, user=current_user)
         
         # Status counts from scholarship_applications table (only for this provider's scholarships)
-        scholarship_ids_str = ','.join(map(str, scholarship_ids))
-        status_row = db.session.execute(
-            text(f"""
-                SELECT 
-                  SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending,
-                  SUM(CASE WHEN status='approved' THEN 1 ELSE 0 END) AS approved,
-                  SUM(CASE WHEN status='rejected' THEN 1 ELSE 0 END) AS disapproved,
-                  COUNT(*) AS total
-                FROM scholarship_applications
-                WHERE scholarship_id IN ({scholarship_ids_str}) AND COALESCE(is_active,1) = 1
-            """)
-        ).fetchone() or (0,0,0,0)
+        # Include all statuses: pending, approved, rejected, withdrawn, archived, completed
+        # Use SQLAlchemy ORM for safer query handling
+        if scholarship_ids:
+            status_row = db.session.execute(
+                text("""
+                    SELECT 
+                      SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending,
+                      SUM(CASE WHEN status='approved' THEN 1 ELSE 0 END) AS approved,
+                      SUM(CASE WHEN status='rejected' THEN 1 ELSE 0 END) AS disapproved,
+                      SUM(CASE WHEN status='withdrawn' THEN 1 ELSE 0 END) AS withdrawn,
+                      SUM(CASE WHEN status='archived' THEN 1 ELSE 0 END) AS archived,
+                      SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS completed,
+                      COUNT(*) AS total
+                    FROM scholarship_applications
+                    WHERE scholarship_id IN :ids AND COALESCE(is_active,1) = 1
+                """),
+                {"ids": tuple(scholarship_ids)}
+            ).fetchone() or (0,0,0,0,0,0,0)
+        else:
+            status_row = (0,0,0,0,0,0,0)
         
         pending = int(status_row[0] or 0)
         approved = int(status_row[1] or 0)
         disapproved = int(status_row[2] or 0)
-        total_applications = int(status_row[3] or 0)
+        withdrawn = int(status_row[3] or 0)
+        archived = int(status_row[4] or 0)
+        completed = int(status_row[5] or 0)
+        total_applications = int(status_row[6] or 0)
         
         # Top scholarships by applications (only this provider's scholarships)
         rows = db.session.execute(
@@ -2633,22 +2654,39 @@ def reports():
         ).fetchall()
         top_scholarships = [{'name': r[0], 'applications': int(r[1] or 0)} for r in rows]
         
+        # Calculate total for pie chart (only pending, approved, rejected)
+        pie_chart_total = pending + approved + disapproved
+        
         data = {
             'totals': {
-                'total_applications': total_applications
+                'total_applications': total_applications,  # All active applications
+                'pie_chart_total': pie_chart_total  # Only pending, approved, rejected for pie chart
             },
             'top_scholarships': top_scholarships,
             'status_counts': {
                 'pending': pending,
                 'approved': approved,
-                'disapproved': disapproved
+                'disapproved': disapproved,
+                'withdrawn': withdrawn,
+                'archived': archived,
+                'completed': completed
             }
         }
         return render_template('provider/reports.html', data=data, user=current_user)
     except Exception as e:
         flash('Failed to load reports data', 'error')
         return render_template('provider/reports.html', data={
-            'totals': {'total_applications': 0},
+            'totals': {
+                'total_applications': 0,
+                'pie_chart_total': 0
+            },
             'top_scholarships': [],
-            'status_counts': {'pending': 0, 'approved': 0, 'disapproved': 0}
+            'status_counts': {
+                'pending': 0,
+                'approved': 0,
+                'disapproved': 0,
+                'withdrawn': 0,
+                'archived': 0,
+                'completed': 0
+            }
         }, user=current_user)

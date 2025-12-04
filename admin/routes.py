@@ -225,27 +225,43 @@ def reports():
         ).scalar() or 0
 
         # Status counts from scholarship_applications table (active records only)
+        # Include all statuses: pending, approved, rejected, withdrawn, archived, completed
         status_row = db.session.execute(
             text("""
                 SELECT 
                   SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending,
                   SUM(CASE WHEN status='approved' THEN 1 ELSE 0 END) AS approved,
                   SUM(CASE WHEN status='rejected' THEN 1 ELSE 0 END) AS disapproved,
+                  SUM(CASE WHEN status='withdrawn' THEN 1 ELSE 0 END) AS withdrawn,
+                  SUM(CASE WHEN status='archived' THEN 1 ELSE 0 END) AS archived,
+                  SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS completed,
                   COUNT(*) AS total
                 FROM scholarship_applications
                 WHERE COALESCE(is_active,1) = 1
             """)
-        ).fetchone() or (0,0,0,0)
+        ).fetchone() or (0,0,0,0,0,0,0)
         pending = int(status_row[0] or 0)
         approved = int(status_row[1] or 0)
         disapproved = int(status_row[2] or 0)
-        total_applications = int(status_row[3] or 0)
+        withdrawn = int(status_row[3] or 0)
+        archived = int(status_row[4] or 0)
+        completed = int(status_row[5] or 0)
+        total_applications = int(status_row[6] or 0)
 
         # Breakdown by provider (top providers by active applications)
+        # For provider_staff, get organization from their manager (provider_admin)
         rows = db.session.execute(
             text(
                 """
-                SELECT IFNULL(NULLIF(TRIM(u.organization),''),'—') as org, COUNT(sa.id) as apps
+                SELECT 
+                    IFNULL(NULLIF(TRIM(COALESCE(
+                        CASE 
+                            WHEN u.role = 'provider_staff' AND u.managed_by IS NOT NULL 
+                            THEN (SELECT organization FROM users WHERE id = u.managed_by)
+                            ELSE u.organization
+                        END, ''
+                    )), ''), '—') as org, 
+                    COUNT(sa.id) as apps
                 FROM scholarship_applications sa
                 JOIN scholarships s ON sa.scholarship_id = s.id
                 LEFT JOIN users u ON u.id = s.provider_id
@@ -268,24 +284,47 @@ def reports():
         else:
             applied_percent = 0.0
 
+        # Calculate total for pie chart (only pending, approved, rejected)
+        pie_chart_total = pending + approved + disapproved
+        
         data = {
             'totals': {
                 'total_students': total_students,
-                'total_applications': total_applications,
+                'total_applications': total_applications,  # All active applications
+                'pie_chart_total': pie_chart_total,  # Only pending, approved, rejected for pie chart
                 'applied_percent': applied_percent
             },
             'top_providers': top_providers,
             'status_counts': {
                 'pending': pending,
                 'approved': approved,
-                'disapproved': disapproved
+                'disapproved': disapproved,
+                'withdrawn': withdrawn,
+                'archived': archived,
+                'completed': completed
             }
         }
         return render_template('admin/reports.html', data=data)
     except Exception as e:
         # Fallback to existing behavior if needed
         flash('Failed to load reports data', 'error')
-        return render_template('admin/reports.html', data={'totals': {'total_students':0,'total_applications':0,'applied_percent':0}, 'top_providers': [], 'status_counts': {'pending':0,'approved':0,'disapproved':0}})
+        return render_template('admin/reports.html', data={
+            'totals': {
+                'total_students': 0,
+                'total_applications': 0,
+                'pie_chart_total': 0,
+                'applied_percent': 0
+            }, 
+            'top_providers': [], 
+            'status_counts': {
+                'pending': 0,
+                'approved': 0,
+                'disapproved': 0,
+                'withdrawn': 0,
+                'archived': 0,
+                'completed': 0
+            }
+        })
 
 # API endpoints for admin functions
 @admin_bp.route('/api/create-user', methods=['POST'])

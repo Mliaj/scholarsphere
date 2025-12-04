@@ -117,7 +117,11 @@ document.addEventListener('DOMContentLoaded', function() {
   // Pie: Application Status Breakdown
   const pieCtx = document.getElementById('applicationsPie');
   if (pieCtx) {
-    const total = statusCounts.pending + statusCounts.approved + statusCounts.disapproved;
+    // Use pie_chart_total if available, otherwise calculate from status counts
+    const pieChartTotal = totals.pie_chart_total !== undefined 
+      ? totals.pie_chart_total 
+      : Math.max(1, (statusCounts.pending || 0) + (statusCounts.approved || 0) + (statusCounts.disapproved || 0));
+    const total = Math.max(1, pieChartTotal);
     const approvedPercent = total > 0 ? Math.round((statusCounts.approved / total) * 100) : 0;
     
     new Chart(pieCtx, {
