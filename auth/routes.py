@@ -184,13 +184,25 @@ def signup():
         email = request.form.get('email', '').strip()
         student_id = request.form.get('studentId', '').strip()
         birthday = request.form.get('birthday', '')
+        course = request.form.get('course', '').strip()
         password = request.form.get('password', '')
         repeat_password = request.form.get('repeatPassword', '')
         
         # Validation
-        if not all([first_name, last_name, email, student_id, birthday, password, repeat_password]):
+        if not all([first_name, last_name, email, student_id, birthday, course, password, repeat_password]):
             flash('Please complete all fields.', 'error')
             return render_template('auth/signup.html')
+        
+        # Validate course format if custom
+        if course and not course.startswith('__OTHER__'):
+            # Check if it matches the expected format for custom courses
+            import re
+            if not re.match(r'^Bachelor of .+ \([A-Z]+\)$', course):
+                # If it's not a predefined course code, validate format
+                predefined_courses = ['BSIT', 'BSCS', 'BSCE', 'BSIS', 'BSCPE', 'BSEMC', 'BSA', 'BSBA', 'BSHM', 'BSTM', 'BSED', 'BSN', 'BSMT', 'BSPSY']
+                if course not in predefined_courses:
+                    flash('Course format must be: Bachelor of [Course Name] ([ABBREVIATION]) - Example: Bachelor of Science in Information Technology (BSIT)', 'error')
+                    return render_template('auth/signup.html')
         
         if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
             flash('Invalid email address.', 'error')
@@ -231,8 +243,8 @@ def signup():
             # Insert new user into database
             db.session.execute(
                 text("""
-                    INSERT INTO users (first_name, last_name, email, student_id, birthday, password_hash, role, created_at, is_active)
-                    VALUES (:first_name, :last_name, :email, :student_id, :birthday, :password_hash, :role, :created_at, :is_active)
+                    INSERT INTO users (first_name, last_name, email, student_id, birthday, course, password_hash, role, created_at, is_active)
+                    VALUES (:first_name, :last_name, :email, :student_id, :birthday, :course, :password_hash, :role, :created_at, :is_active)
                 """),
                 {
                     "first_name": first_name,
@@ -240,6 +252,7 @@ def signup():
                     "email": email.lower(),
                     "student_id": student_id,
                     "birthday": datetime.strptime(birthday, '%Y-%m-%d').date(),
+                    "course": course,
                     "password_hash": password_hash,
                     "role": 'student',
                     "created_at": datetime.utcnow(),
