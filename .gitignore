@@ -31,3 +31,19 @@ Thumbs.db
 
 # Uploaded files
 static/uploads/
+
+# Troubleshooting/Repair scripts (temporary)
+repair_credentials_table.py
+repair_credentials_table.sql
+repair_credentials_simple.sql
+reset_mysql_password.ps1
+reset_mysql_root_password.sql
+
+# Troubleshooting documentation (temporary)
+*_FIX.md
+*_SUMMARY.md
+QUICK_FIX.md
+REPAIR_TABLE_INSTRUCTIONS.md
+RESET_MYSQL_ROOT_PASSWORD.md
+TEST_MYSQL_CONNECTION.md
+USE_PYTHON_SCRIPT.md
