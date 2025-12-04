@@ -276,27 +276,41 @@ def applications():
         text("""
             SELECT sa.id, sa.user_id, sa.scholarship_id, sa.status, sa.application_date, 
                    s.title, s.deadline, s.is_active as scholarship_is_active, s.status as scholarship_status,
-                   s.semester_date, s.code, sa.is_renewal, sa.renewal_failed, sa.reviewed_at, sa.notes, sa.is_active as application_is_active
+                   s.semester_date, s.code, sa.is_renewal, sa.renewal_failed, sa.reviewed_at, sa.notes, sa.is_active as application_is_active,
+                   sa.original_application_id
             FROM scholarship_applications sa
             JOIN scholarships s ON sa.scholarship_id = s.id
-            WHERE sa.user_id = :user_id AND (sa.is_active = 1 OR (sa.is_renewal = 1 AND sa.status = 'approved') OR sa.status = 'completed')
+            WHERE sa.user_id = :user_id AND (sa.is_active = 1 OR (sa.is_renewal = 1 AND sa.status = 'approved') OR sa.status = 'completed' OR sa.status = 'archived')
             ORDER BY sa.application_date DESC
         """),
         {"user_id": current_user.id}
     ).fetchall()
     
     # Check for pending renewals per scholarship to disable renewal banner
+    # Only count applications where is_renewal=True AND status is pending
     pending_renewals_map = {}
     # Check for approved renewals per scholarship to hide banners
+    # IMPORTANT: Only count inactive renewals (those that are approved but not yet active)
+    # Active renewals (approved, active, is_renewal=True) should NOT block future renewals
     approved_renewals_map = {}
     for app in user_applications:
         scholarship_id = app[2]
         is_renewal = bool(app[11]) if len(app) > 11 else False
         status = app[3].lower() if app[3] else ''
+        application_is_active = bool(app[15]) if len(app) > 15 else True
+        scholarship_is_active = app[7] if len(app) > 7 else True
+        scholarship_status = (app[8] or '').lower() if len(app) > 8 else ''
+        
         if is_renewal and status == 'pending':
             pending_renewals_map[scholarship_id] = True
         elif is_renewal and status == 'approved':
-            approved_renewals_map[scholarship_id] = True
+            # Only count as blocking renewal if it's not yet active
+            # An active renewal (approved + active + scholarship active) should allow future renewals
+            is_currently_active = (status == 'approved' and application_is_active and 
+                                 scholarship_is_active and scholarship_status != 'archived')
+            if not is_currently_active:
+                # This is an approved renewal that's not yet active (waiting for semester to end)
+                approved_renewals_map[scholarship_id] = True
     
     from datetime import date
     today = date.today()
@@ -353,7 +367,8 @@ def applications():
         # Check renewal eligibility: must be approved and active, and have a semester date
         # EXCEPTION: Don't show renewal banner if:
         # 1. There's already a pending renewal for this scholarship
-        # 2. There's an approved renewal for this scholarship
+        # 2. There's an approved renewal for this scholarship (but NOT if it's already active)
+        #    Active renewals (approved + active) should allow future renewals
         scholarship_id = app[2]
         has_pending_renewal = pending_renewals_map.get(scholarship_id, False)
         has_approved_renewal = approved_renewals_map.get(scholarship_id, False)
@@ -398,6 +413,12 @@ def applications():
         reviewed_at = app[13] if len(app) > 13 else None
         notes = app[14] if len(app) > 14 else None
         application_is_active = bool(app[15]) if len(app) > 15 else True
+        original_application_id = app[16] if len(app) > 16 else None
+        
+        # Check if this was originally a renewal (for display purposes)
+        # This includes both current renewals (is_renewal=True) and applications that were originally renewals
+        # (original_application_id is not null indicates it was originally a renewal)
+        was_renewal = is_renewal_app or (original_application_id is not None)
         
         # Check if there's an approved renewal for this specific scholarship
         has_approved_renewal_for_this = approved_renewals_map.get(scholarship_id, False)
@@ -444,6 +465,7 @@ def applications():
             'days_until_expiration': days_until_expiration if days_until_expiration is not None else None,
             'scholarship_code': scholarship_code,
             'is_renewal': is_renewal_app,
+            'was_renewal': was_renewal,  # For display purposes - shows "Renewed" tag
             'renewal_failed': renewal_failed,
             'has_approved_renewal': has_approved_renewal_for_this,
             'reviewed_at': reviewed_at,
@@ -1446,7 +1468,7 @@ def get_application_detail(application_id):
             text("""
                 SELECT sa.id, sa.status, sa.application_date, s.title, s.code, s.deadline,
                        s.type, s.level, s.eligibility, s.slots, s.contact_name, s.contact_email, s.contact_phone,
-                       s.requirements, sa.is_renewal, s.next_last_semester_date
+                       s.requirements, sa.is_renewal, s.next_last_semester_date, s.semester_date
                 FROM scholarship_applications sa
                 JOIN scholarships s ON sa.scholarship_id = s.id
                 WHERE sa.id=:id AND sa.user_id=:uid AND sa.is_active=1
@@ -1511,21 +1533,27 @@ def get_application_detail(application_id):
                 "contact_number": personal_info[3] or ""
             }
             
-        # Get is_renewal flag and next_last_semester_date from app_row
+        # Get is_renewal flag, next_last_semester_date, and semester_date from app_row
         is_renewal = bool(app_row[14]) if len(app_row) > 14 else False
         next_last_semester_date_val = app_row[15] if len(app_row) > 15 else None
+        semester_date_val = app_row[16] if len(app_row) > 16 else None
         
-        # Format next_last_semester_date if it exists and is a renewal
-        next_last_semester_date_formatted = None
-        if is_renewal and next_last_semester_date_val:
+        # Format semester dates
+        def format_semester_date(val):
+            if not val:
+                return None
             try:
                 from datetime import datetime as dt
-                if isinstance(next_last_semester_date_val, str):
-                    next_last_semester_date_formatted = dt.strptime(next_last_semester_date_val, '%Y-%m-%d').strftime('%B %d, %Y')
-                elif hasattr(next_last_semester_date_val, 'strftime'):
-                    next_last_semester_date_formatted = next_last_semester_date_val.strftime('%B %d, %Y')
+                if isinstance(val, str):
+                    return dt.strptime(val, '%Y-%m-%d').strftime('%B %d, %Y')
+                elif hasattr(val, 'strftime'):
+                    return val.strftime('%B %d, %Y')
             except Exception:
-                next_last_semester_date_formatted = None
+                return None
+            return None
+        
+        semester_date_formatted = format_semester_date(semester_date_val)
+        next_last_semester_date_formatted = format_semester_date(next_last_semester_date_val)
         
         # Add next_last_semester_date to academic_information if it's a renewal
         if is_renewal and next_last_semester_date_formatted and academic_information:
@@ -1742,7 +1770,10 @@ def get_application_detail(application_id):
             'family_background': family_background,
             'academic_information': academic_information,
             'personal_information': personal_information,
-            'is_renewal': is_renewal
+            'is_renewal': is_renewal,
+            # Semester dates
+            'current_semester_date': semester_date_formatted,
+            'next_semester_date': next_last_semester_date_formatted
         }
         return jsonify({'success': True, 'application': payload})
     except Exception as e:

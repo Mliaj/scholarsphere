@@ -50,6 +50,7 @@
     .application-status.rejected { background:#f8d7da; color:#721c24; }
     .application-status.withdrawn { background:#e2e3e5; color:#495057; }
     .application-status.completed { background:#6c757d; color:white; }
+    .application-status.archived { background:#e9ecef; color:#495057; }
     
     .renewal-badge {
         display: inline-block;
@@ -388,6 +389,12 @@
               <div class="scholarship-meta">
                 <span><i class="fas fa-id-card"></i> {{ scholarship.code }}</span>
                 <span><i class="fas fa-calendar"></i> Deadline: {{ scholarship.deadline }}</span>
+                {% if scholarship.semester_date %}
+                <span><i class="fas fa-calendar-alt"></i> Current Semester: {{ scholarship.semester_date.strftime('%B %d, %Y') }}</span>
+                {% endif %}
+                {% if scholarship.next_last_semester_date %}
+                <span><i class="fas fa-calendar-check"></i> Next Semester: {{ scholarship.next_last_semester_date.strftime('%B %d, %Y') }}</span>
+                {% endif %}
               </div>
             </div>
             <div class="application-count-badge">
@@ -432,12 +439,6 @@
                   <span class="renewal-badge"><i class="fas fa-sync-alt"></i> Renewal</span>
                   {% endif %}
                 </span>
-                {% if app.is_renewal and scholarship.next_last_semester_date %}
-                <span style="color: #666; font-size: 0.9rem;">
-                  <i class="fas fa-calendar-check"></i> 
-                  Next last semester date to be updated: {{ scholarship.next_last_semester_date.strftime('%B %d, %Y') }}
-                </span>
-                {% endif %}
               </div>
             </div>
             {% endfor %}
