@@ -137,14 +137,14 @@ def process_expired_semester(scholarship, student):
     if has_notification_been_sent(scholarship.id, student.id, notification_type, semester_date):
         return False
     
-    # Check if there's an approved renewal application (renewals are now approved immediately)
-    approved_renewal = ScholarshipApplication.query.filter_by(
+    # Get all approved renewals (there could be multiple if current active is also a renewal)
+    all_approved_renewals = ScholarshipApplication.query.filter_by(
         user_id=student.id,
         scholarship_id=scholarship.id,
         status='approved',
         is_active=True,
         is_renewal=True
-    ).first()
+    ).order_by(ScholarshipApplication.application_date.asc()).all()
     
     # Also check for pending renewal (for backward compatibility with old data)
     pending_renewal = ScholarshipApplication.query.filter_by(
@@ -155,7 +155,26 @@ def process_expired_semester(scholarship, student):
         is_renewal=True
     ).filter(ScholarshipApplication.reviewed_at.isnot(None)).first()
     
-    # Find the old approved application (non-renewal)
+    # Determine which renewal is waiting (newest) vs current active (oldest)
+    # If there are multiple approved renewals, the oldest is current active, newest is waiting
+    approved_renewal = None  # The waiting renewal (newest)
+    current_active_renewal = None  # The current active renewal (oldest)
+    
+    if len(all_approved_renewals) > 1:
+        # Multiple approved renewals - oldest is current, newest is waiting
+        current_active_renewal = all_approved_renewals[0]  # Oldest
+        approved_renewal = all_approved_renewals[-1]  # Newest
+    elif len(all_approved_renewals) == 1:
+        # Only one approved renewal - check if there's a pending renewal waiting
+        if pending_renewal:
+            # The single approved renewal is current active, pending is waiting
+            current_active_renewal = all_approved_renewals[0]
+        else:
+            # No pending renewal - this single renewal might be waiting if there's a non-renewal active
+            approved_renewal = all_approved_renewals[0]
+    
+    # Find the old approved application (could be non-renewal OR renewal)
+    # First, try to find a non-renewal application
     application = ScholarshipApplication.query.filter_by(
         user_id=student.id,
         scholarship_id=scholarship.id,
@@ -165,10 +184,22 @@ def process_expired_semester(scholarship, student):
         (ScholarshipApplication.is_renewal == False) | (ScholarshipApplication.is_renewal.is_(None))
     ).order_by(ScholarshipApplication.application_date.desc()).first()
     
+    # If no non-renewal found, check if current active application is a renewal
+    # This handles the case where the current active application is itself a renewal
+    if not application and current_active_renewal:
+        # Use the current active renewal as the application to complete
+        application = current_active_renewal
+    
     if application:
         # If there's an approved renewal or pending renewal, complete the old one and activate the renewal
         renewal = approved_renewal or pending_renewal
         if renewal:
+            # Make sure renewal is different from the application being completed
+            if renewal.id == application.id:
+                # This shouldn't happen, but if it does, skip to avoid completing the renewal itself
+                renewal = None
+            
+        if renewal and renewal.id != application.id:
             # Mark old approved application as completed
             application.status = 'completed'
             application.is_active = False  # Mark as inactive since semester has expired
@@ -202,6 +233,11 @@ def process_expired_semester(scholarship, student):
                 renewal.notes = renewal.notes + '\n' + renewal_note + semester_note
             else:
                 renewal.notes = renewal_note + semester_note
+            
+            # IMPORTANT: Keep is_renewal=True for record keeping purposes (providers need to see this)
+            # The renewal eligibility check in students/routes.py will exclude active renewals
+            # (those that are approved, active, and is_renewal=True) from blocking future renewals
+            # This allows the renewal to be renewed again when the semester expires
             
             db.session.commit()
             

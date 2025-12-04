@@ -261,6 +261,11 @@
         color: white;
     }
 
+    .status-archived {
+        background: #e9ecef;
+        color: #495057;
+    }
+
     .application-title {
         font-size: 1.2rem;
         font-weight: 600;
@@ -523,6 +528,13 @@ function openAppDetails(appId){
               <div><strong>Date Applied:</strong> ${a.date_applied}</div>
               <div><strong>Deadline:</strong> ${a.deadline}</div>
               <div><strong>Status:</strong> ${a.status}</div>
+              
+              ${(a.current_semester_date || a.next_semester_date) ? `
+              <div style="margin-top:0.5rem; padding:0.75rem; background:#e7f3ff; border-left:3px solid #007bff; border-radius:5px; display:grid; gap:0.4rem; font-size:0.9rem;">
+                ${a.current_semester_date ? `<div><strong><i class="fas fa-calendar-alt" style="margin-right:0.3rem; color:#007bff;"></i>Current Semester:</strong> ${a.current_semester_date}</div>` : ''}
+                ${a.next_semester_date ? `<div><strong><i class="fas fa-calendar-check" style="margin-right:0.3rem; color:#007bff;"></i>Next Semester:</strong> ${a.next_semester_date}</div>` : ''}
+              </div>
+              ` : ''}
               
               <div style="margin-top:0.5rem; padding:0.5rem; background:#f8f9fa; border-radius:5px; display:grid; grid-template-columns: 1fr 1fr; gap:0.5rem; font-size:0.9rem;">
                 <div><strong>Type:</strong> ${a.scholarship_type}</div>
@@ -788,6 +800,10 @@ function continueRenewal() {
                     <span class="stat-number">{{ applications|selectattr('status', 'equalto', 'Completed')|list|length }}</span>
                     <div class="stat-label">Completed</div>
                 </div>
+                <div class="stat-card" onclick="filterByStatus('archived')" style="cursor: pointer; transition: all 0.2s;">
+                    <span class="stat-number">{{ applications|selectattr('status', 'equalto', 'Archived')|list|length }}</span>
+                    <div class="stat-label">Archived</div>
+                </div>
             </div>
         </div>
 
@@ -838,7 +854,7 @@ function continueRenewal() {
             {% if applications %}
                 {% for application in applications %}
                 <div class="application-card" data-status="{{ application.status|lower }}" data-title="{{ application.scholarship|lower }}" data-id="{{ application.id|lower }}">
-                    {% if application.needs_renewal and not application.has_approved_renewal and application.status != 'Completed' %}
+                    {% if application.needs_renewal and not application.has_approved_renewal and application.status not in ['Completed', 'Archived'] %}
                     <div class="renewal-banner" style="background: linear-gradient(135deg, #ffc72c 0%, #ff9800 100%); color: #212529; padding: 1rem 1.25rem; border-radius: 10px; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 8px rgba(255, 199, 44, 0.3);">
                         <div style="flex: 1;">
                             <div style="font-weight: 600; font-size: 1rem; margin-bottom: 0.25rem;">
@@ -872,7 +888,7 @@ function continueRenewal() {
                         </div>
                     </div>
                     <div class="application-title">{{ application.scholarship }}</div>
-                    {% if application.is_renewal and application.status == 'Approved' and not application.is_renewal_inactive %}
+                    {% if application.was_renewal and (application.status == 'Approved' or application.status == 'Archived') and not application.is_renewal_inactive %}
                     <div style="margin-top: 0.5rem;">
                         <span style="display: inline-block; background: linear-gradient(135deg, #007bff 0%, #0056b3 100%); color: white; padding: 0.25rem 0.6rem; border-radius: 12px; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">
                             <i class="fas fa-sync-alt" style="margin-right: 0.25rem;"></i>Renewed
@@ -953,12 +969,17 @@ function continueRenewal() {
                             If this scholarship is still accepting applications and you do not have another approved scholarship, you can apply again from the "Browse Scholarships" page.
                         </div>
                         {% endif %}
+                        {% if application.status == 'Archived' %}
+                        <div style="grid-column:1 / -1; font-size:0.85rem; color:#6c757d; margin-top:0.5rem;">
+                            <i class="fas fa-archive" style="margin-right:0.25rem;"></i>This application has been archived.
+                        </div>
+                        {% endif %}
                     </div>
                     <div class="application-actions">
 <button class="action-btn btn-view" onclick="openAppDetails({{ application.application_id }})">
                             <i class="fas fa-eye"></i> Review Application
                         </button>
-                        {% if application.status not in ['Approved', 'Rejected', 'Completed'] %}
+                        {% if application.status not in ['Approved', 'Rejected', 'Completed', 'Archived'] %}
                         <button class="action-btn btn-withdraw" onclick="withdrawApplication({{ application.application_id }})">
                             <i class="fas fa-times"></i>
                         </button>

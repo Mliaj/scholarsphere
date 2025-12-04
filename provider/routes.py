@@ -244,6 +244,35 @@ def applications():
             # Count files linked to this application
             app.file_count = ScholarshipApplicationFile.query.filter_by(application_id=app.id).count()
             
+            # Handle status display logic:
+            # 1. If status is "archived", check if semester expired - if so, display "completed"
+            # 2. If status is "withdrawn" but scholarship is archived, display "archived" instead
+            original_status = app.status.lower() if app.status else ''
+            display_status = app.status  # Default to original status (preserve original case)
+            
+            if original_status == 'archived':
+                # Check if semester has expired
+                if s.semester_date:
+                    from datetime import date
+                    today = date.today()
+                    if s.semester_date < today:
+                        # Semester expired - display as "completed" (status is "completed" in DB)
+                        display_status = 'Completed'
+                    else:
+                        # Semester not expired - display as "archived"
+                        display_status = 'Archived'
+                else:
+                    # No semester date - display as "archived"
+                    display_status = 'Archived'
+            elif original_status == 'withdrawn' and s.status == 'archived':
+                # Application was marked as withdrawn but scholarship is archived
+                # Display as "archived" instead of "withdrawn"
+                display_status = 'Archived'
+            
+            # Store original status for reference, but use display_status for template
+            app.original_status = app.status
+            app.status = display_status
+            
         s.display_applications = apps_list
 
     return render_template('provider/applications.html', 

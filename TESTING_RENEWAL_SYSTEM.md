@@ -97,6 +97,64 @@ This guide explains how to test the renewal system without changing your Windows
    - Scholarship's `semester_date` updates to `next_last_semester_date`
    - `next_last_semester_date` is cleared (set to NULL)
    - Student receives notification about renewal activation
+   - **IMPORTANT:** Renewal application keeps `is_renewal=True` for record keeping
+
+#### Test Case 6: Active Renewal Can Be Renewed Again (Renewal Chain)
+This tests that when a renewal application becomes active, it can be renewed again.
+
+1. **Prerequisites:**
+   - You should have completed Test Case 5 (renewal is now active)
+   - Active renewal should have `is_renewal=True` (for record keeping)
+   - Set `next_last_semester_date` for the scholarship (for the second renewal)
+
+2. **Set semester_date for the active renewal:**
+   ```sql
+   -- Set semester_date to 10 days from today (within renewal window)
+   UPDATE scholarships 
+   SET semester_date = DATE_ADD(CURDATE(), INTERVAL 10 DAY)
+   WHERE id = YOUR_SCHOLARSHIP_ID;
+   
+   -- Set next_last_semester_date for the second renewal
+   UPDATE scholarships 
+   SET next_last_semester_date = DATE_ADD(CURDATE(), INTERVAL 180 DAY)
+   WHERE id = YOUR_SCHOLARSHIP_ID;
+   ```
+
+3. **Verify renewal eligibility:**
+   - Log in as student
+   - Go to "My Applications" page
+   - **Expected:** Renewal banner SHOULD appear for the active renewal
+   - The active renewal (which was originally a renewal) should be eligible for renewal
+
+4. **Submit second renewal:**
+   - Click "Renew" button on the active renewal
+   - Fill out and submit the renewal application
+   - **Expected:** Second renewal application is created with `is_renewal=True`
+
+5. **Provider approves second renewal:**
+   - Log in as provider
+   - Approve the second renewal
+   - **Expected:** Second renewal is approved and marked as inactive (waiting for semester to expire)
+
+6. **Verify record keeping:**
+   ```sql
+   -- Check that all renewals have is_renewal=True
+   SELECT id, status, is_renewal, is_active, original_application_id
+   FROM scholarship_applications
+   WHERE user_id = YOUR_STUDENT_ID
+     AND scholarship_id = YOUR_SCHOLARSHIP_ID
+   ORDER BY application_date;
+   ```
+   - **Expected:** All renewal applications should have `is_renewal=True`
+   - Provider should be able to see that applications are renewals
+
+7. **Test using automated test script:**
+   ```bash
+   python test_renewal_chain.py --scholarship-id YOUR_SCHOLARSHIP_ID --student-id YOUR_STUDENT_ID --verbose
+   ```
+   - This will verify the complete renewal chain
+   - Checks that active renewals can be renewed again
+   - Verifies `is_renewal=True` persists for record keeping
 
 ### Step 3: Reset Test Data
 
@@ -186,6 +244,7 @@ WHERE id = YOUR_SCHOLARSHIP_ID;
 
 ## Testing Checklist
 
+### Basic Renewal Flow
 - [ ] Renewal banner appears when semester expires within 30 days
 - [ ] "Renew" button works and shows confirmation modal
 - [ ] "Do Not Renew" records failure correctly
@@ -200,12 +259,25 @@ WHERE id = YOUR_SCHOLARSHIP_ID;
 - [ ] Renewal shows as "Approved" but inactive when current app is still active
 - [ ] Renewal banner is hidden when renewal is approved
 - [ ] Current application remains active until semester expires
+
+### Renewal Activation
 - [ ] When semester expires:
   - [ ] Old application becomes "Completed"
   - [ ] Renewal becomes active
   - [ ] semester_date updates to next_last_semester_date
   - [ ] next_last_semester_date is cleared
   - [ ] Student receives notification
+  - [ ] **Active renewal keeps `is_renewal=True` for record keeping**
+
+### Renewal Chain (Active Renewal Can Be Renewed Again)
+- [ ] Active renewal (originally a renewal) can be renewed again
+- [ ] Renewal banner appears for active renewal when semester expires within 30 days
+- [ ] Second renewal application can be submitted
+- [ ] Second renewal has `is_renewal=True`
+- [ ] Provider can see that all renewals are marked as renewals (`is_renewal=True`)
+- [ ] Active renewals don't block future renewals
+- [ ] Only inactive renewals block future renewals
+- [ ] "Renewed" tag shows for active renewals (via `was_renewal` check)
 
 ## Troubleshooting
 
@@ -227,10 +299,52 @@ WHERE id = YOUR_SCHOLARSHIP_ID;
 - Check for transaction commits
 - Refresh the page after updating dates
 
+## Automated Testing
+
+### Test Renewal Chain
+Use the automated test script to verify the complete renewal chain:
+
+```bash
+# List available scholarships and students
+python test_renewal_chain.py --list
+
+# Test renewal chain for specific scholarship and student
+python test_renewal_chain.py --scholarship-id 1 --student-id 1
+
+# Verbose output
+python test_renewal_chain.py --scholarship-id 1 --student-id 1 --verbose
+```
+
+The test verifies:
+- Active renewal has `is_renewal=True` (persistent for record keeping)
+- Active renewal can be renewed again when semester expires
+- Only inactive renewals block future renewals
+- Renewal eligibility logic works correctly
+
+### Test Renewal Dates
+Use the date manipulation script for testing:
+
+```bash
+# Show current dates
+python test_renewal_dates.py --scholarship-id 1 --show-dates
+
+# Set semester to expire in 10 days
+python test_renewal_dates.py --scholarship-id 1 --set-semester-days 10
+
+# Set semester to expire yesterday (to trigger activation)
+python test_renewal_dates.py --scholarship-id 1 --set-semester-past
+
+# Set next semester date
+python test_renewal_dates.py --scholarship-id 1 --set-next-semester-days 180
+```
+
 ## Notes
 
 - The expiration check runs automatically when students/providers visit pages
 - No cron job needed - checks happen on page load
 - All date comparisons use `date.today()` which gets the current system date
 - Database dates should be in `YYYY-MM-DD` format
+- **Important:** `is_renewal=True` persists even after renewal becomes active for record keeping
+- Active renewals (approved + active) can be renewed again when their semester expires
+- Only inactive renewals (approved but not yet active) block future renewals
 
