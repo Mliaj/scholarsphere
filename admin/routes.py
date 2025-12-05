@@ -225,6 +225,33 @@ def reports():
     try:
         from flask import current_app
         db = current_app.extensions['sqlalchemy']
+        
+        # Get selected year from request (default to current year or 'all')
+        selected_year = request.args.get('year', 'all')
+        current_year = datetime.now().year
+        
+        # Get available years from application dates
+        years_result = db.session.execute(
+            text("""
+                SELECT DISTINCT YEAR(application_date) as year
+                FROM scholarship_applications
+                WHERE application_date IS NOT NULL
+                ORDER BY year DESC
+            """)
+        ).fetchall()
+        available_years = [int(row[0]) for row in years_result if row[0]]
+        if current_year not in available_years:
+            available_years.insert(0, current_year)
+        available_years.sort(reverse=True)
+
+        # Build year filter for SQL queries
+        year_filter = ""
+        if selected_year and selected_year != 'all':
+            try:
+                year_int = int(selected_year)
+                year_filter = f"AND YEAR(sa.application_date) = {year_int}"
+            except (ValueError, TypeError):
+                selected_year = 'all'
 
         # Total active students (match portal definition of active users)
         total_students = db.session.execute(
@@ -234,7 +261,7 @@ def reports():
         # Status counts from scholarship_applications table (active records only)
         # Include all statuses: pending, approved, rejected, withdrawn, archived, completed
         status_row = db.session.execute(
-            text("""
+            text(f"""
                 SELECT 
                   SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending,
                   SUM(CASE WHEN status='approved' THEN 1 ELSE 0 END) AS approved,
@@ -243,8 +270,9 @@ def reports():
                   SUM(CASE WHEN status='archived' THEN 1 ELSE 0 END) AS archived,
                   SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS completed,
                   COUNT(*) AS total
-                FROM scholarship_applications
-                WHERE COALESCE(is_active,1) = 1
+                FROM scholarship_applications sa
+                WHERE COALESCE(sa.is_active,1) = 1
+                {year_filter}
             """)
         ).fetchone() or (0,0,0,0,0,0,0)
         pending = int(status_row[0] or 0)
@@ -259,7 +287,7 @@ def reports():
         # For provider_staff, get organization from their manager (provider_admin)
         rows = db.session.execute(
             text(
-                """
+                f"""
                 SELECT 
                     IFNULL(NULLIF(TRIM(COALESCE(
                         CASE 
@@ -273,6 +301,7 @@ def reports():
                 JOIN scholarships s ON sa.scholarship_id = s.id
                 LEFT JOIN users u ON u.id = s.provider_id
                 WHERE COALESCE(sa.is_active,1) = 1
+                {year_filter}
                 GROUP BY org
                 ORDER BY apps DESC, org ASC
                 LIMIT 5
@@ -284,7 +313,12 @@ def reports():
         # Percent of active students who have at least one active application
         if total_students:
             applicants_row = db.session.execute(
-                text("SELECT COUNT(DISTINCT user_id) FROM scholarship_applications WHERE COALESCE(is_active,1) = 1")
+                text(f"""
+                    SELECT COUNT(DISTINCT user_id) 
+                    FROM scholarship_applications sa
+                    WHERE COALESCE(sa.is_active,1) = 1
+                    {year_filter}
+                """)
             ).fetchone()
             applicants = int(applicants_row[0] or 0)
             applied_percent = round((applicants / total_students) * 100, 2)
@@ -309,12 +343,28 @@ def reports():
                 'withdrawn': withdrawn,
                 'archived': archived,
                 'completed': completed
-            }
+            },
+            'available_years': available_years,
+            'selected_year': selected_year
         }
         return render_template('admin/reports.html', data=data)
     except Exception as e:
         # Fallback to existing behavior if needed
         flash('Failed to load reports data', 'error')
+        # Get available years even on error
+        try:
+            years_result = db.session.execute(
+                text("""
+                    SELECT DISTINCT YEAR(application_date) as year
+                    FROM scholarship_applications
+                    WHERE application_date IS NOT NULL
+                    ORDER BY year DESC
+                """)
+            ).fetchall()
+            available_years = [int(row[0]) for row in years_result if row[0]]
+        except:
+            available_years = []
+        
         return render_template('admin/reports.html', data={
             'totals': {
                 'total_students': 0,
@@ -330,7 +380,9 @@ def reports():
                 'withdrawn': 0,
                 'archived': 0,
                 'completed': 0
-            }
+            },
+            'available_years': available_years,
+            'selected_year': 'all'
         })
 
 @admin_bp.route('/reports/pdf')
@@ -345,13 +397,27 @@ def reports_pdf():
         from flask import current_app
         db = current_app.extensions['sqlalchemy']
         
+        # Get selected year from request (default to 'all')
+        selected_year = request.args.get('year', 'all')
+        
+        # Build year filter for SQL queries
+        year_filter = ""
+        year_label = "All Years"
+        if selected_year and selected_year != 'all':
+            try:
+                year_int = int(selected_year)
+                year_filter = f"AND YEAR(application_date) = {year_int}"
+                year_label = str(year_int)
+            except (ValueError, TypeError):
+                selected_year = 'all'
+        
         # Get the same data as the reports page
         total_students = db.session.execute(
             text("SELECT COUNT(*) FROM users WHERE role='student' AND COALESCE(is_active,1) = 1")
         ).scalar() or 0
         
         status_row = db.session.execute(
-            text("""
+            text(f"""
                 SELECT 
                   SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending,
                   SUM(CASE WHEN status='approved' THEN 1 ELSE 0 END) AS approved,
@@ -362,6 +428,7 @@ def reports_pdf():
                   COUNT(*) AS total
                 FROM scholarship_applications
                 WHERE COALESCE(is_active,1) = 1
+                {year_filter}
             """)
         ).fetchone() or (0,0,0,0,0,0,0)
         
@@ -452,6 +519,7 @@ def reports_pdf():
         # Report metadata
         metadata_data = [
             ['Report Type:', 'Administrative Overview'],
+            ['Year Filter:', year_label],
             ['Generated On:', datetime.now().strftime('%B %d, %Y at %I:%M %p')],
             ['Generated By:', f'Admin User (ID: {current_user.id})']
         ]

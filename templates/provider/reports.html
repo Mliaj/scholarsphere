@@ -52,6 +52,30 @@
   .pdf-export-btn i {
     font-size: 1.1rem;
   }
+  .year-selector-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .year-select {
+    padding: 0.6rem 1rem;
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    background: white;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-weight: 500;
+    color: #333;
+  }
+  .year-select:hover {
+    border-color: #003366;
+  }
+  .year-select:focus {
+    outline: none;
+    border-color: #003366;
+    box-shadow: 0 0 0 3px rgba(0, 51, 102, 0.1);
+  }
   @media (max-width: 1024px){ .grid { grid-template-columns: 1fr; } }
 </style>
 {% endblock %}
@@ -90,7 +114,16 @@
         <p>Key metrics about your scholarship applications</p>
       </div>
       <div style="display: flex; align-items: center; gap: 1rem;">
-        <a href="{{ url_for('provider.reports_pdf') }}" class="pdf-export-btn" target="_blank">
+        <div class="year-selector-wrapper">
+          <label for="year-select" style="margin-right: 0.5rem; font-weight: 600; color: #333;">Year:</label>
+          <select id="year-select" class="year-select" onchange="filterByYear()">
+            <option value="all" {% if data.selected_year == 'all' %}selected{% endif %}>All Years</option>
+            {% for year in data.available_years %}
+            <option value="{{ year }}" {% if data.selected_year == year|string %}selected{% endif %}>{{ year }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <a href="{{ url_for('provider.reports_pdf', year=data.selected_year) }}" class="pdf-export-btn" target="_blank">
           <i class="fas fa-file-pdf"></i> Export PDF Report
         </a>
         <div class="user-menu"><div class="user-avatar">{{ user.first_name[0] }}{{ user.last_name[0] }}</div></div>
@@ -243,6 +276,14 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 });
+
+function filterByYear() {
+  const yearSelect = document.getElementById('year-select');
+  const selectedYear = yearSelect.value;
+  const currentUrl = new URL(window.location.href);
+  currentUrl.searchParams.set('year', selectedYear);
+  window.location.href = currentUrl.toString();
+}
 </script>
 {% endblock %}
 

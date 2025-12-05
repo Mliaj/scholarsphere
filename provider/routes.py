@@ -600,6 +600,20 @@ def reports_pdf():
         
         provider_id = current_user.id
         
+        # Get selected year from request (default to 'all')
+        selected_year = request.args.get('year', 'all')
+        
+        # Build year filter for SQL queries
+        year_filter = ""
+        year_label = "All Years"
+        if selected_year and selected_year != 'all':
+            try:
+                year_int = int(selected_year)
+                year_filter = f"AND YEAR(sa.application_date) = {year_int}"
+                year_label = str(year_int)
+            except (ValueError, TypeError):
+                selected_year = 'all'
+        
         # Get scholarships created by this provider
         scholarship_ids = db.session.execute(
             text("SELECT id FROM scholarships WHERE provider_id = :provider_id"),
@@ -611,9 +625,11 @@ def reports_pdf():
             scholarship_ids = []
         
         # Status counts from scholarship_applications table
+        # IMPORTANT: Count ALL applications regardless of is_active status
+        # Withdrawn and completed applications may have is_active=0, but they should still be counted
         if scholarship_ids:
             status_row = db.session.execute(
-                text("""
+                text(f"""
                     SELECT 
                       SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending,
                       SUM(CASE WHEN status='approved' THEN 1 ELSE 0 END) AS approved,
@@ -622,8 +638,9 @@ def reports_pdf():
                       SUM(CASE WHEN status='archived' THEN 1 ELSE 0 END) AS archived,
                       SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS completed,
                       COUNT(*) AS total
-                    FROM scholarship_applications
-                    WHERE scholarship_id IN :ids AND COALESCE(is_active,1) = 1
+                    FROM scholarship_applications sa
+                    WHERE sa.scholarship_id IN :ids
+                    {year_filter}
                 """),
                 {"ids": tuple(scholarship_ids)}
             ).fetchone() or (0,0,0,0,0,0,0)
@@ -640,11 +657,12 @@ def reports_pdf():
         
         # Top scholarships by applications
         rows = db.session.execute(
-            text("""
+            text(f"""
                 SELECT s.title, COUNT(sa.id) as apps
                 FROM scholarship_applications sa
                 JOIN scholarships s ON sa.scholarship_id = s.id
                 WHERE s.provider_id = :provider_id AND COALESCE(sa.is_active,1) = 1
+                {year_filter}
                 GROUP BY s.id, s.title
                 ORDER BY apps DESC, s.title ASC
                 LIMIT 5
@@ -705,6 +723,7 @@ def reports_pdf():
         metadata_data = [
             ['Provider:', org_name],
             ['Provider ID:', f'PRV-{str(current_user.id).zfill(3)}'],
+            ['Year Filter:', year_label],
             ['Generated On:', datetime.now().strftime('%B %d, %Y at %I:%M %p')]
         ]
         metadata_table = Table(metadata_data, colWidths=[2*inch, 4*inch])
@@ -2736,12 +2755,46 @@ def reports():
         
         provider_id = current_user.id
         
-        # Get scholarships created by this provider
-        scholarship_ids = db.session.execute(
+        # Get selected year from request (default to current year or 'all')
+        selected_year = request.args.get('year', 'all')
+        current_year = datetime.now().year
+        
+        # Get available years from application dates for this provider's scholarships
+        scholarship_ids_for_years = db.session.execute(
             text("SELECT id FROM scholarships WHERE provider_id = :provider_id"),
             {"provider_id": provider_id}
         ).fetchall()
-        scholarship_ids = [s[0] for s in scholarship_ids]
+        scholarship_ids_for_years = [s[0] for s in scholarship_ids_for_years]
+        
+        if scholarship_ids_for_years:
+            years_result = db.session.execute(
+                text("""
+                    SELECT DISTINCT YEAR(application_date) as year
+                    FROM scholarship_applications
+                    WHERE scholarship_id IN :ids AND application_date IS NOT NULL
+                    ORDER BY year DESC
+                """),
+                {"ids": tuple(scholarship_ids_for_years)}
+            ).fetchall()
+            available_years = [int(row[0]) for row in years_result if row[0]]
+        else:
+            available_years = []
+        
+        if current_year not in available_years:
+            available_years.insert(0, current_year)
+        available_years.sort(reverse=True)
+        
+        # Build year filter for SQL queries
+        year_filter = ""
+        if selected_year and selected_year != 'all':
+            try:
+                year_int = int(selected_year)
+                year_filter = f"AND YEAR(sa.application_date) = {year_int}"
+            except (ValueError, TypeError):
+                selected_year = 'all'
+        
+        # Get scholarships created by this provider
+        scholarship_ids = scholarship_ids_for_years
         
         if not scholarship_ids:
             # Return empty data if no scholarships
@@ -2758,15 +2811,18 @@ def reports():
                     'withdrawn': 0,
                     'archived': 0,
                     'completed': 0
-                }
+                },
+                'available_years': available_years,
+                'selected_year': selected_year
             }, user=current_user)
         
         # Status counts from scholarship_applications table (only for this provider's scholarships)
         # Include all statuses: pending, approved, rejected, withdrawn, archived, completed
-        # Use SQLAlchemy ORM for safer query handling
+        # IMPORTANT: Count ALL applications regardless of is_active status
+        # Withdrawn and completed applications may have is_active=0, but they should still be counted
         if scholarship_ids:
             status_row = db.session.execute(
-                text("""
+                text(f"""
                     SELECT 
                       SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending,
                       SUM(CASE WHEN status='approved' THEN 1 ELSE 0 END) AS approved,
@@ -2775,8 +2831,9 @@ def reports():
                       SUM(CASE WHEN status='archived' THEN 1 ELSE 0 END) AS archived,
                       SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS completed,
                       COUNT(*) AS total
-                    FROM scholarship_applications
-                    WHERE scholarship_id IN :ids AND COALESCE(is_active,1) = 1
+                    FROM scholarship_applications sa
+                    WHERE sa.scholarship_id IN :ids
+                    {year_filter}
                 """),
                 {"ids": tuple(scholarship_ids)}
             ).fetchone() or (0,0,0,0,0,0,0)
@@ -2793,11 +2850,12 @@ def reports():
         
         # Top scholarships by applications (only this provider's scholarships)
         rows = db.session.execute(
-            text("""
+            text(f"""
                 SELECT s.title, COUNT(sa.id) as apps
                 FROM scholarship_applications sa
                 JOIN scholarships s ON sa.scholarship_id = s.id
                 WHERE s.provider_id = :provider_id AND COALESCE(sa.is_active,1) = 1
+                {year_filter}
                 GROUP BY s.id, s.title
                 ORDER BY apps DESC, s.title ASC
                 LIMIT 5
@@ -2822,7 +2880,9 @@ def reports():
                 'withdrawn': withdrawn,
                 'archived': archived,
                 'completed': completed
-            }
+            },
+            'available_years': available_years,
+            'selected_year': selected_year
         }
         return render_template('provider/reports.html', data=data, user=current_user)
     except Exception as e:
