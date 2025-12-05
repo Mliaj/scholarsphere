@@ -185,6 +185,7 @@ def signup():
         student_id = request.form.get('studentId', '').strip()
         birthday = request.form.get('birthday', '')
         course = request.form.get('course', '').strip()
+        course_other = request.form.get('course_other', '').strip()
         password = request.form.get('password', '')
         repeat_password = request.form.get('repeatPassword', '')
         
@@ -193,14 +194,27 @@ def signup():
             flash('Please complete all fields.', 'error')
             return render_template('auth/signup.html')
         
-        # Validate course format if custom
-        if course and not course.startswith('__OTHER__'):
-            # Check if it matches the expected format for custom courses
-            import re
-            if not re.match(r'^Bachelor of .+ \([A-Z]+\)$', course):
-                # If it's not a predefined course code, validate format
-                predefined_courses = ['BSIT', 'BSCS', 'BSCE', 'BSIS', 'BSCPE', 'BSEMC', 'BSA', 'BSBA', 'BSHM', 'BSTM', 'BSED', 'BSN', 'BSMT', 'BSPSY']
-                if course not in predefined_courses:
+        # Validate course - handle __OTHER__ case
+        import re
+        if course == '__OTHER__':
+            # If __OTHER__ is selected, course_other must be provided and validated
+            if not course_other:
+                flash('Please enter your course in the "Other" field.', 'error')
+                return render_template('auth/signup.html')
+            
+            # Validate course_other format
+            if not re.match(r'^Bachelor of .+ \([A-Z]+\)$', course_other):
+                flash('Course format must be: Bachelor of [Course Name] ([ABBREVIATION]) - Example: Bachelor of Science in Information Technology (BSIT)', 'error')
+                return render_template('auth/signup.html')
+            
+            # Use course_other as the actual course value
+            course = course_other
+        elif course:
+            # Validate predefined course or custom course format
+            predefined_courses = ['BSIT', 'BSCS', 'BSCE', 'BSIS', 'BSCPE', 'BSEMC', 'BSA', 'BSBA', 'BSHM', 'BSTM', 'BSED', 'BSN', 'BSMT', 'BSPSY']
+            if course not in predefined_courses:
+                # Check if it matches the expected format for custom courses
+                if not re.match(r'^Bachelor of .+ \([A-Z]+\)$', course):
                     flash('Course format must be: Bachelor of [Course Name] ([ABBREVIATION]) - Example: Bachelor of Science in Information Technology (BSIT)', 'error')
                     return render_template('auth/signup.html')
         
