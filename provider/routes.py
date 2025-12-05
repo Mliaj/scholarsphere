@@ -223,14 +223,14 @@ def applications():
     total_applications = 0
     # Pre-process scholarships to attach application count and formatted applications if needed by template
     for s in scholarships:
-        # Ensure we are counting correctly. 
-        # The template uses s.application_count (which might be a property or we set it here)
-        # and s.applications (relationship).
-        s.application_count = s.applications.count()
+        # Get ALL applications for this scholarship regardless of status or is_active
+        # This allows providers to view details of applications in all statuses
+        apps_query = ScholarshipApplication.query.filter_by(scholarship_id=s.id)
+        s.application_count = apps_query.count()
         total_applications += s.application_count
         
-        # Create a list to store processed applications
-        apps_list = list(s.applications)
+        # Create a list to store processed applications (all statuses)
+        apps_list = apps_query.all()
         
         # enhance application objects for the template
         for app in apps_list:
