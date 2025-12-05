@@ -223,14 +223,14 @@ def applications():
     total_applications = 0
     # Pre-process scholarships to attach application count and formatted applications if needed by template
     for s in scholarships:
-        # Ensure we are counting correctly. 
-        # The template uses s.application_count (which might be a property or we set it here)
-        # and s.applications (relationship).
-        s.application_count = s.applications.count()
+        # Get ALL applications for this scholarship regardless of status or is_active
+        # This allows providers to view details of applications in all statuses
+        apps_query = ScholarshipApplication.query.filter_by(scholarship_id=s.id)
+        s.application_count = apps_query.count()
         total_applications += s.application_count
         
-        # Create a list to store processed applications
-        apps_list = list(s.applications)
+        # Create a list to store processed applications (all statuses)
+        apps_list = apps_query.all()
         
         # enhance application objects for the template
         for app in apps_list:
@@ -799,11 +799,13 @@ def review_application(application_id):
                         'error_type': 'missing_next_last_semester_date'
                     }), 400
                 
-                # Mark renewal as approved immediately
-                # The old approved application stays approved until semester ends
+                # Mark renewal as approved but keep it inactive until semester expires
+                # Only one application should be active per scholarship per student at a time
+                # The renewal will be activated by process_expired_semester when the semester expires
                 application.reviewed_at = datetime.utcnow()
                 application.reviewed_by = current_user.id
                 application.status = 'approved'  # Mark as approved immediately
+                application.is_active = False  # Keep inactive until semester expires (original app is still active)
                 application.notes = (application.notes or '') + '\n[Renewal Approved - Will become active when current semester ends]'
                 
                 # Update scholarship counts (renewal is now approved)

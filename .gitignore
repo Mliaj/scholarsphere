@@ -51,3 +51,8 @@ MANUAL_REPAIR_STEPS.txt
 QUICK_MYSQL_REPAIR.md
 repair_mysql_system.ps1
 repair_mysql_system_tables.md
+fix_proxies_priv_force.sql
+fix_proxies_priv_table.sql
+fix_mysql_proxies_priv.ps1
+FIX_PROXIES_PRIV.md
+fix_proxies_priv_simple.ps1

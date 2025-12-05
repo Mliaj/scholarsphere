@@ -9,26 +9,31 @@ from werkzeug.security import generate_password_hash
 def create_uc_admin():
     """Create a UC admin account"""
     with app.app_context():
-        # Check if UC admin already exists
-        existing_admin = User.query.filter_by(email='admin@uc.edu').first()
-        if existing_admin:
-            print("❌ UC Admin account already exists!")
-            print(f"📧 Email: {existing_admin.email}")
-            print(f"👤 Name: {existing_admin.first_name} {existing_admin.last_name}")
-            return
-        
-        # Create UC admin user
-        admin = User(
-            first_name='UC',
-            last_name='Administrator',
-            email='admin@uc.edu',
-            student_id='00000001',  # Special admin ID
-            role='admin',
-            is_active=True
-        )
-        admin.set_password('admin123')
-        
         try:
+            # Close any existing sessions and rollback any pending transactions
+            db.session.close()
+            db.session.rollback()
+            
+            # Check if UC admin already exists
+            existing_admin = User.query.filter_by(email='admin@uc.edu').first()
+            if existing_admin:
+                print("❌ UC Admin account already exists!")
+                print(f"📧 Email: {existing_admin.email}")
+                print(f"👤 Name: {existing_admin.first_name} {existing_admin.last_name}")
+                db.session.close()
+                return
+            
+            # Create UC admin user
+            admin = User(
+                first_name='UC',
+                last_name='Administrator',
+                email='admin@uc.edu',
+                student_id='00000001',  # Special admin ID
+                role='admin',
+                is_active=True
+            )
+            admin.set_password('admin123')
+            
             db.session.add(admin)
             db.session.commit()
             print("✅ UC Admin account created successfully!")
@@ -43,6 +48,9 @@ def create_uc_admin():
             print(f"❌ Error creating UC admin: {e}")
             import traceback
             traceback.print_exc()
+        finally:
+            # Always close the session
+            db.session.close()
 
 if __name__ == '__main__':
     create_uc_admin()

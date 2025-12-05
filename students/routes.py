@@ -289,14 +289,14 @@ def applications():
     # Check for pending renewals per scholarship to disable renewal banner
     # Only count applications where is_renewal=True AND status is pending
     pending_renewals_map = {}
-    # Check for approved renewals per scholarship to hide banners
-    # IMPORTANT: Only count inactive renewals (those that are approved but not yet active)
-    # Active renewals (approved, active, is_renewal=True) should NOT block future renewals
+    # Track only INACTIVE approved renewals per scholarship (active renewals shouldn't block)
+    # Active renewals allow students to renew again when their semester expires
     approved_renewals_map = {}
     for app in user_applications:
         scholarship_id = app[2]
         is_renewal = bool(app[11]) if len(app) > 11 else False
         status = app[3].lower() if app[3] else ''
+        application_id = app[0]
         application_is_active = bool(app[15]) if len(app) > 15 else True
         scholarship_is_active = app[7] if len(app) > 7 else True
         scholarship_status = (app[8] or '').lower() if len(app) > 8 else ''
@@ -304,13 +304,16 @@ def applications():
         if is_renewal and status == 'pending':
             pending_renewals_map[scholarship_id] = True
         elif is_renewal and status == 'approved':
-            # Only count as blocking renewal if it's not yet active
-            # An active renewal (approved + active + scholarship active) should allow future renewals
+            # Only track inactive approved renewals (those waiting to become active)
+            # Active renewals (approved + active + scholarship active) should NOT block future renewals
             is_currently_active = (status == 'approved' and application_is_active and 
                                  scholarship_is_active and scholarship_status != 'archived')
             if not is_currently_active:
-                # This is an approved renewal that's not yet active (waiting for semester to end)
-                approved_renewals_map[scholarship_id] = True
+                # This is an inactive approved renewal (waiting for semester to end)
+                # Only inactive renewals should block the renewal banner
+                if scholarship_id not in approved_renewals_map:
+                    approved_renewals_map[scholarship_id] = []
+                approved_renewals_map[scholarship_id].append(application_id)
     
     from datetime import date
     today = date.today()
@@ -367,13 +370,21 @@ def applications():
         # Check renewal eligibility: must be approved and active, and have a semester date
         # EXCEPTION: Don't show renewal banner if:
         # 1. There's already a pending renewal for this scholarship
-        # 2. There's an approved renewal for this scholarship (but NOT if it's already active)
-        #    Active renewals (approved + active) should allow future renewals
+        # 2. There's an inactive approved renewal waiting (active renewals don't block)
         scholarship_id = app[2]
+        application_id = app[0]
+        is_renewal_app = bool(app[11]) if len(app) > 11 else False
         has_pending_renewal = pending_renewals_map.get(scholarship_id, False)
-        has_approved_renewal = approved_renewals_map.get(scholarship_id, False)
+        
+        # Check if there's an inactive approved renewal for this scholarship
+        # Active renewals should NOT block - students can renew active renewals when semester expires
+        approved_renewals_list = approved_renewals_map.get(scholarship_id, [])
+        has_inactive_approved_renewal = len(approved_renewals_list) > 0
 
-        if app_status == 'approved' and is_active and semester_date_val and not has_pending_renewal and not has_approved_renewal:
+        # Don't show renewal banner if:
+        # - There's a pending renewal, OR
+        # - There's an inactive approved renewal waiting (active renewals don't block)
+        if app_status == 'approved' and is_active and semester_date_val and not has_pending_renewal and not has_inactive_approved_renewal:
             # Parse semester_date from various formats
             try:
                 if isinstance(semester_date_val, str):
@@ -420,8 +431,11 @@ def applications():
         # (original_application_id is not null indicates it was originally a renewal)
         was_renewal = is_renewal_app or (original_application_id is not None)
         
-        # Check if there's an approved renewal for this specific scholarship
-        has_approved_renewal_for_this = approved_renewals_map.get(scholarship_id, False)
+        # Check if there's an inactive approved renewal for this specific scholarship
+        # This is used for display purposes in the template
+        # Only inactive renewals block the banner - active renewals don't block
+        approved_renewals_list_for_this = approved_renewals_map.get(scholarship_id, [])
+        has_approved_renewal_for_this = len(approved_renewals_list_for_this) > 0
         
         # For approved renewals: check if there's still an active non-renewal approved application
         # If so, the renewal should be inactive (but still displayed)
@@ -597,6 +611,23 @@ def scholarships():
     # Create a dictionary for quick lookups of application status
     application_statuses = {app.scholarship_id: app.status for app in user_applications}
     
+    # Check if student has an approved application and if they have no application or only pending applications
+    # This determines whether to remove course matching
+    has_approved_application = any(
+        app.status and app.status.lower() == 'approved'
+        for app in user_applications
+    )
+    
+    # Check if student has no application or only pending applications (no rejected/withdrawn)
+    has_rejected_or_withdrawn = any(
+        app.status and app.status.lower() in ['rejected', 'withdrawn']
+        for app in user_applications
+    )
+    has_no_or_pending_only = len(user_applications) == 0 or not has_rejected_or_withdrawn
+    
+    # Remove course matching if student has approved application AND (has no application or only pending)
+    should_remove_course_matching = has_approved_application and has_no_or_pending_only
+    
     scholarships_data = []
     for scholarship in available_scholarships:
         scholarship_id = scholarship[0]
@@ -731,7 +762,12 @@ def scholarships():
         student_course = (current_user.course or '').strip().upper()
         scholarship_course = (scholarship[11] or '').strip().upper()
         
-        if student_course and scholarship_course:
+        # Remove course matching if student has approved application AND (has no application or only pending)
+        if should_remove_course_matching:
+            # Remove course matching - show all scholarships
+            is_matching_course = True
+        elif student_course and scholarship_course:
+            # Normal course matching logic
             # Check if "All Programs" is selected - matches all courses
             if scholarship_course == 'ALL PROGRAMS':
                 is_matching_course = True
@@ -832,6 +868,8 @@ def apply_scholarship(scholarship_id):
                     original_application_id = None
         
         # If renewal, find the original approved application
+        # This works the same for both regular and renewed applications
+        # It finds the most recent approved active application (regardless of whether it's a renewal or not)
         if is_renewal:
             original_app = db.session.execute(
                 text("""
@@ -997,8 +1035,8 @@ def apply_scholarship(scholarship_id):
         # Check if renewal columns exist before including them
         result = db.session.execute(
             text("""\
-                INSERT INTO scholarship_applications (user_id, scholarship_id, status, application_date, is_active, is_renewal, original_application_id)
-                VALUES (:user_id, :scholarship_id, :status, :application_date, :is_active, :is_renewal, :original_application_id)
+                INSERT INTO scholarship_applications (user_id, scholarship_id, status, application_date, is_active, is_renewal, original_application_id, renewal_failed)
+                VALUES (:user_id, :scholarship_id, :status, :application_date, :is_active, :is_renewal, :original_application_id, :renewal_failed)
             """),
             {
                 "user_id": current_user.id,
@@ -1007,7 +1045,8 @@ def apply_scholarship(scholarship_id):
                 "application_date": current_time,
                 "is_active": 1,
                 "is_renewal": 1 if is_renewal else 0,
-                "original_application_id": original_application_id
+                "original_application_id": original_application_id,
+                "renewal_failed": 0  # Default to 0 (False) for new applications
             }
         )
         application_id = result.lastrowid
@@ -1464,6 +1503,7 @@ def get_application_detail(application_id):
         from credential_matcher import CredentialMatcher
         db = current_app.extensions['sqlalchemy']
         # Verify ownership and fetch
+        # Allow viewing completed, archived, and active applications
         app_row = db.session.execute(
             text("""
                 SELECT sa.id, sa.status, sa.application_date, s.title, s.code, s.deadline,
@@ -1471,7 +1511,7 @@ def get_application_detail(application_id):
                        s.requirements, sa.is_renewal, s.next_last_semester_date, s.semester_date
                 FROM scholarship_applications sa
                 JOIN scholarships s ON sa.scholarship_id = s.id
-                WHERE sa.id=:id AND sa.user_id=:uid AND sa.is_active=1
+                WHERE sa.id=:id AND sa.user_id=:uid
             """), {"id": application_id, "uid": current_user.id}
         ).fetchone()
         if not app_row:
