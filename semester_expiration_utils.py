@@ -141,6 +141,24 @@ def process_expired_semester(scholarship, student):
         # Semester hasn't expired yet - don't process
         return False
     
+    # IMPORTANT: Update semester date FIRST (before notification check)
+    # This is a scholarship-level update that should happen regardless of notifications
+    # Store the old semester_date before updating (for notes/transitions)
+    old_semester_date = semester_date
+    # Refresh scholarship to get latest state (in case another student already updated it)
+    db.session.refresh(scholarship)
+    if scholarship.next_last_semester_date:
+        # Update the scholarship's semester_date to next_last_semester_date
+        scholarship.semester_date = scholarship.next_last_semester_date
+        # Clear next_last_semester_date as it's now the current semester_date
+        # Provider can set a new next_last_semester_date for the next renewal cycle
+        scholarship.next_last_semester_date = None
+        db.session.commit()
+        # Refresh again to get the updated semester_date for notification check
+        db.session.refresh(scholarship)
+        semester_date = scholarship.semester_date
+    
+    # Now check if notification was already sent (using potentially updated semester_date)
     if has_notification_been_sent(scholarship.id, student.id, notification_type, semester_date):
         return False
     
@@ -195,6 +213,10 @@ def process_expired_semester(scholarship, student):
     if not application and current_active_renewal:
         application = current_active_renewal
     
+    # Track if semester date was updated (to avoid duplicate updates when multiple students have applications)
+    # Note: Semester date is already updated at the beginning of the function, so set to True
+    semester_date_updated = True
+    
     if application:
         # If there's an approved renewal or pending renewal, complete the old one and activate the renewal
         renewal = approved_renewal or pending_renewal
@@ -234,16 +256,8 @@ def process_expired_semester(scholarship, student):
             # This ensures only one application is active per scholarship per student
             renewal.is_active = True
             
-            # Update scholarship's semester_date to next_last_semester_date
-            # Store the old semester_date before updating
-            old_semester_date = scholarship.semester_date
-            
-            if scholarship.next_last_semester_date:
-                # Update the scholarship's semester_date to next_last_semester_date
-                scholarship.semester_date = scholarship.next_last_semester_date
-                # Clear next_last_semester_date as it's now the current semester_date
-                # Provider can set a new next_last_semester_date for the next renewal cycle
-                scholarship.next_last_semester_date = None
+            # Note: Semester date update is already handled at the beginning of the function
+            # old_semester_date was captured before the update at function start
             
             # Tag renewal with "renewed" in notes and record semester transition
             renewal_note = '[RENEWED] This application became active when the previous semester ended.'
@@ -288,6 +302,9 @@ def process_expired_semester(scholarship, student):
             application.is_active = False  # Mark as inactive since semester has expired
             application.reviewed_at = datetime.utcnow()
             db.session.commit()
+    
+    # Semester date update is now handled at the beginning of the function
+    # This ensures it happens regardless of notification status or application state
     
     title = f"Scholarship Semester Completed: {scholarship.title}"
     message = f"The semester for your approved scholarship '{scholarship.title}' has been completed. Your application status has been updated."
@@ -410,6 +427,47 @@ def check_all_students_semester_expirations():
             except Exception:
                 # Continue with next student if one fails
                 pass
+    except Exception:
+        # Silently fail - don't break page load if check fails
+        pass
+
+def process_expired_semesters_for_all_scholarships():
+    """
+    Process expired semesters for ALL scholarships, regardless of student applications
+    This ensures semester dates are updated even if no students have applications
+    Called when provider accesses pages to ensure semester dates are always up to date
+    
+    This function:
+    - Gets all scholarships with expired semesters that have next_last_semester_date set
+    - Updates semester_date to next_last_semester_date
+    - Clears next_last_semester_date
+    """
+    try:
+        today = date.today()
+        
+        # Get all scholarships with expired semesters that have next_last_semester_date set
+        expired_scholarships = Scholarship.query.filter(
+            Scholarship.semester_date <= today,
+            Scholarship.next_last_semester_date.isnot(None)
+        ).all()
+        
+        for scholarship in expired_scholarships:
+            try:
+                # Refresh to get latest state (in case another process already updated it)
+                db.session.refresh(scholarship)
+                
+                # Double-check that next_last_semester_date still exists (might have been updated)
+                if scholarship.next_last_semester_date:
+                    # Update the scholarship's semester_date to next_last_semester_date
+                    scholarship.semester_date = scholarship.next_last_semester_date
+                    # Clear next_last_semester_date as it's now the current semester_date
+                    # Provider can set a new next_last_semester_date for the next renewal cycle
+                    scholarship.next_last_semester_date = None
+                    db.session.commit()
+            except Exception:
+                # Continue with next scholarship if one fails
+                db.session.rollback()
+                continue
     except Exception:
         # Silently fail - don't break page load if check fails
         pass

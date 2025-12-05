@@ -109,8 +109,11 @@ def dashboard():
     
     # Check semester expirations for all students (no cron job needed - checks on page load)
     try:
-        from semester_expiration_utils import check_all_students_semester_expirations
+        from semester_expiration_utils import check_all_students_semester_expirations, process_expired_semesters_for_all_scholarships
         check_all_students_semester_expirations()
+        # Also process expired semesters for all scholarships (regardless of student applications)
+        # This ensures semester dates are updated even if no students have applications
+        process_expired_semesters_for_all_scholarships()
     except Exception:
         # Don't fail page load if check fails
         pass
@@ -171,8 +174,11 @@ def scholarships():
     
     # Check semester expirations for all students (no cron job needed - checks on page load)
     try:
-        from semester_expiration_utils import check_all_students_semester_expirations
+        from semester_expiration_utils import check_all_students_semester_expirations, process_expired_semesters_for_all_scholarships
         check_all_students_semester_expirations()
+        # Also process expired semesters for all scholarships (regardless of student applications)
+        # This ensures semester dates are updated even if no students have applications
+        process_expired_semesters_for_all_scholarships()
     except Exception:
         # Don't fail page load if check fails
         pass
@@ -211,8 +217,11 @@ def applications():
     
     # Check semester expirations for all students (no cron job needed - checks on page load)
     try:
-        from semester_expiration_utils import check_all_students_semester_expirations
+        from semester_expiration_utils import check_all_students_semester_expirations, process_expired_semesters_for_all_scholarships
         check_all_students_semester_expirations()
+        # Also process expired semesters for all scholarships (regardless of student applications)
+        # This ensures semester dates are updated even if no students have applications
+        process_expired_semesters_for_all_scholarships()
     except Exception:
         # Don't fail page load if check fails
         pass
@@ -288,8 +297,11 @@ def schedules():
     
     # Check semester expirations for all students (no cron job needed - checks on page load)
     try:
-        from semester_expiration_utils import check_all_students_semester_expirations
+        from semester_expiration_utils import check_all_students_semester_expirations, process_expired_semesters_for_all_scholarships
         check_all_students_semester_expirations()
+        # Also process expired semesters for all scholarships (regardless of student applications)
+        # This ensures semester dates are updated even if no students have applications
+        process_expired_semesters_for_all_scholarships()
     except Exception:
         # Don't fail page load if check fails
         pass
