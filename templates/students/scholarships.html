@@ -1312,7 +1312,7 @@ function resetFilters() {
         <div class="section-title">Personal Information</div>
         <div class="form-grid">
           <div class="form-group"><label class="form-label">Full Name</label><input class="form-control" name="full_name" required value="{{ current_user.first_name }} {{ current_user.last_name }}"></div>
-          <div class="form-group"><label class="form-label">Student ID Number</label><input class="form-control" name="student_id" required value="{{ current_user.student_id or '' }}"></div>
+          <div class="form-group"><label class="form-label">Student ID Number</label><input class="form-control" name="student_id" required value="{{ current_user.student_id or '' }}" readonly style="background-color: #f8f9fa; cursor: not-allowed;"></div>
           <div class="form-group"><label class="form-label">Course</label><input class="form-control" name="course" required value="{{ current_user.course or '' }}"></div>
           <div class="form-group"><label class="form-label">Year Level</label><input class="form-control" name="year_level" required value="{{ current_user.year_level or '' }}"></div>
           <div class="form-group"><label class="form-label">Department</label><input class="form-control" name="department" value="{{ current_user.department or '' }}"></div>
@@ -1327,7 +1327,7 @@ function resetFilters() {
           </div>
           <div class="form-group" style="grid-column:1 / -1"><label class="form-label">Address</label><input class="form-control" name="address" required value="{{ current_user.address or '' }}"></div>
           <div class="form-group"><label class="form-label">Contact Number</label><input class="form-control" name="contact" required value="{{ current_user.contact_number or '' }}"></div>
-          <div class="form-group"><label class="form-label">Email</label><input type="email" class="form-control" name="email" required value="{{ current_user.email }}"></div>
+          <div class="form-group"><label class="form-label">Email</label><input type="email" class="form-control" name="email" required value="{{ current_user.email }}" readonly style="background-color: #f8f9fa; cursor: not-allowed;"></div>
         </div>
 
         <div class="section-title">Family Background</div>
