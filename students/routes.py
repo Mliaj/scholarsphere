@@ -280,7 +280,7 @@ def applications():
                    sa.original_application_id
             FROM scholarship_applications sa
             JOIN scholarships s ON sa.scholarship_id = s.id
-            WHERE sa.user_id = :user_id AND (sa.is_active = 1 OR (sa.is_renewal = 1 AND sa.status = 'approved') OR sa.status = 'completed' OR sa.status = 'archived')
+            WHERE sa.user_id = :user_id AND (sa.is_active = 1 OR sa.status = 'approved' OR (sa.is_renewal = 1 AND sa.status = 'pending') OR sa.status = 'completed' OR sa.status = 'archived')
             ORDER BY sa.application_date DESC
         """),
         {"user_id": current_user.id}
@@ -379,7 +379,10 @@ def applications():
         # Check if there's an inactive approved renewal for this scholarship
         # Active renewals should NOT block - students can renew active renewals when semester expires
         approved_renewals_list = approved_renewals_map.get(scholarship_id, [])
-        has_inactive_approved_renewal = len(approved_renewals_list) > 0
+        # Exclude the current application from the check - an approved renewal shouldn't block itself
+        # This allows the banner to show when the current approved renewal's semester is about to expire
+        approved_renewals_excluding_self = [app_id for app_id in approved_renewals_list if app_id != application_id]
+        has_inactive_approved_renewal = len(approved_renewals_excluding_self) > 0
 
         # Don't show renewal banner if:
         # - There's a pending renewal, OR
@@ -435,7 +438,14 @@ def applications():
         # This is used for display purposes in the template
         # Only inactive renewals block the banner - active renewals don't block
         approved_renewals_list_for_this = approved_renewals_map.get(scholarship_id, [])
-        has_approved_renewal_for_this = len(approved_renewals_list_for_this) > 0
+        # If current application is an active renewal, don't block the banner
+        # Active renewals should show the banner when their semester is expiring
+        if is_renewal_app and app_status == 'approved' and is_active:
+            # Current application is an active renewal - don't block the banner
+            has_approved_renewal_for_this = False
+        else:
+            # Check if there are inactive approved renewals (excluding current application)
+            has_approved_renewal_for_this = len(approved_renewals_list_for_this) > 0
         
         # For approved renewals: check if there's still an active non-renewal approved application
         # If so, the renewal should be inactive (but still displayed)
@@ -869,7 +879,9 @@ def apply_scholarship(scholarship_id):
         
         # If renewal, find the original approved application
         # This works the same for both regular and renewed applications
-        # It finds the most recent approved active application (regardless of whether it's a renewal or not)
+        # It finds the most recent approved application (regardless of whether it's a renewal or not)
+        # Note: We don't check is_active because approved renewals might have is_active=0 in the database
+        # (waiting for semester to expire) but should still be valid for creating new renewals
         if is_renewal:
             original_app = db.session.execute(
                 text("""
@@ -877,7 +889,6 @@ def apply_scholarship(scholarship_id):
                     WHERE user_id = :user_id 
                     AND scholarship_id = :scholarship_id
                     AND status = 'approved'
-                    AND is_active = 1
                     ORDER BY application_date DESC
                     LIMIT 1
                 """),

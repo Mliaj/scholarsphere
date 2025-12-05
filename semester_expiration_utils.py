@@ -162,12 +162,12 @@ def process_expired_semester(scholarship, student):
     if has_notification_been_sent(scholarship.id, student.id, notification_type, semester_date):
         return False
     
-    # Get all approved renewals (there could be multiple if current active is also a renewal)
+    # Get all approved renewals (including inactive ones waiting to become active)
+    # When a renewal is approved, it's set to is_active=False until the semester expires
     all_approved_renewals = ScholarshipApplication.query.filter_by(
         user_id=student.id,
         scholarship_id=scholarship.id,
         status='approved',
-        is_active=True,
         is_renewal=True
     ).order_by(ScholarshipApplication.application_date.asc()).all()
     
@@ -176,27 +176,30 @@ def process_expired_semester(scholarship, student):
         user_id=student.id,
         scholarship_id=scholarship.id,
         status='pending',
-        is_active=True,
         is_renewal=True
     ).filter(ScholarshipApplication.reviewed_at.isnot(None)).first()
     
-    # Determine which renewal is waiting (newest) vs current active (oldest)
-    # If there are multiple approved renewals, the oldest is current active, newest is waiting
-    approved_renewal = None  # The waiting renewal (newest)
-    current_active_renewal = None  # The current active renewal (oldest)
+    # Determine which renewal is waiting (inactive) vs current active (active)
+    # Approved renewals with is_active=False are waiting to become active
+    # Approved renewals with is_active=True are currently active
+    approved_renewal = None  # The waiting renewal (inactive, newest)
+    current_active_renewal = None  # The current active renewal (active, oldest)
     
-    if len(all_approved_renewals) > 1:
-        # Multiple approved renewals - oldest is current, newest is waiting
-        current_active_renewal = all_approved_renewals[0]  # Oldest
-        approved_renewal = all_approved_renewals[-1]  # Newest
-    elif len(all_approved_renewals) == 1:
-        # Only one approved renewal - check if there's a pending renewal waiting
-        if pending_renewal:
-            # The single approved renewal is current active, pending is waiting
-            current_active_renewal = all_approved_renewals[0]
-        else:
-            # No pending renewal - this single renewal might be waiting if there's a non-renewal active
-            approved_renewal = all_approved_renewals[0]
+    # Separate renewals by active status
+    active_renewals = [r for r in all_approved_renewals if r.is_active]
+    inactive_renewals = [r for r in all_approved_renewals if not r.is_active]
+    
+    if active_renewals:
+        # There's at least one active renewal - the oldest active is current
+        current_active_renewal = min(active_renewals, key=lambda r: r.application_date)
+    
+    if inactive_renewals:
+        # There's at least one inactive renewal - the newest inactive is waiting
+        approved_renewal = max(inactive_renewals, key=lambda r: r.application_date)
+    
+    # If no inactive renewal found but there's a pending renewal, use that
+    if not approved_renewal and pending_renewal:
+        approved_renewal = pending_renewal
     
     # Find the old approved application (could be non-renewal OR renewal)
     # Renewal system works the same for both regular and renewed applications
@@ -228,12 +231,12 @@ def process_expired_semester(scholarship, student):
             
         if renewal and renewal.id != application.id:
             # CRITICAL: Only complete old application and activate renewal if semester has actually expired
-            # Check the current semester_date (before any updates) to ensure it has expired
-            current_semester_date = scholarship.semester_date
+            # Check the OLD semester_date (before update) to ensure it has expired
+            # old_semester_date was captured at the beginning before any updates
             today = date.today()
             
-            # Only proceed if the semester_date has actually expired (is today or in the past)
-            if current_semester_date and current_semester_date > today:
+            # Only proceed if the old semester_date has actually expired (is today or in the past)
+            if old_semester_date and old_semester_date > today:
                 # Semester hasn't expired yet - don't complete old application or activate renewal
                 # The renewal will remain approved but inactive until the semester expires
                 return False
