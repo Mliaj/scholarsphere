@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}{% if user.role == 'provider_staff' %}User Profile{% else %}Organization Profile{% endif %} - Scholarsphere | Provider{% endblock %}
+{% block title %}{% if user.role == 'provider_staff' %}User Profile{% else %}Organization Profile{% endif %} - Scholarsphere | Provider Portal{% endblock %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">

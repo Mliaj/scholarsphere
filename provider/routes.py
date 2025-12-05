@@ -845,7 +845,8 @@ def reports_pdf():
         # Create response
         response = make_response(buffer.getvalue())
         response.headers['Content-Type'] = 'application/pdf'
-        response.headers['Content-Disposition'] = f'inline; filename=provider_reports_{datetime.now().strftime("%Y%m%d_%H%M%S")}.pdf'
+        filename = f'provider_reports_{datetime.now().strftime("%Y%m%d_%H%M%S")}.pdf'
+        response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
         
     except Exception as e:
