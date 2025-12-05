@@ -134,6 +134,13 @@ def process_expired_semester(scholarship, student):
     notification_type = "semester_expired"
     semester_date = scholarship.semester_date
     
+    # CRITICAL: Only process expiration if the semester_date has actually expired
+    # Don't process if semester_date is in the future
+    today = date.today()
+    if semester_date and semester_date > today:
+        # Semester hasn't expired yet - don't process
+        return False
+    
     if has_notification_been_sent(scholarship.id, student.id, notification_type, semester_date):
         return False
     
@@ -174,20 +181,18 @@ def process_expired_semester(scholarship, student):
             approved_renewal = all_approved_renewals[0]
     
     # Find the old approved application (could be non-renewal OR renewal)
-    # First, try to find a non-renewal application
+    # Renewal system works the same for both regular and renewed applications
+    # Find the oldest approved active application (regardless of whether it's a renewal or not)
+    # This ensures renewed applications can be renewed again
     application = ScholarshipApplication.query.filter_by(
         user_id=student.id,
         scholarship_id=scholarship.id,
         status='approved',
         is_active=True
-    ).filter(
-        (ScholarshipApplication.is_renewal == False) | (ScholarshipApplication.is_renewal.is_(None))
-    ).order_by(ScholarshipApplication.application_date.desc()).first()
+    ).order_by(ScholarshipApplication.application_date.asc()).first()  # Oldest first
     
-    # If no non-renewal found, check if current active application is a renewal
-    # This handles the case where the current active application is itself a renewal
+    # If no application found but there's a current active renewal, use that
     if not application and current_active_renewal:
-        # Use the current active renewal as the application to complete
         application = current_active_renewal
     
     if application:
@@ -200,6 +205,17 @@ def process_expired_semester(scholarship, student):
                 renewal = None
             
         if renewal and renewal.id != application.id:
+            # CRITICAL: Only complete old application and activate renewal if semester has actually expired
+            # Check the current semester_date (before any updates) to ensure it has expired
+            current_semester_date = scholarship.semester_date
+            today = date.today()
+            
+            # Only proceed if the semester_date has actually expired (is today or in the past)
+            if current_semester_date and current_semester_date > today:
+                # Semester hasn't expired yet - don't complete old application or activate renewal
+                # The renewal will remain approved but inactive until the semester expires
+                return False
+            
             # Mark old approved application as completed
             application.status = 'completed'
             application.is_active = False  # Mark as inactive since semester has expired

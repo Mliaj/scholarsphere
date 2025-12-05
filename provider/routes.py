@@ -799,12 +799,14 @@ def review_application(application_id):
                         'error_type': 'missing_next_last_semester_date'
                     }), 400
                 
-                # Mark renewal as approved immediately
+                # Mark renewal as approved and active immediately
+                # Renewed applications should work the same as regular applications
                 # The old approved application stays approved until semester ends
                 application.reviewed_at = datetime.utcnow()
                 application.reviewed_by = current_user.id
                 application.status = 'approved'  # Mark as approved immediately
-                application.notes = (application.notes or '') + '\n[Renewal Approved - Will become active when current semester ends]'
+                application.is_active = True  # Mark as active immediately (same as regular application)
+                application.notes = (application.notes or '') + '\n[Renewal Approved - Active immediately like regular application]'
                 
                 # Update scholarship counts (renewal is now approved)
                 if scholarship.pending_count and scholarship.pending_count > 0:
