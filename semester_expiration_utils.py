@@ -230,6 +230,10 @@ def process_expired_semester(scholarship, student):
                     scholarship.pending_count = max(0, scholarship.pending_count - 1)
                 scholarship.approved_count = (scholarship.approved_count or 0) + 1
             
+            # Activate the renewal (set is_active = True)
+            # This ensures only one application is active per scholarship per student
+            renewal.is_active = True
+            
             # Update scholarship's semester_date to next_last_semester_date
             # Store the old semester_date before updating
             old_semester_date = scholarship.semester_date
