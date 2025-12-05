@@ -611,6 +611,23 @@ def scholarships():
     # Create a dictionary for quick lookups of application status
     application_statuses = {app.scholarship_id: app.status for app in user_applications}
     
+    # Check if student has an approved application and if they have no application or only pending applications
+    # This determines whether to remove course matching
+    has_approved_application = any(
+        app.status and app.status.lower() == 'approved'
+        for app in user_applications
+    )
+    
+    # Check if student has no application or only pending applications (no rejected/withdrawn)
+    has_rejected_or_withdrawn = any(
+        app.status and app.status.lower() in ['rejected', 'withdrawn']
+        for app in user_applications
+    )
+    has_no_or_pending_only = len(user_applications) == 0 or not has_rejected_or_withdrawn
+    
+    # Remove course matching if student has approved application AND (has no application or only pending)
+    should_remove_course_matching = has_approved_application and has_no_or_pending_only
+    
     scholarships_data = []
     for scholarship in available_scholarships:
         scholarship_id = scholarship[0]
@@ -745,7 +762,12 @@ def scholarships():
         student_course = (current_user.course or '').strip().upper()
         scholarship_course = (scholarship[11] or '').strip().upper()
         
-        if student_course and scholarship_course:
+        # Remove course matching if student has approved application AND (has no application or only pending)
+        if should_remove_course_matching:
+            # Remove course matching - show all scholarships
+            is_matching_course = True
+        elif student_course and scholarship_course:
+            # Normal course matching logic
             # Check if "All Programs" is selected - matches all courses
             if scholarship_course == 'ALL PROGRAMS':
                 is_matching_course = True
