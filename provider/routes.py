@@ -573,127 +573,265 @@ def reset_password():
         return jsonify({'success': False, 'message': 'Failed to reset password'}), 500
 
 import io
-from reportlab.lib.pagesizes import letter
+from reportlab.lib.pagesizes import letter, A4
+from reportlab.lib import colors
+from reportlab.lib.units import inch
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.pdfgen import canvas
 from flask import make_response # make_response is already imported in the file
 
 @provider_bp.route('/generate_report_pdf')
 @login_required
 def generate_report_pdf():
-    """Generates a PDF report for the provider"""
-    require_provider_role()
+    """Generates a PDF report for the provider (legacy route - kept for compatibility)"""
+    return redirect(url_for('provider.reports_pdf'))
 
-    # Get actual data
-    provider_id = get_provider_id()
-    scholarships = get_scholarships_query(provider_id).all()
-    scholarship_ids = [s.id for s in scholarships]
+@provider_bp.route('/reports/pdf')
+@login_required
+def reports_pdf():
+    """Generate beautiful PDF report for provider reports page"""
+    require_provider_admin()
     
-    total_scholarships = len(scholarships)
-    active_scholarships = len([s for s in scholarships if s.status in ['active', 'approved']])
-    draft_scholarships = len([s for s in scholarships if s.status == 'draft'])
-    archived_scholarships = len([s for s in scholarships if s.status == 'archived'])
-    
-    # Get application statistics
-    if scholarship_ids:
-        total_applications = ScholarshipApplication.query.filter(
-            ScholarshipApplication.scholarship_id.in_(scholarship_ids)
-        ).count()
-        pending_applications = ScholarshipApplication.query.filter(
-            ScholarshipApplication.scholarship_id.in_(scholarship_ids),
-            ScholarshipApplication.status == 'pending',
-            ScholarshipApplication.is_active == True
-        ).count()
-        approved_applications = ScholarshipApplication.query.filter(
-            ScholarshipApplication.scholarship_id.in_(scholarship_ids),
-            ScholarshipApplication.status == 'approved',
-            ScholarshipApplication.is_active == True
-        ).count()
-        rejected_applications = ScholarshipApplication.query.filter(
-            ScholarshipApplication.scholarship_id.in_(scholarship_ids),
-            ScholarshipApplication.status == 'rejected',
-            ScholarshipApplication.is_active == True
-        ).count()
-    else:
-        total_applications = 0
-        pending_applications = 0
-        approved_applications = 0
-        rejected_applications = 0
-
-    # Create a file-like buffer to receive PDF data.
-    buffer = io.BytesIO()
-    
-    # Create the PDF object, using the buffer as its "file."
-    p = canvas.Canvas(buffer, pagesize=letter)
-    
-    # Header
-    y = 750
-    p.drawString(100, y, f"Provider Report for {current_user.organization or current_user.get_full_name()}")
-    y -= 20
-    p.drawString(100, y, f"Provider ID: PRV-{str(current_user.id).zfill(3)}")
-    y -= 20
-    p.drawString(100, y, f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    y -= 20
-    p.drawString(100, y, "-" * 60)
-    
-    # Scholarship Statistics
-    y -= 30
-    p.drawString(100, y, "SCHOLARSHIP STATISTICS:")
-    y -= 20
-    p.drawString(120, y, f"Total Scholarships: {total_scholarships}")
-    y -= 20
-    p.drawString(120, y, f"Active Scholarships: {active_scholarships}")
-    y -= 20
-    p.drawString(120, y, f"Draft Scholarships: {draft_scholarships}")
-    y -= 20
-    p.drawString(120, y, f"Archived Scholarships: {archived_scholarships}")
-    
-    # Application Statistics
-    y -= 30
-    p.drawString(100, y, "APPLICATION STATISTICS:")
-    y -= 20
-    p.drawString(120, y, f"Total Applications: {total_applications}")
-    y -= 20
-    p.drawString(120, y, f"Pending Applications: {pending_applications}")
-    y -= 20
-    p.drawString(120, y, f"Approved Applications: {approved_applications}")
-    y -= 20
-    p.drawString(120, y, f"Rejected Applications: {rejected_applications}")
-    
-    # List of Scholarships
-    if scholarships:
-        y -= 40
-        if y < 100:
-            p.showPage()
-            y = 750
+    try:
+        from flask import current_app
+        db = current_app.extensions['sqlalchemy']
         
-        p.drawString(100, y, "SCHOLARSHIP LIST:")
-        y -= 20
+        provider_id = current_user.id
         
-        for scholarship in scholarships[:20]:  # Limit to 20 per page
-            status_display = scholarship.status.upper()
-            if scholarship.status == 'archived':
-                status_display = "ARCHIVED"
+        # Get scholarships created by this provider
+        scholarship_ids = db.session.execute(
+            text("SELECT id FROM scholarships WHERE provider_id = :provider_id"),
+            {"provider_id": provider_id}
+        ).fetchall()
+        scholarship_ids = [s[0] for s in scholarship_ids]
+        
+        if not scholarship_ids:
+            scholarship_ids = []
+        
+        # Status counts from scholarship_applications table
+        if scholarship_ids:
+            status_row = db.session.execute(
+                text("""
+                    SELECT 
+                      SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending,
+                      SUM(CASE WHEN status='approved' THEN 1 ELSE 0 END) AS approved,
+                      SUM(CASE WHEN status='rejected' THEN 1 ELSE 0 END) AS disapproved,
+                      SUM(CASE WHEN status='withdrawn' THEN 1 ELSE 0 END) AS withdrawn,
+                      SUM(CASE WHEN status='archived' THEN 1 ELSE 0 END) AS archived,
+                      SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS completed,
+                      COUNT(*) AS total
+                    FROM scholarship_applications
+                    WHERE scholarship_id IN :ids AND COALESCE(is_active,1) = 1
+                """),
+                {"ids": tuple(scholarship_ids)}
+            ).fetchone() or (0,0,0,0,0,0,0)
+        else:
+            status_row = (0,0,0,0,0,0,0)
+        
+        pending = int(status_row[0] or 0)
+        approved = int(status_row[1] or 0)
+        disapproved = int(status_row[2] or 0)
+        withdrawn = int(status_row[3] or 0)
+        archived = int(status_row[4] or 0)
+        completed = int(status_row[5] or 0)
+        total_applications = int(status_row[6] or 0)
+        
+        # Top scholarships by applications
+        rows = db.session.execute(
+            text("""
+                SELECT s.title, COUNT(sa.id) as apps
+                FROM scholarship_applications sa
+                JOIN scholarships s ON sa.scholarship_id = s.id
+                WHERE s.provider_id = :provider_id AND COALESCE(sa.is_active,1) = 1
+                GROUP BY s.id, s.title
+                ORDER BY apps DESC, s.title ASC
+                LIMIT 5
+            """),
+            {"provider_id": provider_id}
+        ).fetchall()
+        top_scholarships = [{'name': r[0], 'applications': int(r[1] or 0)} for r in rows]
+        
+        # Get provider organization name
+        org_name = current_user.organization or current_user.get_full_name()
+        
+        # Create PDF
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=letter, 
+                               rightMargin=72, leftMargin=72,
+                               topMargin=72, bottomMargin=72)
+        
+        # Container for the 'Flowable' objects
+        elements = []
+        
+        # Define custom styles
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=24,
+            textColor=colors.HexColor('#003366'),
+            spaceAfter=30,
+            alignment=TA_CENTER,
+            fontName='Helvetica-Bold'
+        )
+        
+        heading_style = ParagraphStyle(
+            'CustomHeading',
+            parent=styles['Heading2'],
+            fontSize=16,
+            textColor=colors.HexColor('#003366'),
+            spaceAfter=12,
+            spaceBefore=20,
+            fontName='Helvetica-Bold'
+        )
+        
+        normal_style = ParagraphStyle(
+            'CustomNormal',
+            parent=styles['Normal'],
+            fontSize=11,
+            textColor=colors.HexColor('#333333'),
+            spaceAfter=8,
+            fontName='Helvetica'
+        )
+        
+        # Title
+        title = Paragraph("Provider Reports & Analytics", title_style)
+        elements.append(title)
+        elements.append(Spacer(1, 0.2*inch))
+        
+        # Report metadata
+        metadata_data = [
+            ['Provider:', org_name],
+            ['Provider ID:', f'PRV-{str(current_user.id).zfill(3)}'],
+            ['Generated On:', datetime.now().strftime('%B %d, %Y at %I:%M %p')]
+        ]
+        metadata_table = Table(metadata_data, colWidths=[2*inch, 4*inch])
+        metadata_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f8f9fa')),
+            ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor('#333333')),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e9ecef'))
+        ]))
+        elements.append(metadata_table)
+        elements.append(Spacer(1, 0.3*inch))
+        
+        # Overview Statistics
+        heading = Paragraph("Overview Statistics", heading_style)
+        elements.append(heading)
+        
+        overview_data = [
+            ['Metric', 'Value'],
+            ['Total Applications', f'{total_applications:,}']
+        ]
+        overview_table = Table(overview_data, colWidths=[3.5*inch, 2.5*inch])
+        overview_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#003366')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 11),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+            ('TOPPADDING', (0, 0), (-1, -1), 10),
+            ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#dee2e6')),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')])
+        ]))
+        elements.append(overview_table)
+        elements.append(Spacer(1, 0.3*inch))
+        
+        # Application Status Breakdown
+        heading = Paragraph("Application Status Breakdown", heading_style)
+        elements.append(heading)
+        
+        status_data = [
+            ['Status', 'Count', 'Percentage'],
+            ['Pending', f'{pending:,}', f'{(pending/total_applications*100) if total_applications > 0 else 0:.1f}%'],
+            ['Approved', f'{approved:,}', f'{(approved/total_applications*100) if total_applications > 0 else 0:.1f}%'],
+            ['Rejected', f'{disapproved:,}', f'{(disapproved/total_applications*100) if total_applications > 0 else 0:.1f}%'],
+            ['Withdrawn', f'{withdrawn:,}', f'{(withdrawn/total_applications*100) if total_applications > 0 else 0:.1f}%'],
+            ['Archived', f'{archived:,}', f'{(archived/total_applications*100) if total_applications > 0 else 0:.1f}%'],
+            ['Completed', f'{completed:,}', f'{(completed/total_applications*100) if total_applications > 0 else 0:.1f}%']
+        ]
+        status_table = Table(status_data, colWidths=[2*inch, 2*inch, 2*inch])
+        status_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#003366')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('ALIGN', (1, 1), (2, -1), 'RIGHT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 11),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+            ('TOPPADDING', (0, 0), (-1, -1), 10),
+            ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#dee2e6')),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
+            ('BACKGROUND', (0, 2), (-1, 2), colors.HexColor('#fff3cd')),  # Pending - yellow
+            ('BACKGROUND', (0, 3), (-1, 3), colors.HexColor('#d4edda')),  # Approved - green
+            ('BACKGROUND', (0, 4), (-1, 4), colors.HexColor('#f8d7da')),  # Rejected - red
+        ]))
+        elements.append(status_table)
+        elements.append(Spacer(1, 0.3*inch))
+        
+        # Top Scholarships
+        if top_scholarships:
+            heading = Paragraph("Top Scholarships by Applications", heading_style)
+            elements.append(heading)
             
-            p.drawString(120, y, f"- {scholarship.code}: {scholarship.title} ({status_display})")
-            y -= 20
-            if y < 50:
-                p.showPage()
-                y = 750
+            scholarship_data = [['Rank', 'Scholarship', 'Applications']]
+            for idx, scholarship in enumerate(top_scholarships, 1):
+                scholarship_data.append([
+                    f'#{idx}',
+                    scholarship['name'],
+                    f"{scholarship['applications']:,}"
+                ])
+            
+            scholarship_table = Table(scholarship_data, colWidths=[0.8*inch, 4*inch, 1.2*inch])
+            scholarship_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#003366')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('ALIGN', (1, 1), (1, -1), 'LEFT'),
+                ('ALIGN', (2, 1), (2, -1), 'RIGHT'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                ('FONTSIZE', (0, 0), (-1, -1), 11),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+                ('TOPPADDING', (0, 0), (-1, -1), 10),
+                ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#dee2e6')),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
+                ('BACKGROUND', (0, 1), (0, -1), colors.HexColor('#ffc72c')),
+                ('TEXTCOLOR', (0, 1), (0, -1), colors.HexColor('#1a1a1a')),
+            ]))
+            elements.append(scholarship_table)
         
-        if len(scholarships) > 20:
-            p.drawString(120, y, f"... and {len(scholarships) - 20} more scholarships")
-            y -= 20
-
-    # Close the PDF object cleanly.
-    p.showPage()
-    p.save()
-    
-    # Get the value of the BytesIO buffer and return it as a response
-    buffer.seek(0)
-    response = make_response(buffer.getvalue())
-    response.headers['Content-Type'] = 'application/pdf'
-    response.headers['Content-Disposition'] = 'attachment; filename=provider_report.pdf'
-    return response
+        # Footer note
+        elements.append(Spacer(1, 0.4*inch))
+        footer = Paragraph(
+            f"<i>This report was generated automatically by the Scholarsphere system on {datetime.now().strftime('%B %d, %Y at %I:%M %p')}.</i>",
+            ParagraphStyle('Footer', parent=styles['Normal'], fontSize=9, textColor=colors.HexColor('#666666'), alignment=TA_CENTER)
+        )
+        elements.append(footer)
+        
+        # Build PDF
+        doc.build(elements)
+        buffer.seek(0)
+        
+        # Create response
+        response = make_response(buffer.getvalue())
+        response.headers['Content-Type'] = 'application/pdf'
+        response.headers['Content-Disposition'] = f'inline; filename=provider_reports_{datetime.now().strftime("%Y%m%d_%H%M%S")}.pdf'
+        return response
+        
+    except Exception as e:
+        flash(f'Failed to generate PDF report: {str(e)}', 'error')
+        return redirect(url_for('provider.reports'))
 
 @provider_bp.route('/api/application/<int:application_id>/review', methods=['POST'])
 @login_required
