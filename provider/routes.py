@@ -961,6 +961,9 @@ def review_application(application_id):
             # If this is a renewal application being approved, check next_last_semester_date
             # and handle it differently (mark as approved immediately)
             if is_renewal and new_status == 'approved':
+                # Refresh the application object to get the latest state
+                db.session.refresh(application)
+                
                 # Check if next_last_semester_date is set for the scholarship
                 if not scholarship.next_last_semester_date:
                     return jsonify({
@@ -970,13 +973,50 @@ def review_application(application_id):
                     }), 400
                 
                 # Mark renewal as approved but keep it inactive until semester expires
+                # CRITICAL: Renewals should ALWAYS be inactive when approved, regardless of existing applications
                 # Only one application should be active per scholarship per student at a time
                 # The renewal will be activated by process_expired_semester when the semester expires
+                
+                # Check if there's already an active application (regular or renewed) for this scholarship
+                # This ensures only one application is active at a time
+                existing_active = ScholarshipApplication.query.filter(
+                    ScholarshipApplication.user_id == application.user_id,
+                    ScholarshipApplication.scholarship_id == application.scholarship_id,
+                    ScholarshipApplication.id != application_id,
+                    ScholarshipApplication.status == 'approved',
+                    ScholarshipApplication.is_active == True
+                ).first()
+                
                 application.reviewed_at = datetime.utcnow()
                 application.reviewed_by = current_user.id
                 application.status = 'approved'  # Mark as approved immediately
-                application.is_active = False  # Keep inactive until semester expires (original app is still active)
-                application.notes = (application.notes or '') + '\n[Renewal Approved - Will become active when current semester ends]'
+                # CRITICAL: Renewals should ALWAYS be inactive when approved
+                # They will only become active when the current active application's semester expires
+                application.is_active = False  # Always set to False for renewals
+                
+                if existing_active:
+                    application.notes = (application.notes or '') + f'\n[Renewal Approved - Will become active when current application (APP-{existing_active.id:03d}) expires]'
+                else:
+                    application.notes = (application.notes or '') + '\n[Renewal Approved - Will become active when current semester ends]'
+                
+                # CRITICAL: Ensure only one application is active per scholarship per student
+                # If somehow there are multiple active applications, deactivate all except the oldest one
+                # Refresh the query after setting is_active to False to get accurate count
+                db.session.flush()  # Flush changes to ensure query sees updated state
+                all_active_apps = ScholarshipApplication.query.filter(
+                    ScholarshipApplication.user_id == application.user_id,
+                    ScholarshipApplication.scholarship_id == application.scholarship_id,
+                    ScholarshipApplication.status == 'approved',
+                    ScholarshipApplication.is_active == True
+                ).order_by(ScholarshipApplication.application_date.asc()).all()
+                
+                # If there are multiple active applications, keep only the oldest one active
+                if len(all_active_apps) > 1:
+                    # Keep the oldest active, deactivate the rest
+                    for idx, app in enumerate(all_active_apps):
+                        if idx > 0:  # Skip the first (oldest) one
+                            app.is_active = False
+                            app.notes = (app.notes or '') + f'\n[Deactivated - Another application (APP-{all_active_apps[0].id:03d}) is active]'
                 
                 # Update scholarship counts (renewal is now approved)
                 if scholarship.pending_count and scholarship.pending_count > 0:
