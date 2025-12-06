@@ -385,9 +385,13 @@ def applications():
         has_inactive_approved_renewal = len(approved_renewals_excluding_self) > 0
 
         # Don't show renewal banner if:
+        # - Current application is an inactive approved renewal (already renewed and waiting)
         # - There's a pending renewal, OR
         # - There's an inactive approved renewal waiting (active renewals don't block)
-        if app_status == 'approved' and is_active and semester_date_val and not has_pending_renewal and not has_inactive_approved_renewal:
+        # Note: Both regular AND renewed applications can show the banner when their semester expires
+        # This allows students to renew their scholarship multiple times
+        # BUT: If there's already an approved renewal waiting, hide the banner to prevent duplicate renewals
+        if app_status == 'approved' and is_active and semester_date_val and not has_pending_renewal and not has_inactive_approved_renewal and not (is_renewal_app and not is_active):
             # Parse semester_date from various formats
             try:
                 if isinstance(semester_date_val, str):
@@ -414,6 +418,7 @@ def applications():
                 if semester_date:
                     days_until_expiration = (semester_date - today).days
                     # Show renewal if semester expires within 30 days (including today and up to 30 days)
+                    # This applies to both regular AND renewed applications - students can renew multiple times
                     if 0 <= days_until_expiration <= 30:
                         needs_renewal = True
             except Exception as e:
@@ -438,13 +443,21 @@ def applications():
         # This is used for display purposes in the template
         # Only inactive renewals block the banner - active renewals don't block
         approved_renewals_list_for_this = approved_renewals_map.get(scholarship_id, [])
-        # If current application is an active renewal, don't block the banner
-        # Active renewals should show the banner when their semester is expiring
-        if is_renewal_app and app_status == 'approved' and is_active:
-            # Current application is an active renewal - don't block the banner
-            has_approved_renewal_for_this = False
+        # Check if there's an approved renewal that should hide the banner
+        # Hide banner if:
+        # 1. Current application is an inactive approved renewal - renewal already approved and waiting, no need to show banner
+        # 2. There's another approved renewal (inactive) waiting for this scholarship
+        # Note: Active applications (both regular AND renewed) can show the banner when their semester expires
+        # This allows students to renew their scholarship multiple times
+        if is_renewal_app and app_status == 'approved' and not is_active:
+            # Current application is an inactive approved renewal - hide banner (renewal already approved and waiting)
+            has_approved_renewal_for_this = True
         else:
-            # Check if there are inactive approved renewals (excluding current application)
+            # Current application is active (regular or renewed) - check if there are any inactive approved renewals waiting
+            # The approved_renewals_map only contains inactive renewals, so if there are any in the list,
+            # they should block the banner (they're waiting to become active)
+            # Note: We don't need to exclude current application here because active applications
+            # are not in the approved_renewals_map (only inactive ones are)
             has_approved_renewal_for_this = len(approved_renewals_list_for_this) > 0
         
         # For approved renewals: check if there's still an active non-renewal approved application
