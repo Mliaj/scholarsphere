@@ -141,15 +141,33 @@ def process_expired_semester(scholarship, student):
         # Semester hasn't expired yet - don't process
         return False
     
+    # IMPORTANT: Update semester date FIRST (before notification check)
+    # This is a scholarship-level update that should happen regardless of notifications
+    # Store the old semester_date before updating (for notes/transitions)
+    old_semester_date = semester_date
+    # Refresh scholarship to get latest state (in case another student already updated it)
+    db.session.refresh(scholarship)
+    if scholarship.next_last_semester_date:
+        # Update the scholarship's semester_date to next_last_semester_date
+        scholarship.semester_date = scholarship.next_last_semester_date
+        # Clear next_last_semester_date as it's now the current semester_date
+        # Provider can set a new next_last_semester_date for the next renewal cycle
+        scholarship.next_last_semester_date = None
+        db.session.commit()
+        # Refresh again to get the updated semester_date for notification check
+        db.session.refresh(scholarship)
+        semester_date = scholarship.semester_date
+    
+    # Now check if notification was already sent (using potentially updated semester_date)
     if has_notification_been_sent(scholarship.id, student.id, notification_type, semester_date):
         return False
     
-    # Get all approved renewals (there could be multiple if current active is also a renewal)
+    # Get all approved renewals (including inactive ones waiting to become active)
+    # When a renewal is approved, it's set to is_active=False until the semester expires
     all_approved_renewals = ScholarshipApplication.query.filter_by(
         user_id=student.id,
         scholarship_id=scholarship.id,
         status='approved',
-        is_active=True,
         is_renewal=True
     ).order_by(ScholarshipApplication.application_date.asc()).all()
     
@@ -158,27 +176,30 @@ def process_expired_semester(scholarship, student):
         user_id=student.id,
         scholarship_id=scholarship.id,
         status='pending',
-        is_active=True,
         is_renewal=True
     ).filter(ScholarshipApplication.reviewed_at.isnot(None)).first()
     
-    # Determine which renewal is waiting (newest) vs current active (oldest)
-    # If there are multiple approved renewals, the oldest is current active, newest is waiting
-    approved_renewal = None  # The waiting renewal (newest)
-    current_active_renewal = None  # The current active renewal (oldest)
+    # Determine which renewal is waiting (inactive) vs current active (active)
+    # Approved renewals with is_active=False are waiting to become active
+    # Approved renewals with is_active=True are currently active
+    approved_renewal = None  # The waiting renewal (inactive, newest)
+    current_active_renewal = None  # The current active renewal (active, oldest)
     
-    if len(all_approved_renewals) > 1:
-        # Multiple approved renewals - oldest is current, newest is waiting
-        current_active_renewal = all_approved_renewals[0]  # Oldest
-        approved_renewal = all_approved_renewals[-1]  # Newest
-    elif len(all_approved_renewals) == 1:
-        # Only one approved renewal - check if there's a pending renewal waiting
-        if pending_renewal:
-            # The single approved renewal is current active, pending is waiting
-            current_active_renewal = all_approved_renewals[0]
-        else:
-            # No pending renewal - this single renewal might be waiting if there's a non-renewal active
-            approved_renewal = all_approved_renewals[0]
+    # Separate renewals by active status
+    active_renewals = [r for r in all_approved_renewals if r.is_active]
+    inactive_renewals = [r for r in all_approved_renewals if not r.is_active]
+    
+    if active_renewals:
+        # There's at least one active renewal - the oldest active is current
+        current_active_renewal = min(active_renewals, key=lambda r: r.application_date)
+    
+    if inactive_renewals:
+        # There's at least one inactive renewal - the newest inactive is waiting
+        approved_renewal = max(inactive_renewals, key=lambda r: r.application_date)
+    
+    # If no inactive renewal found but there's a pending renewal, use that
+    if not approved_renewal and pending_renewal:
+        approved_renewal = pending_renewal
     
     # Find the old approved application (could be non-renewal OR renewal)
     # Renewal system works the same for both regular and renewed applications
@@ -195,6 +216,10 @@ def process_expired_semester(scholarship, student):
     if not application and current_active_renewal:
         application = current_active_renewal
     
+    # Track if semester date was updated (to avoid duplicate updates when multiple students have applications)
+    # Note: Semester date is already updated at the beginning of the function, so set to True
+    semester_date_updated = True
+    
     if application:
         # If there's an approved renewal or pending renewal, complete the old one and activate the renewal
         renewal = approved_renewal or pending_renewal
@@ -206,12 +231,12 @@ def process_expired_semester(scholarship, student):
             
         if renewal and renewal.id != application.id:
             # CRITICAL: Only complete old application and activate renewal if semester has actually expired
-            # Check the current semester_date (before any updates) to ensure it has expired
-            current_semester_date = scholarship.semester_date
+            # Check the OLD semester_date (before update) to ensure it has expired
+            # old_semester_date was captured at the beginning before any updates
             today = date.today()
             
-            # Only proceed if the semester_date has actually expired (is today or in the past)
-            if current_semester_date and current_semester_date > today:
+            # Only proceed if the old semester_date has actually expired (is today or in the past)
+            if old_semester_date and old_semester_date > today:
                 # Semester hasn't expired yet - don't complete old application or activate renewal
                 # The renewal will remain approved but inactive until the semester expires
                 return False
@@ -234,16 +259,8 @@ def process_expired_semester(scholarship, student):
             # This ensures only one application is active per scholarship per student
             renewal.is_active = True
             
-            # Update scholarship's semester_date to next_last_semester_date
-            # Store the old semester_date before updating
-            old_semester_date = scholarship.semester_date
-            
-            if scholarship.next_last_semester_date:
-                # Update the scholarship's semester_date to next_last_semester_date
-                scholarship.semester_date = scholarship.next_last_semester_date
-                # Clear next_last_semester_date as it's now the current semester_date
-                # Provider can set a new next_last_semester_date for the next renewal cycle
-                scholarship.next_last_semester_date = None
+            # Note: Semester date update is already handled at the beginning of the function
+            # old_semester_date was captured before the update at function start
             
             # Tag renewal with "renewed" in notes and record semester transition
             renewal_note = '[RENEWED] This application became active when the previous semester ended.'
@@ -288,6 +305,9 @@ def process_expired_semester(scholarship, student):
             application.is_active = False  # Mark as inactive since semester has expired
             application.reviewed_at = datetime.utcnow()
             db.session.commit()
+    
+    # Semester date update is now handled at the beginning of the function
+    # This ensures it happens regardless of notification status or application state
     
     title = f"Scholarship Semester Completed: {scholarship.title}"
     message = f"The semester for your approved scholarship '{scholarship.title}' has been completed. Your application status has been updated."
@@ -410,6 +430,47 @@ def check_all_students_semester_expirations():
             except Exception:
                 # Continue with next student if one fails
                 pass
+    except Exception:
+        # Silently fail - don't break page load if check fails
+        pass
+
+def process_expired_semesters_for_all_scholarships():
+    """
+    Process expired semesters for ALL scholarships, regardless of student applications
+    This ensures semester dates are updated even if no students have applications
+    Called when provider accesses pages to ensure semester dates are always up to date
+    
+    This function:
+    - Gets all scholarships with expired semesters that have next_last_semester_date set
+    - Updates semester_date to next_last_semester_date
+    - Clears next_last_semester_date
+    """
+    try:
+        today = date.today()
+        
+        # Get all scholarships with expired semesters that have next_last_semester_date set
+        expired_scholarships = Scholarship.query.filter(
+            Scholarship.semester_date <= today,
+            Scholarship.next_last_semester_date.isnot(None)
+        ).all()
+        
+        for scholarship in expired_scholarships:
+            try:
+                # Refresh to get latest state (in case another process already updated it)
+                db.session.refresh(scholarship)
+                
+                # Double-check that next_last_semester_date still exists (might have been updated)
+                if scholarship.next_last_semester_date:
+                    # Update the scholarship's semester_date to next_last_semester_date
+                    scholarship.semester_date = scholarship.next_last_semester_date
+                    # Clear next_last_semester_date as it's now the current semester_date
+                    # Provider can set a new next_last_semester_date for the next renewal cycle
+                    scholarship.next_last_semester_date = None
+                    db.session.commit()
+            except Exception:
+                # Continue with next scholarship if one fails
+                db.session.rollback()
+                continue
     except Exception:
         # Silently fail - don't break page load if check fails
         pass

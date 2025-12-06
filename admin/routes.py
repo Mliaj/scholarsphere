@@ -2,11 +2,18 @@
 Admin dashboard routes for Scholarsphere
 """
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, current_app
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, current_app, make_response
 from flask_login import login_required, current_user
 from datetime import datetime
 from sqlalchemy import text
 from app import db, User, Scholarship, ScholarshipApplication
+import io
+from reportlab.lib.pagesizes import letter, A4
+from reportlab.lib import colors
+from reportlab.lib.units import inch
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 
 admin_bp = Blueprint('admin', __name__)
 
@@ -218,6 +225,33 @@ def reports():
     try:
         from flask import current_app
         db = current_app.extensions['sqlalchemy']
+        
+        # Get selected year from request (default to current year or 'all')
+        selected_year = request.args.get('year', 'all')
+        current_year = datetime.now().year
+        
+        # Get available years from application dates
+        years_result = db.session.execute(
+            text("""
+                SELECT DISTINCT YEAR(application_date) as year
+                FROM scholarship_applications
+                WHERE application_date IS NOT NULL
+                ORDER BY year DESC
+            """)
+        ).fetchall()
+        available_years = [int(row[0]) for row in years_result if row[0]]
+        if current_year not in available_years:
+            available_years.insert(0, current_year)
+        available_years.sort(reverse=True)
+
+        # Build year filter for SQL queries
+        year_filter = ""
+        if selected_year and selected_year != 'all':
+            try:
+                year_int = int(selected_year)
+                year_filter = f"AND YEAR(sa.application_date) = {year_int}"
+            except (ValueError, TypeError):
+                selected_year = 'all'
 
         # Total active students (match portal definition of active users)
         total_students = db.session.execute(
@@ -227,7 +261,7 @@ def reports():
         # Status counts from scholarship_applications table (active records only)
         # Include all statuses: pending, approved, rejected, withdrawn, archived, completed
         status_row = db.session.execute(
-            text("""
+            text(f"""
                 SELECT 
                   SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending,
                   SUM(CASE WHEN status='approved' THEN 1 ELSE 0 END) AS approved,
@@ -236,8 +270,9 @@ def reports():
                   SUM(CASE WHEN status='archived' THEN 1 ELSE 0 END) AS archived,
                   SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS completed,
                   COUNT(*) AS total
-                FROM scholarship_applications
-                WHERE COALESCE(is_active,1) = 1
+                FROM scholarship_applications sa
+                WHERE COALESCE(sa.is_active,1) = 1
+                {year_filter}
             """)
         ).fetchone() or (0,0,0,0,0,0,0)
         pending = int(status_row[0] or 0)
@@ -252,7 +287,7 @@ def reports():
         # For provider_staff, get organization from their manager (provider_admin)
         rows = db.session.execute(
             text(
-                """
+                f"""
                 SELECT 
                     IFNULL(NULLIF(TRIM(COALESCE(
                         CASE 
@@ -266,6 +301,7 @@ def reports():
                 JOIN scholarships s ON sa.scholarship_id = s.id
                 LEFT JOIN users u ON u.id = s.provider_id
                 WHERE COALESCE(sa.is_active,1) = 1
+                {year_filter}
                 GROUP BY org
                 ORDER BY apps DESC, org ASC
                 LIMIT 5
@@ -277,7 +313,12 @@ def reports():
         # Percent of active students who have at least one active application
         if total_students:
             applicants_row = db.session.execute(
-                text("SELECT COUNT(DISTINCT user_id) FROM scholarship_applications WHERE COALESCE(is_active,1) = 1")
+                text(f"""
+                    SELECT COUNT(DISTINCT user_id) 
+                    FROM scholarship_applications sa
+                    WHERE COALESCE(sa.is_active,1) = 1
+                    {year_filter}
+                """)
             ).fetchone()
             applicants = int(applicants_row[0] or 0)
             applied_percent = round((applicants / total_students) * 100, 2)
@@ -302,12 +343,28 @@ def reports():
                 'withdrawn': withdrawn,
                 'archived': archived,
                 'completed': completed
-            }
+            },
+            'available_years': available_years,
+            'selected_year': selected_year
         }
         return render_template('admin/reports.html', data=data)
     except Exception as e:
         # Fallback to existing behavior if needed
         flash('Failed to load reports data', 'error')
+        # Get available years even on error
+        try:
+            years_result = db.session.execute(
+                text("""
+                    SELECT DISTINCT YEAR(application_date) as year
+                    FROM scholarship_applications
+                    WHERE application_date IS NOT NULL
+                    ORDER BY year DESC
+                """)
+            ).fetchall()
+            available_years = [int(row[0]) for row in years_result if row[0]]
+        except:
+            available_years = []
+        
         return render_template('admin/reports.html', data={
             'totals': {
                 'total_students': 0,
@@ -323,8 +380,277 @@ def reports():
                 'withdrawn': 0,
                 'archived': 0,
                 'completed': 0
-            }
+            },
+            'available_years': available_years,
+            'selected_year': 'all'
         })
+
+@admin_bp.route('/reports/pdf')
+@login_required
+def reports_pdf():
+    """Generate PDF report for admin"""
+    if current_user.role != 'admin':
+        flash('Access denied. Admin access required.', 'error')
+        return redirect(url_for('index'))
+    
+    try:
+        from flask import current_app
+        db = current_app.extensions['sqlalchemy']
+        
+        # Get selected year from request (default to 'all')
+        selected_year = request.args.get('year', 'all')
+        
+        # Build year filter for SQL queries
+        year_filter = ""
+        year_label = "All Years"
+        if selected_year and selected_year != 'all':
+            try:
+                year_int = int(selected_year)
+                year_filter = f"AND YEAR(application_date) = {year_int}"
+                year_label = str(year_int)
+            except (ValueError, TypeError):
+                selected_year = 'all'
+        
+        # Get the same data as the reports page
+        total_students = db.session.execute(
+            text("SELECT COUNT(*) FROM users WHERE role='student' AND COALESCE(is_active,1) = 1")
+        ).scalar() or 0
+        
+        status_row = db.session.execute(
+            text(f"""
+                SELECT 
+                  SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending,
+                  SUM(CASE WHEN status='approved' THEN 1 ELSE 0 END) AS approved,
+                  SUM(CASE WHEN status='rejected' THEN 1 ELSE 0 END) AS disapproved,
+                  SUM(CASE WHEN status='withdrawn' THEN 1 ELSE 0 END) AS withdrawn,
+                  SUM(CASE WHEN status='archived' THEN 1 ELSE 0 END) AS archived,
+                  SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS completed,
+                  COUNT(*) AS total
+                FROM scholarship_applications
+                WHERE COALESCE(is_active,1) = 1
+                {year_filter}
+            """)
+        ).fetchone() or (0,0,0,0,0,0,0)
+        
+        pending = int(status_row[0] or 0)
+        approved = int(status_row[1] or 0)
+        disapproved = int(status_row[2] or 0)
+        withdrawn = int(status_row[3] or 0)
+        archived = int(status_row[4] or 0)
+        completed = int(status_row[5] or 0)
+        total_applications = int(status_row[6] or 0)
+        
+        rows = db.session.execute(
+            text("""
+                SELECT 
+                    IFNULL(NULLIF(TRIM(COALESCE(
+                        CASE 
+                            WHEN u.role = 'provider_staff' AND u.managed_by IS NOT NULL 
+                            THEN (SELECT organization FROM users WHERE id = u.managed_by)
+                            ELSE u.organization
+                        END, ''
+                    )), ''), '—') as org, 
+                    COUNT(sa.id) as apps
+                FROM scholarship_applications sa
+                JOIN scholarships s ON sa.scholarship_id = s.id
+                LEFT JOIN users u ON u.id = s.provider_id
+                WHERE COALESCE(sa.is_active,1) = 1
+                GROUP BY org
+                ORDER BY apps DESC, org ASC
+                LIMIT 5
+            """)
+        ).fetchall()
+        top_providers = [{'name': r[0], 'applications': int(r[1] or 0)} for r in rows]
+        
+        if total_students:
+            applicants_row = db.session.execute(
+                text("SELECT COUNT(DISTINCT user_id) FROM scholarship_applications WHERE COALESCE(is_active,1) = 1")
+            ).fetchone()
+            applicants = int(applicants_row[0] or 0)
+            applied_percent = round((applicants / total_students) * 100, 2)
+        else:
+            applied_percent = 0.0
+        
+        # Create PDF
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=letter, 
+                               rightMargin=72, leftMargin=72,
+                               topMargin=72, bottomMargin=72)
+        
+        # Container for the 'Flowable' objects
+        elements = []
+        
+        # Define custom styles
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=24,
+            textColor=colors.HexColor('#1a1a1a'),
+            spaceAfter=30,
+            alignment=TA_CENTER,
+            fontName='Helvetica-Bold'
+        )
+        
+        heading_style = ParagraphStyle(
+            'CustomHeading',
+            parent=styles['Heading2'],
+            fontSize=16,
+            textColor=colors.HexColor('#0f2a43'),
+            spaceAfter=12,
+            spaceBefore=20,
+            fontName='Helvetica-Bold'
+        )
+        
+        normal_style = ParagraphStyle(
+            'CustomNormal',
+            parent=styles['Normal'],
+            fontSize=11,
+            textColor=colors.HexColor('#333333'),
+            spaceAfter=8,
+            fontName='Helvetica'
+        )
+        
+        # Title
+        title = Paragraph("Scholarsphere Reports & Analytics", title_style)
+        elements.append(title)
+        elements.append(Spacer(1, 0.2*inch))
+        
+        # Report metadata
+        metadata_data = [
+            ['Report Type:', 'Administrative Overview'],
+            ['Year Filter:', year_label],
+            ['Generated On:', datetime.now().strftime('%B %d, %Y at %I:%M %p')],
+            ['Generated By:', f'Admin User (ID: {current_user.id})']
+        ]
+        metadata_table = Table(metadata_data, colWidths=[2*inch, 4*inch])
+        metadata_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f8f9fa')),
+            ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor('#333333')),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e9ecef'))
+        ]))
+        elements.append(metadata_table)
+        elements.append(Spacer(1, 0.3*inch))
+        
+        # Overview Statistics
+        heading = Paragraph("Overview Statistics", heading_style)
+        elements.append(heading)
+        
+        overview_data = [
+            ['Metric', 'Value'],
+            ['Total Active Students', f'{total_students:,}'],
+            ['Total Applications', f'{total_applications:,}'],
+            ['Students with Applications', f'{applied_percent:.1f}%']
+        ]
+        overview_table = Table(overview_data, colWidths=[3.5*inch, 2.5*inch])
+        overview_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#0f2a43')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 11),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+            ('TOPPADDING', (0, 0), (-1, -1), 10),
+            ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#dee2e6')),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')])
+        ]))
+        elements.append(overview_table)
+        elements.append(Spacer(1, 0.3*inch))
+        
+        # Application Status Breakdown
+        heading = Paragraph("Application Status Breakdown", heading_style)
+        elements.append(heading)
+        
+        status_data = [
+            ['Status', 'Count', 'Percentage'],
+            ['Pending', f'{pending:,}', f'{(pending/total_applications*100) if total_applications > 0 else 0:.1f}%'],
+            ['Approved', f'{approved:,}', f'{(approved/total_applications*100) if total_applications > 0 else 0:.1f}%'],
+            ['Rejected', f'{disapproved:,}', f'{(disapproved/total_applications*100) if total_applications > 0 else 0:.1f}%'],
+            ['Withdrawn', f'{withdrawn:,}', f'{(withdrawn/total_applications*100) if total_applications > 0 else 0:.1f}%'],
+            ['Archived', f'{archived:,}', f'{(archived/total_applications*100) if total_applications > 0 else 0:.1f}%'],
+            ['Completed', f'{completed:,}', f'{(completed/total_applications*100) if total_applications > 0 else 0:.1f}%']
+        ]
+        status_table = Table(status_data, colWidths=[2*inch, 2*inch, 2*inch])
+        status_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#0f2a43')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('ALIGN', (1, 1), (2, -1), 'RIGHT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 11),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+            ('TOPPADDING', (0, 0), (-1, -1), 10),
+            ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#dee2e6')),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
+            ('BACKGROUND', (0, 2), (-1, 2), colors.HexColor('#fff3cd')),  # Pending - yellow
+            ('BACKGROUND', (0, 3), (-1, 3), colors.HexColor('#d4edda')),  # Approved - green
+            ('BACKGROUND', (0, 4), (-1, 4), colors.HexColor('#f8d7da')),  # Rejected - red
+        ]))
+        elements.append(status_table)
+        elements.append(Spacer(1, 0.3*inch))
+        
+        # Top Providers
+        if top_providers:
+            heading = Paragraph("Top Providers by Applications", heading_style)
+            elements.append(heading)
+            
+            provider_data = [['Rank', 'Provider', 'Applications']]
+            for idx, provider in enumerate(top_providers, 1):
+                provider_data.append([
+                    f'#{idx}',
+                    provider['name'],
+                    f"{provider['applications']:,}"
+                ])
+            
+            provider_table = Table(provider_data, colWidths=[0.8*inch, 4*inch, 1.2*inch])
+            provider_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#0f2a43')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('ALIGN', (1, 1), (1, -1), 'LEFT'),
+                ('ALIGN', (2, 1), (2, -1), 'RIGHT'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                ('FONTSIZE', (0, 0), (-1, -1), 11),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+                ('TOPPADDING', (0, 0), (-1, -1), 10),
+                ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#dee2e6')),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
+                ('BACKGROUND', (0, 1), (0, -1), colors.HexColor('#ffc72c')),
+                ('TEXTCOLOR', (0, 1), (0, -1), colors.HexColor('#1a1a1a')),
+            ]))
+            elements.append(provider_table)
+        
+        # Footer note
+        elements.append(Spacer(1, 0.4*inch))
+        footer = Paragraph(
+            f"<i>This report was generated automatically by the Scholarsphere system on {datetime.now().strftime('%B %d, %Y at %I:%M %p')}.</i>",
+            ParagraphStyle('Footer', parent=styles['Normal'], fontSize=9, textColor=colors.HexColor('#666666'), alignment=TA_CENTER)
+        )
+        elements.append(footer)
+        
+        # Build PDF
+        doc.build(elements)
+        buffer.seek(0)
+        
+        # Create response
+        response = make_response(buffer.getvalue())
+        response.headers['Content-Type'] = 'application/pdf'
+        filename = f'admin_reports_{datetime.now().strftime("%Y%m%d_%H%M%S")}.pdf'
+        response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+        
+    except Exception as e:
+        flash(f'Failed to generate PDF report: {str(e)}', 'error')
+        return redirect(url_for('admin.reports'))
 
 # API endpoints for admin functions
 @admin_bp.route('/api/create-user', methods=['POST'])
